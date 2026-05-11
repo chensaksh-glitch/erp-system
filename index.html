@@ -11,17 +11,20 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #222; }
   .wrap { display: flex; min-height: 100vh; }
-  .nav { width: 210px; background: #fff; border-right: 1px solid #e5e5e5; padding: 16px 0; display: flex; flex-direction: column; position: fixed; height: 100vh; }
-  .nav-title { font-size: 13px; font-weight: 600; color: #888; padding: 0 16px 12px; letter-spacing: 0.05em; }
-  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; cursor: pointer; margin: 0 8px; border-radius: 6px; font-size: 13px; color: #555; }
+  .nav { width: 220px; background: #fff; border-right: 1px solid #e5e5e5; padding: 16px 0; display: flex; flex-direction: column; position: fixed; height: 100vh; overflow-y: auto; }
+  .nav-title { font-size: 12px; font-weight: 700; color: #aaa; padding: 0 16px 8px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .nav-section { font-size: 11px; color: #bbb; padding: 12px 16px 4px; letter-spacing: 0.05em; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 16px; cursor: pointer; margin: 0 8px; border-radius: 6px; font-size: 13px; color: #555; }
   .nav-item:hover { background: #f5f5f5; }
-  .nav-item.active { background: #eef3fb; color: #185fa5; font-weight: 500; }
-  .main { flex: 1; margin-left: 210px; padding: 24px 28px; }
-  .page-title { font-size: 20px; font-weight: 600; margin-bottom: 20px; }
+  .nav-item.active { background: #eef3fb; color: #185fa5; font-weight: 600; }
+  .main { flex: 1; margin-left: 220px; padding: 24px 28px; }
+  .page-title { font-size: 20px; font-weight: 700; margin-bottom: 20px; }
+  .row-between { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
   .grid4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
   .card { background: #fff; border-radius: 10px; padding: 16px; border: 1px solid #e5e5e5; }
   .card-label { font-size: 12px; color: #888; margin-bottom: 6px; }
-  .card-val { font-size: 24px; font-weight: 600; }
+  .card-val { font-size: 24px; font-weight: 700; }
   .section { background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
   .section-head { padding: 13px 16px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between; }
   .section-title { font-size: 14px; font-weight: 600; }
@@ -29,24 +32,32 @@
   th { text-align: left; padding: 9px 12px; border-bottom: 1px solid #e5e5e5; color: #888; font-weight: 500; font-size: 12px; background: #fafafa; }
   td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
   tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafafa; }
   .btn { padding: 7px 14px; border-radius: 7px; border: 1px solid #e0e0e0; background: #fff; cursor: pointer; font-size: 13px; color: #333; }
   .btn:hover { background: #f5f5f5; }
-  .btn-primary { padding: 8px 16px; border-radius: 7px; border: none; background: #185fa5; color: #fff; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .btn-primary { padding: 8px 16px; border-radius: 7px; border: none; background: #185fa5; color: #fff; cursor: pointer; font-size: 13px; font-weight: 600; }
   .btn-primary:hover { background: #1450a0; }
-  .btn-danger { padding: 7px 14px; border-radius: 7px; border: 1px solid #e24b4a; background: #fff; cursor: pointer; font-size: 13px; color: #a32d2d; }
+  .btn-sm { padding: 4px 10px; border-radius: 6px; border: 1px solid #e0e0e0; background: #fff; cursor: pointer; font-size: 12px; color: #333; margin-right: 4px; }
+  .btn-danger-sm { padding: 4px 10px; border-radius: 6px; border: 1px solid #e24b4a; background: #fff; cursor: pointer; font-size: 12px; color: #a32d2d; }
   .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
   .modal-bg { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-  .modal { background: #fff; border-radius: 12px; padding: 24px; width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
-  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 18px; }
+  .modal { background: #fff; border-radius: 12px; padding: 24px; width: 460px; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+  .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
   .form-row { margin-bottom: 14px; }
-  .form-label { font-size: 12px; color: #666; margin-bottom: 5px; display: block; }
-  input, select { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid #ddd; font-size: 13px; outline: none; }
-  input:focus, select:focus { border-color: #185fa5; }
+  .form-label { font-size: 12px; color: #666; margin-bottom: 5px; display: block; font-weight: 500; }
+  .form-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  input, select, textarea { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid #ddd; font-size: 13px; outline: none; font-family: inherit; }
+  input:focus, select:focus, textarea:focus { border-color: #185fa5; }
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #185fa5; color: #fff; padding: 10px 22px; border-radius: 20px; font-size: 13px; z-index: 9999; }
   .save-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #3b6d11; background: #eaf3de; padding: 3px 8px; border-radius: 12px; }
-  .nav-bottom { padding: 12px 16px; border-top: 1px solid #e5e5e5; margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+  .nav-bottom { padding: 12px 16px; border-top: 1px solid #e5e5e5; margin-top: auto; }
   .warn { color: #a32d2d; }
   .loading { display: flex; align-items: center; justify-content: center; height: 100vh; font-size: 15px; color: #888; }
+  .empty { padding: 32px; text-align: center; color: #aaa; font-size: 13px; }
+  .mono { font-family: monospace; font-size: 12px; }
+  .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; background: #f0f0f0; padding: 4px; border-radius: 8px; width: fit-content; }
+  .tab { padding: 6px 16px; border-radius: 6px; font-size: 13px; cursor: pointer; color: #666; }
+  .tab.active { background: #fff; color: #185fa5; font-weight: 600; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
 </style>
 </head>
 <body>
@@ -54,10 +65,9 @@
 <script type="text/babel">
 
 // ⚠️ 여기 두 곳을 수정하세요!
-const SUPABASE_URL = "https://bwxkeuizvhyggdkngraj.supabase.co";        // 예: https://bwxkeuizvhyggdkngraj.supabase.co
-const SUPABASE_KEY = "sb_publishable_zBiSYJfZgt6Yrlafe1-YjA_Yt_Nv0P9";   // 예: sb_publishable_xxxxx...
+const SUPABASE_URL = "여기에_Project_URL_붙여넣기";
+const SUPABASE_KEY = "여기에_Publishable_Key_붙여넣기";
 
-// Supabase API 호출 함수
 const api = async (table, method = "GET", body = null, query = "") => {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
     method,
@@ -65,42 +75,80 @@ const api = async (table, method = "GET", body = null, query = "") => {
       "apikey": SUPABASE_KEY,
       "Authorization": `Bearer ${SUPABASE_KEY}`,
       "Content-Type": "application/json",
-      "Prefer": method === "POST" ? "return=representation" : ""
+      "Prefer": method === "POST" ? "return=representation" : "return=representation"
     },
     body: body ? JSON.stringify(body) : null
   });
-  if (!res.ok) throw new Error(await res.text());
   if (method === "DELETE" || res.status === 204) return null;
-  return res.json();
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  return data;
 };
 
-const SC = { "대기": { bg: "#e6f1fb", color: "#185fa5" }, "진행중": { bg: "#faeeda", color: "#854f0b" }, "완료": { bg: "#eaf3de", color: "#3b6d11" } };
+const SC = { "대기": { bg: "#e6f1fb", color: "#185fa5" }, "진행중": { bg: "#faeeda", color: "#854f0b" }, "완료": { bg: "#eaf3de", color: "#3b6d11" }, "예정": { bg: "#e6f1fb", color: "#185fa5" }, "입고완료": { bg: "#eaf3de", color: "#3b6d11" }, "취소": { bg: "#f5f5f5", color: "#888" } };
+
+const Badge = ({ s }) => <span className="badge" style={{ background: SC[s]?.bg || "#f0f0f0", color: SC[s]?.color || "#666" }}>{s}</span>;
+
+const Modal = ({ title, onClose, children }) => (
+  <div className="modal-bg">
+    <div className="modal">
+      <div className="modal-title">{title}</div>
+      {children}
+      <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "16px" }}>
+        <button className="btn" onClick={onClose}>닫기</button>
+      </div>
+    </div>
+  </div>
+);
 
 function App() {
   const [menu, setMenu] = React.useState("dashboard");
   const [items, setItems] = React.useState([]);
   const [workOrders, setWorkOrders] = React.useState([]);
   const [history, setHistory] = React.useState([]);
+  const [warehouses, setWarehouses] = React.useState([]);
+  const [processes, setProcesses] = React.useState([]);
+  const [lots, setLots] = React.useState([]);
+  const [incomingPlans, setIncomingPlans] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [toast, setToast] = React.useState("");
+
+  // 모달 상태
   const [showIO, setShowIO] = React.useState(false);
   const [showWO, setShowWO] = React.useState(false);
   const [showResult, setShowResult] = React.useState(false);
+  const [showWH, setShowWH] = React.useState(false);
+  const [showPR, setShowPR] = React.useState(false);
+  const [showLot, setShowLot] = React.useState(false);
+  const [showIncoming, setShowIncoming] = React.useState(false);
   const [selectedWO, setSelectedWO] = React.useState(null);
-  const [ioForm, setIOForm] = React.useState({ type: "입고", code: "", qty: "", note: "" });
-  const [woForm, setWOForm] = React.useState({ product: "", qty: "", planned: "", due: "", assignee: "" });
+
+  // 폼 상태
+  const [ioForm, setIOForm] = React.useState({ type: "입고", code: "", qty: "", lot_no: "", warehouse_id: "", note: "" });
+  const [woForm, setWOForm] = React.useState({ product: "", qty: "", planned: "", due: "", assignee: "", process_id: "", warehouse_id: "" });
   const [resultForm, setResultForm] = React.useState({ actual: "", note: "" });
+  const [whForm, setWHForm] = React.useState({ code: "", name: "", location: "", manager: "", note: "" });
+  const [prForm, setPRForm] = React.useState({ code: "", name: "", order_no: "", machine: "", manager: "", note: "" });
+  const [lotForm, setLotForm] = React.useState({ lot_no: "", item_code: "", item_name: "", warehouse_id: "", qty: "", received_date: "", expiry_date: "", supplier: "", note: "" });
+  const [incomingForm, setIncomingForm] = React.useState({ item_code: "", item_name: "", qty: "", planned_date: "", supplier: "", warehouse_id: "", lot_no: "", note: "" });
+
+  const [invTab, setInvTab] = React.useState("품목현황");
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
 
   const loadAll = async () => {
     try {
-      const [i, w, h] = await Promise.all([
+      const [i, w, h, wh, pr, lt, ip] = await Promise.all([
         api("items", "GET", null, "?order=id"),
         api("work_orders", "GET", null, "?order=created_at"),
-        api("stock_history", "GET", null, "?order=id.desc&limit=50"),
+        api("stock_history", "GET", null, "?order=id.desc&limit=100"),
+        api("warehouses", "GET", null, "?order=id"),
+        api("processes", "GET", null, "?order=order_no"),
+        api("lots", "GET", null, "?order=id.desc"),
+        api("incoming_plan", "GET", null, "?order=planned_date"),
       ]);
       setItems(i); setWorkOrders(w); setHistory(h);
+      setWarehouses(wh); setProcesses(pr); setLots(lt); setIncomingPlans(ip);
     } catch(e) { alert("DB 연결 오류: " + e.message); }
     setLoading(false);
   };
@@ -114,9 +162,16 @@ function App() {
     const newStock = ioForm.type === "입고" ? item.stock + qty : item.stock - qty;
     try {
       await api("items", "PATCH", { stock: newStock }, `?code=eq.${ioForm.code}`);
-      await api("stock_history", "POST", { date: new Date().toISOString().slice(0,10), type: ioForm.type, code: ioForm.code, name: item.name, qty, note: ioForm.note });
+      await api("stock_history", "POST", { date: new Date().toISOString().slice(0,10), type: ioForm.type, code: ioForm.code, name: item.name, qty, lot_no: ioForm.lot_no, warehouse_id: ioForm.warehouse_id || null, note: ioForm.note });
+      if (ioForm.lot_no) {
+        const lot = lots.find(l => l.lot_no === ioForm.lot_no);
+        if (lot) {
+          const newRemaining = ioForm.type === "입고" ? lot.remaining_qty + qty : lot.remaining_qty - qty;
+          await api("lots", "PATCH", { remaining_qty: newRemaining }, `?lot_no=eq.${ioForm.lot_no}`);
+        }
+      }
       await loadAll();
-      setShowIO(false); setIOForm({ type: "입고", code: "", qty: "", note: "" });
+      setShowIO(false); setIOForm({ type: "입고", code: "", qty: "", lot_no: "", warehouse_id: "", note: "" });
       showToast("✓ 입출고 처리 완료");
     } catch(e) { alert("오류: " + e.message); }
   };
@@ -124,9 +179,9 @@ function App() {
   const handleWO = async () => {
     const newId = `WO-${new Date().getFullYear()}-${String(workOrders.length + 1).padStart(3,"0")}`;
     try {
-      await api("work_orders", "POST", { id: newId, product: woForm.product, qty: parseInt(woForm.qty), planned: woForm.planned, due: woForm.due, assignee: woForm.assignee, status: "대기" });
+      await api("work_orders", "POST", { id: newId, product: woForm.product, qty: parseInt(woForm.qty), planned: woForm.planned, due: woForm.due, assignee: woForm.assignee, status: "대기", process_id: woForm.process_id || null, warehouse_id: woForm.warehouse_id || null });
       await loadAll();
-      setShowWO(false); setWOForm({ product: "", qty: "", planned: "", due: "", assignee: "" });
+      setShowWO(false); setWOForm({ product: "", qty: "", planned: "", due: "", assignee: "", process_id: "", warehouse_id: "" });
       showToast("✓ 작업지시서 생성 완료");
     } catch(e) { alert("오류: " + e.message); }
   };
@@ -134,8 +189,7 @@ function App() {
   const handleStatusChange = async (wo, status) => {
     try {
       await api("work_orders", "PATCH", { status }, `?id=eq.${wo.id}`);
-      await loadAll();
-      showToast("✓ 상태 변경 완료");
+      await loadAll(); showToast("✓ 상태 변경 완료");
     } catch(e) { alert("오류: " + e.message); }
   };
 
@@ -143,18 +197,70 @@ function App() {
     try {
       await api("work_orders", "PATCH", { status: "완료" }, `?id=eq.${selectedWO.id}`);
       await api("production_results", "POST", { wo_id: selectedWO.id, actual_qty: parseInt(resultForm.actual), note: resultForm.note });
-      await loadAll();
-      setShowResult(false); setResultForm({ actual: "", note: "" });
+      await loadAll(); setShowResult(false); setResultForm({ actual: "", note: "" });
       showToast("✓ 생산 완료 처리");
     } catch(e) { alert("오류: " + e.message); }
   };
 
+  const handleWH = async () => {
+    try {
+      await api("warehouses", "POST", { ...whForm });
+      await loadAll(); setShowWH(false); setWHForm({ code: "", name: "", location: "", manager: "", note: "" });
+      showToast("✓ 창고 등록 완료");
+    } catch(e) { alert("오류: " + e.message); }
+  };
+
+  const handlePR = async () => {
+    try {
+      await api("processes", "POST", { ...prForm, order_no: parseInt(prForm.order_no) });
+      await loadAll(); setShowPR(false); setPRForm({ code: "", name: "", order_no: "", machine: "", manager: "", note: "" });
+      showToast("✓ 공정 등록 완료");
+    } catch(e) { alert("오류: " + e.message); }
+  };
+
+  const handleLot = async () => {
+    try {
+      await api("lots", "POST", { ...lotForm, qty: parseInt(lotForm.qty), remaining_qty: parseInt(lotForm.qty), warehouse_id: lotForm.warehouse_id || null });
+      await loadAll(); setShowLot(false); setLotForm({ lot_no: "", item_code: "", item_name: "", warehouse_id: "", qty: "", received_date: "", expiry_date: "", supplier: "", note: "" });
+      showToast("✓ LOT 등록 완료");
+    } catch(e) { alert("오류: " + e.message); }
+  };
+
+  const handleIncoming = async () => {
+    try {
+      await api("incoming_plan", "POST", { ...incomingForm, qty: parseInt(incomingForm.qty), warehouse_id: incomingForm.warehouse_id || null });
+      await loadAll(); setShowIncoming(false); setIncomingForm({ item_code: "", item_name: "", qty: "", planned_date: "", supplier: "", warehouse_id: "", lot_no: "", note: "" });
+      showToast("✓ 입고 예정 등록 완료");
+    } catch(e) { alert("오류: " + e.message); }
+  };
+
+  const handleIncomingComplete = async (plan) => {
+    try {
+      await api("incoming_plan", "PATCH", { status: "입고완료" }, `?id=eq.${plan.id}`);
+      const item = items.find(i => i.code === plan.item_code);
+      if (item) await api("items", "PATCH", { stock: item.stock + plan.qty }, `?code=eq.${plan.item_code}`);
+      await api("stock_history", "POST", { date: new Date().toISOString().slice(0,10), type: "입고", code: plan.item_code, name: plan.item_name, qty: plan.qty, lot_no: plan.lot_no, warehouse_id: plan.warehouse_id, note: "입고예정 처리" });
+      await loadAll(); showToast("✓ 입고 완료 처리");
+    } catch(e) { alert("오류: " + e.message); }
+  };
+
+  const whName = (id) => warehouses.find(w => w.id === id)?.name || "-";
+  const prName = (id) => processes.find(p => p.id === id)?.name || "-";
   const lowStock = items.filter(i => i.stock < i.min_stock);
+
   const navItems = [
+    { section: "메인" },
     { key: "dashboard", label: "대시보드", icon: "📊" },
+    { section: "재고" },
     { key: "inventory", label: "재고 관리", icon: "📦" },
+    { key: "lot", label: "LOT 관리", icon: "🔢" },
+    { key: "incoming", label: "입고 예정", icon: "📥" },
+    { section: "생산" },
     { key: "workorder", label: "작업지시서", icon: "📋" },
     { key: "production", label: "생산 실적", icon: "📈" },
+    { section: "기준정보" },
+    { key: "warehouse", label: "창고 관리", icon: "🏭" },
+    { key: "process", label: "공정 관리", icon: "⚙️" },
   ];
 
   if (loading) return <div className="loading">불러오는 중...</div>;
@@ -162,18 +268,23 @@ function App() {
   return (
     <div className="wrap">
       <div className="nav">
-        <div className="nav-title">ERP 시스템</div>
-        {navItems.map(n => (
-          <div key={n.key} className={`nav-item${menu===n.key?" active":""}`} onClick={() => setMenu(n.key)}>
-            <span>{n.icon}</span>{n.label}
-          </div>
-        ))}
+        <div style={{ padding: "16px 16px 8px" }}>
+          <div style={{ fontSize: "15px", fontWeight: 700, color: "#185fa5" }}>ERP 시스템</div>
+        </div>
+        {navItems.map((n, i) => n.section
+          ? <div key={i} className="nav-section">{n.section}</div>
+          : <div key={n.key} className={`nav-item${menu===n.key?" active":""}`} onClick={() => setMenu(n.key)}>
+              <span>{n.icon}</span>{n.label}
+            </div>
+        )}
         <div className="nav-bottom">
           <span className="save-badge">💾 실시간 DB 저장</span>
         </div>
       </div>
 
       <div className="main">
+
+        {/* 대시보드 */}
         {menu === "dashboard" && <>
           <div className="page-title">대시보드</div>
           <div className="grid4">
@@ -181,89 +292,258 @@ function App() {
               { label: "전체 품목", val: items.length + " 종" },
               { label: "재고 부족", val: lowStock.length + " 건", warn: lowStock.length > 0 },
               { label: "진행중 작업", val: workOrders.filter(w=>w.status==="진행중").length + " 건" },
-              { label: "완료된 작업", val: workOrders.filter(w=>w.status==="완료").length + " 건" },
+              { label: "입고 예정", val: incomingPlans.filter(p=>p.status==="예정").length + " 건" },
             ].map((m,i) => (
-              <div key={i} className="card" style={{ borderLeft: m.warn ? "3px solid #e24b4a" : "3px solid transparent" }}>
+              <div key={i} className="card" style={{ borderLeft: m.warn ? "3px solid #e24b4a" : "3px solid #185fa5" }}>
                 <div className="card-label">{m.label}</div>
                 <div className="card-val" style={{ color: m.warn ? "#a32d2d" : "#222" }}>{m.val}</div>
               </div>
             ))}
           </div>
+          <div className="grid3">
+            <div className="card"><div className="card-label">등록 창고</div><div className="card-val">{warehouses.length} 개</div></div>
+            <div className="card"><div className="card-label">등록 공정</div><div className="card-val">{processes.length} 개</div></div>
+            <div className="card"><div className="card-label">LOT 수</div><div className="card-val">{lots.length} 개</div></div>
+          </div>
           {lowStock.length > 0 && <div className="section">
             <div className="section-head"><span className="section-title warn">⚠️ 재고 부족 알림</span></div>
             <table><thead><tr><th>품목코드</th><th>품목명</th><th>현재고</th><th>최소재고</th><th>단위</th></tr></thead>
-            <tbody>{lowStock.map(i => <tr key={i.id}><td>{i.code}</td><td>{i.name}</td><td style={{color:"#a32d2d",fontWeight:600}}>{i.stock}</td><td>{i.min_stock}</td><td>{i.unit}</td></tr>)}</tbody></table>
+            <tbody>{lowStock.map(i => <tr key={i.id}><td className="mono">{i.code}</td><td>{i.name}</td><td style={{color:"#a32d2d",fontWeight:700}}>{i.stock}</td><td>{i.min_stock}</td><td>{i.unit}</td></tr>)}</tbody></table>
           </div>}
           <div className="section">
+            <div className="section-head"><span className="section-title">📥 입고 예정 (근접)</span><button className="btn" onClick={()=>setMenu("incoming")}>전체 보기</button></div>
+            <table><thead><tr><th>품목코드</th><th>품목명</th><th>수량</th><th>예정일</th><th>공급업체</th><th>창고</th><th>상태</th></tr></thead>
+            <tbody>{incomingPlans.filter(p=>p.status==="예정").slice(0,5).map(p=><tr key={p.id}><td className="mono">{p.item_code}</td><td>{p.item_name}</td><td>{p.qty}</td><td>{p.planned_date}</td><td>{p.supplier}</td><td>{whName(p.warehouse_id)}</td><td><Badge s={p.status}/></td></tr>)}</tbody>
+          </table></div>
+          <div className="section">
             <div className="section-head"><span className="section-title">진행중 작업지시</span><button className="btn" onClick={()=>setMenu("workorder")}>전체 보기</button></div>
-            <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량</th><th>완료기한</th><th>담당자</th><th>상태</th></tr></thead>
-            <tbody>{workOrders.filter(w=>w.status!=="완료").map(w=><tr key={w.id}><td style={{fontFamily:"monospace",fontSize:"12px"}}>{w.id}</td><td>{w.product}</td><td>{w.qty}</td><td>{w.due}</td><td>{w.assignee}</td><td><span className="badge" style={{background:SC[w.status]?.bg,color:SC[w.status]?.color}}>{w.status}</span></td></tr>)}</tbody>
+            <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량</th><th>공정</th><th>완료기한</th><th>담당자</th><th>상태</th></tr></thead>
+            <tbody>{workOrders.filter(w=>w.status!=="완료").map(w=><tr key={w.id}><td className="mono">{w.id}</td><td>{w.product}</td><td>{w.qty}</td><td>{prName(w.process_id)}</td><td>{w.due}</td><td>{w.assignee}</td><td><Badge s={w.status}/></td></tr>)}</tbody>
           </table></div>
         </>}
 
+        {/* 재고 관리 */}
         {menu === "inventory" && <>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"20px"}}>
+          <div className="row-between">
             <div className="page-title">재고 관리</div>
             <button className="btn-primary" onClick={()=>setShowIO(true)}>+ 입출고 처리</button>
           </div>
-          <div className="section">
-            <div className="section-head"><span className="section-title">품목 현황</span></div>
+          <div className="tab-bar">
+            {["품목현황","창고별재고","입출고이력"].map(t=><div key={t} className={`tab${invTab===t?" active":""}`} onClick={()=>setInvTab(t)}>{t}</div>)}
+          </div>
+          {invTab === "품목현황" && <div className="section">
             <table><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>현재고</th><th>최소재고</th><th>단위</th><th>위치</th><th>상태</th></tr></thead>
-            <tbody>{items.map(i=><tr key={i.id}><td style={{fontFamily:"monospace",fontSize:"12px"}}>{i.code}</td><td>{i.name}</td><td>{i.category}</td><td style={{fontWeight:600,color:i.stock<i.min_stock?"#a32d2d":"#222"}}>{i.stock?.toLocaleString()}</td><td>{i.min_stock?.toLocaleString()}</td><td>{i.unit}</td><td>{i.location}</td><td><span className="badge" style={{background:i.stock<i.min_stock?"#fcebeb":"#eaf3de",color:i.stock<i.min_stock?"#a32d2d":"#3b6d11"}}>{i.stock<i.min_stock?"부족":"정상"}</span></td></tr>)}</tbody>
-          </table></div>
+            <tbody>{items.map(i=><tr key={i.id}><td className="mono">{i.code}</td><td>{i.name}</td><td>{i.category}</td><td style={{fontWeight:700,color:i.stock<i.min_stock?"#a32d2d":"#222"}}>{i.stock?.toLocaleString()}</td><td>{i.min_stock?.toLocaleString()}</td><td>{i.unit}</td><td>{i.location}</td><td><span className="badge" style={{background:i.stock<i.min_stock?"#fcebeb":"#eaf3de",color:i.stock<i.min_stock?"#a32d2d":"#3b6d11"}}>{i.stock<i.min_stock?"부족":"정상"}</span></td></tr>)}</tbody>
+          </table></div>}
+          {invTab === "창고별재고" && <div className="section">
+            <table><thead><tr><th>창고명</th><th>위치</th><th>담당자</th><th>입출고 건수</th></tr></thead>
+            <tbody>{warehouses.map(w=><tr key={w.id}><td style={{fontWeight:600}}>{w.name}</td><td>{w.location}</td><td>{w.manager}</td><td>{history.filter(h=>h.warehouse_id===w.id).length} 건</td></tr>)}</tbody>
+          </table></div>}
+          {invTab === "입출고이력" && <div className="section">
+            <table><thead><tr><th>날짜</th><th>구분</th><th>품목코드</th><th>품목명</th><th>수량</th><th>LOT</th><th>창고</th><th>비고</th></tr></thead>
+            <tbody>{history.map(h=><tr key={h.id}><td>{h.date}</td><td><span className="badge" style={{background:h.type==="입고"?"#e6f1fb":"#faeeda",color:h.type==="입고"?"#185fa5":"#854f0b"}}>{h.type}</span></td><td className="mono">{h.code}</td><td>{h.name}</td><td>{h.qty?.toLocaleString()}</td><td className="mono">{h.lot_no||"-"}</td><td>{whName(h.warehouse_id)}</td><td style={{color:"#888"}}>{h.note}</td></tr>)}</tbody>
+          </table></div>}
+        </>}
+
+        {/* LOT 관리 */}
+        {menu === "lot" && <>
+          <div className="row-between">
+            <div className="page-title">LOT 관리</div>
+            <button className="btn-primary" onClick={()=>setShowLot(true)}>+ LOT 등록</button>
+          </div>
           <div className="section">
-            <div className="section-head"><span className="section-title">입출고 이력</span></div>
-            <table><thead><tr><th>날짜</th><th>구분</th><th>품목코드</th><th>품목명</th><th>수량</th><th>비고</th></tr></thead>
-            <tbody>{history.map(h=><tr key={h.id}><td>{h.date}</td><td><span className="badge" style={{background:h.type==="입고"?"#e6f1fb":"#faeeda",color:h.type==="입고"?"#185fa5":"#854f0b"}}>{h.type}</span></td><td style={{fontFamily:"monospace",fontSize:"12px"}}>{h.code}</td><td>{h.name}</td><td>{h.qty?.toLocaleString()}</td><td style={{color:"#888"}}>{h.note}</td></tr>)}</tbody>
+            <div className="section-head"><span className="section-title">LOT별 재고 현황</span></div>
+            <table><thead><tr><th>LOT 번호</th><th>품목코드</th><th>품목명</th><th>창고</th><th>입고수량</th><th>잔여수량</th><th>입고일</th><th>유효기한</th><th>공급업체</th></tr></thead>
+            <tbody>{lots.length === 0 ? <tr><td colSpan="9" className="empty">등록된 LOT가 없습니다</td></tr> : lots.map(l=><tr key={l.id}><td className="mono" style={{fontWeight:600}}>{l.lot_no}</td><td className="mono">{l.item_code}</td><td>{l.item_name}</td><td>{whName(l.warehouse_id)}</td><td>{l.qty?.toLocaleString()}</td><td style={{fontWeight:700,color:l.remaining_qty===0?"#a32d2d":"#3b6d11"}}>{l.remaining_qty?.toLocaleString()}</td><td>{l.received_date}</td><td>{l.expiry_date||"-"}</td><td>{l.supplier||"-"}</td></tr>)}</tbody>
           </table></div>
         </>}
 
+        {/* 입고 예정 */}
+        {menu === "incoming" && <>
+          <div className="row-between">
+            <div className="page-title">입고 예정</div>
+            <button className="btn-primary" onClick={()=>setShowIncoming(true)}>+ 입고 예정 등록</button>
+          </div>
+          <div className="section">
+            <table><thead><tr><th>품목코드</th><th>품목명</th><th>수량</th><th>예정일</th><th>공급업체</th><th>창고</th><th>LOT</th><th>상태</th><th>액션</th></tr></thead>
+            <tbody>{incomingPlans.length === 0 ? <tr><td colSpan="9" className="empty">등록된 입고 예정이 없습니다</td></tr> : incomingPlans.map(p=><tr key={p.id}>
+              <td className="mono">{p.item_code}</td><td>{p.item_name}</td><td>{p.qty?.toLocaleString()}</td><td>{p.planned_date}</td><td>{p.supplier}</td><td>{whName(p.warehouse_id)}</td><td className="mono">{p.lot_no||"-"}</td><td><Badge s={p.status}/></td>
+              <td>{p.status==="예정"&&<button className="btn-sm" onClick={()=>handleIncomingComplete(p)}>입고처리</button>}</td>
+            </tr>)}</tbody>
+          </table></div>
+        </>}
+
+        {/* 작업지시서 */}
         {menu === "workorder" && <>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"20px"}}>
+          <div className="row-between">
             <div className="page-title">작업지시서</div>
             <button className="btn-primary" onClick={()=>setShowWO(true)}>+ 작업지시 생성</button>
           </div>
           <div className="section">
-            <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량</th><th>계획일</th><th>완료기한</th><th>담당자</th><th>상태</th><th>액션</th></tr></thead>
+            <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량</th><th>공정</th><th>창고</th><th>계획일</th><th>완료기한</th><th>담당자</th><th>상태</th><th>액션</th></tr></thead>
             <tbody>{workOrders.map(w=><tr key={w.id}>
-              <td style={{fontFamily:"monospace",fontSize:"12px"}}>{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{w.planned}</td><td>{w.due}</td><td>{w.assignee}</td>
-              <td><span className="badge" style={{background:SC[w.status]?.bg,color:SC[w.status]?.color}}>{w.status}</span></td>
-              <td>{w.status==="대기"&&<button className="btn" style={{fontSize:"12px",padding:"4px 10px"}} onClick={()=>handleStatusChange(w,"진행중")}>시작</button>}
-              {w.status==="진행중"&&<button className="btn" style={{fontSize:"12px",padding:"4px 10px"}} onClick={()=>{setSelectedWO(w);setShowResult(true);}}>완료처리</button>}</td>
-            </tr>)}</tbody></table>
-          </div>
+              <td className="mono">{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{prName(w.process_id)}</td><td>{whName(w.warehouse_id)}</td><td>{w.planned}</td><td>{w.due}</td><td>{w.assignee}</td><td><Badge s={w.status}/></td>
+              <td>{w.status==="대기"&&<button className="btn-sm" onClick={()=>handleStatusChange(w,"진행중")}>시작</button>}
+              {w.status==="진행중"&&<button className="btn-sm" onClick={()=>{setSelectedWO(w);setShowResult(true);}}>완료처리</button>}</td>
+            </tr>)}</tbody>
+          </table></div>
         </>}
 
+        {/* 생산 실적 */}
         {menu === "production" && <>
           <div className="page-title">생산 실적</div>
           <div className="grid4">
             {[{label:"총 작업지시",val:workOrders.length+" 건"},{label:"대기",val:workOrders.filter(w=>w.status==="대기").length+" 건"},{label:"진행중",val:workOrders.filter(w=>w.status==="진행중").length+" 건"},{label:"완료",val:workOrders.filter(w=>w.status==="완료").length+" 건"}].map((m,i)=><div key={i} className="card"><div className="card-label">{m.label}</div><div className="card-val">{m.val}</div></div>)}
           </div>
           <div className="section">
-            <div className="section-head"><span className="section-title">완료 작업 내역</span></div>
-            <table><thead><tr><th>지시번호</th><th>제품명</th><th>지시수량</th><th>담당자</th><th>계획일</th><th>완료기한</th></tr></thead>
-            <tbody>{workOrders.filter(w=>w.status==="완료").map(w=><tr key={w.id}><td style={{fontFamily:"monospace",fontSize:"12px"}}>{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{w.assignee}</td><td>{w.planned}</td><td>{w.due}</td></tr>)}</tbody>
+            <table><thead><tr><th>지시번호</th><th>제품명</th><th>지시수량</th><th>공정</th><th>담당자</th><th>계획일</th><th>완료기한</th><th>상태</th></tr></thead>
+            <tbody>{workOrders.filter(w=>w.status==="완료").map(w=><tr key={w.id}><td className="mono">{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{prName(w.process_id)}</td><td>{w.assignee}</td><td>{w.planned}</td><td>{w.due}</td><td><Badge s="완료"/></td></tr>)}</tbody>
           </table></div>
         </>}
+
+        {/* 창고 관리 */}
+        {menu === "warehouse" && <>
+          <div className="row-between">
+            <div className="page-title">창고 관리</div>
+            <button className="btn-primary" onClick={()=>setShowWH(true)}>+ 창고 등록</button>
+          </div>
+          <div className="section">
+            <table><thead><tr><th>창고코드</th><th>창고명</th><th>위치</th><th>담당자</th><th>비고</th></tr></thead>
+            <tbody>{warehouses.length===0?<tr><td colSpan="5" className="empty">등록된 창고가 없습니다</td></tr>:warehouses.map(w=><tr key={w.id}><td className="mono">{w.code}</td><td style={{fontWeight:600}}>{w.name}</td><td>{w.location}</td><td>{w.manager}</td><td style={{color:"#888"}}>{w.note}</td></tr>)}</tbody>
+          </table></div>
+        </>}
+
+        {/* 공정 관리 */}
+        {menu === "process" && <>
+          <div className="row-between">
+            <div className="page-title">공정 관리</div>
+            <button className="btn-primary" onClick={()=>setShowPR(true)}>+ 공정 등록</button>
+          </div>
+          <div className="section">
+            <table><thead><tr><th>순서</th><th>공정코드</th><th>공정명</th><th>설비</th><th>담당자</th><th>비고</th></tr></thead>
+            <tbody>{processes.length===0?<tr><td colSpan="6" className="empty">등록된 공정이 없습니다</td></tr>:processes.map(p=><tr key={p.id}><td style={{fontWeight:700,color:"#185fa5"}}>{p.order_no}</td><td className="mono">{p.code}</td><td style={{fontWeight:600}}>{p.name}</td><td>{p.machine}</td><td>{p.manager}</td><td style={{color:"#888"}}>{p.note}</td></tr>)}</tbody>
+          </table></div>
+        </>}
+
       </div>
 
+      {/* 입출고 모달 */}
       {showIO && <div className="modal-bg"><div className="modal">
         <div className="modal-title">입출고 처리</div>
-        {[{label:"구분",el:<select value={ioForm.type} onChange={e=>setIOForm({...ioForm,type:e.target.value})}><option>입고</option><option>출고</option></select>},{label:"품목코드",el:<input placeholder="예: RM-001" value={ioForm.code} onChange={e=>setIOForm({...ioForm,code:e.target.value})}/>},{label:"수량",el:<input type="number" placeholder="수량" value={ioForm.qty} onChange={e=>setIOForm({...ioForm,qty:e.target.value})}/>},{label:"비고",el:<input placeholder="비고 (선택)" value={ioForm.note} onChange={e=>setIOForm({...ioForm,note:e.target.value})}/>}].map(f=><div key={f.label} className="form-row"><label className="form-label">{f.label}</label>{f.el}</div>)}
+        <div className="form-row"><label className="form-label">구분</label><select value={ioForm.type} onChange={e=>setIOForm({...ioForm,type:e.target.value})}><option>입고</option><option>출고</option></select></div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">품목코드</label><input placeholder="예: RM-001" value={ioForm.code} onChange={e=>setIOForm({...ioForm,code:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">수량</label><input type="number" value={ioForm.qty} onChange={e=>setIOForm({...ioForm,qty:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">LOT 번호</label><input placeholder="LOT 번호 (선택)" value={ioForm.lot_no} onChange={e=>setIOForm({...ioForm,lot_no:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">창고</label><select value={ioForm.warehouse_id} onChange={e=>setIOForm({...ioForm,warehouse_id:e.target.value})}><option value="">창고 선택</option>{warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        </div>
+        <div className="form-row"><label className="form-label">비고</label><input placeholder="비고 (선택)" value={ioForm.note} onChange={e=>setIOForm({...ioForm,note:e.target.value})}/></div>
         <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowIO(false)}>취소</button><button className="btn-primary" onClick={handleIO}>처리</button></div>
       </div></div>}
 
+      {/* 작업지시 모달 */}
       {showWO && <div className="modal-bg"><div className="modal">
         <div className="modal-title">작업지시 생성</div>
-        {[{label:"제품명",el:<input placeholder="제품명" value={woForm.product} onChange={e=>setWOForm({...woForm,product:e.target.value})}/>},{label:"수량",el:<input type="number" placeholder="수량" value={woForm.qty} onChange={e=>setWOForm({...woForm,qty:e.target.value})}/>},{label:"계획일",el:<input type="date" value={woForm.planned} onChange={e=>setWOForm({...woForm,planned:e.target.value})}/>},{label:"완료기한",el:<input type="date" value={woForm.due} onChange={e=>setWOForm({...woForm,due:e.target.value})}/>},{label:"담당자",el:<input placeholder="담당자명" value={woForm.assignee} onChange={e=>setWOForm({...woForm,assignee:e.target.value})}/>}].map(f=><div key={f.label} className="form-row"><label className="form-label">{f.label}</label>{f.el}</div>)}
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">제품명</label><input placeholder="제품명" value={woForm.product} onChange={e=>setWOForm({...woForm,product:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">수량</label><input type="number" value={woForm.qty} onChange={e=>setWOForm({...woForm,qty:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">계획일</label><input type="date" value={woForm.planned} onChange={e=>setWOForm({...woForm,planned:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">완료기한</label><input type="date" value={woForm.due} onChange={e=>setWOForm({...woForm,due:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">공정</label><select value={woForm.process_id} onChange={e=>setWOForm({...woForm,process_id:e.target.value})}><option value="">공정 선택</option>{processes.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">창고</label><select value={woForm.warehouse_id} onChange={e=>setWOForm({...woForm,warehouse_id:e.target.value})}><option value="">창고 선택</option>{warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        </div>
+        <div className="form-row"><label className="form-label">담당자</label><input placeholder="담당자명" value={woForm.assignee} onChange={e=>setWOForm({...woForm,assignee:e.target.value})}/></div>
         <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowWO(false)}>취소</button><button className="btn-primary" onClick={handleWO}>생성</button></div>
       </div></div>}
 
+      {/* 완료처리 모달 */}
       {showResult && <div className="modal-bg"><div className="modal">
         <div className="modal-title">생산 완료 처리</div>
         <div style={{fontSize:"13px",color:"#888",marginBottom:"16px"}}>{selectedWO?.id} · {selectedWO?.product}</div>
-        {[{label:"실제 생산수량",el:<input type="number" placeholder="실적 수량" value={resultForm.actual} onChange={e=>setResultForm({...resultForm,actual:e.target.value})}/>},{label:"비고",el:<input placeholder="특이사항 (선택)" value={resultForm.note} onChange={e=>setResultForm({...resultForm,note:e.target.value})}/>}].map(f=><div key={f.label} className="form-row"><label className="form-label">{f.label}</label>{f.el}</div>)}
+        <div className="form-row"><label className="form-label">실제 생산수량</label><input type="number" value={resultForm.actual} onChange={e=>setResultForm({...resultForm,actual:e.target.value})}/></div>
+        <div className="form-row"><label className="form-label">비고</label><input placeholder="특이사항" value={resultForm.note} onChange={e=>setResultForm({...resultForm,note:e.target.value})}/></div>
         <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowResult(false)}>취소</button><button className="btn-primary" onClick={handleResult}>완료 처리</button></div>
+      </div></div>}
+
+      {/* 창고 등록 모달 */}
+      {showWH && <div className="modal-bg"><div className="modal">
+        <div className="modal-title">창고 등록</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">창고코드</label><input placeholder="예: WH-004" value={whForm.code} onChange={e=>setWHForm({...whForm,code:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">창고명</label><input placeholder="창고명" value={whForm.name} onChange={e=>setWHForm({...whForm,name:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">위치</label><input placeholder="위치" value={whForm.location} onChange={e=>setWHForm({...whForm,location:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">담당자</label><input placeholder="담당자" value={whForm.manager} onChange={e=>setWHForm({...whForm,manager:e.target.value})}/></div>
+        </div>
+        <div className="form-row"><label className="form-label">비고</label><input placeholder="비고" value={whForm.note} onChange={e=>setWHForm({...whForm,note:e.target.value})}/></div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowWH(false)}>취소</button><button className="btn-primary" onClick={handleWH}>등록</button></div>
+      </div></div>}
+
+      {/* 공정 등록 모달 */}
+      {showPR && <div className="modal-bg"><div className="modal">
+        <div className="modal-title">공정 등록</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">공정코드</label><input placeholder="예: PR-006" value={prForm.code} onChange={e=>setPRForm({...prForm,code:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">공정명</label><input placeholder="공정명" value={prForm.name} onChange={e=>setPRForm({...prForm,name:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">순서</label><input type="number" placeholder="순서번호" value={prForm.order_no} onChange={e=>setPRForm({...prForm,order_no:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">설비</label><input placeholder="설비명" value={prForm.machine} onChange={e=>setPRForm({...prForm,machine:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">담당자</label><input placeholder="담당자" value={prForm.manager} onChange={e=>setPRForm({...prForm,manager:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">비고</label><input placeholder="비고" value={prForm.note} onChange={e=>setPRForm({...prForm,note:e.target.value})}/></div>
+        </div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowPR(false)}>취소</button><button className="btn-primary" onClick={handlePR}>등록</button></div>
+      </div></div>}
+
+      {/* LOT 등록 모달 */}
+      {showLot && <div className="modal-bg"><div className="modal">
+        <div className="modal-title">LOT 등록</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">LOT 번호</label><input placeholder="예: LOT-20250101-001" value={lotForm.lot_no} onChange={e=>setLotForm({...lotForm,lot_no:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">품목코드</label><input placeholder="예: RM-001" value={lotForm.item_code} onChange={e=>setLotForm({...lotForm,item_code:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">품목명</label><input placeholder="품목명" value={lotForm.item_name} onChange={e=>setLotForm({...lotForm,item_name:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">수량</label><input type="number" value={lotForm.qty} onChange={e=>setLotForm({...lotForm,qty:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">창고</label><select value={lotForm.warehouse_id} onChange={e=>setLotForm({...lotForm,warehouse_id:e.target.value})}><option value="">창고 선택</option>{warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">공급업체</label><input placeholder="공급업체" value={lotForm.supplier} onChange={e=>setLotForm({...lotForm,supplier:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">입고일</label><input type="date" value={lotForm.received_date} onChange={e=>setLotForm({...lotForm,received_date:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">유효기한</label><input type="date" value={lotForm.expiry_date} onChange={e=>setLotForm({...lotForm,expiry_date:e.target.value})}/></div>
+        </div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowLot(false)}>취소</button><button className="btn-primary" onClick={handleLot}>등록</button></div>
+      </div></div>}
+
+      {/* 입고 예정 모달 */}
+      {showIncoming && <div className="modal-bg"><div className="modal">
+        <div className="modal-title">입고 예정 등록</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">품목코드</label><input placeholder="예: RM-001" value={incomingForm.item_code} onChange={e=>setIncomingForm({...incomingForm,item_code:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">품목명</label><input placeholder="품목명" value={incomingForm.item_name} onChange={e=>setIncomingForm({...incomingForm,item_name:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">수량</label><input type="number" value={incomingForm.qty} onChange={e=>setIncomingForm({...incomingForm,qty:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">예정일</label><input type="date" value={incomingForm.planned_date} onChange={e=>setIncomingForm({...incomingForm,planned_date:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">공급업체</label><input placeholder="공급업체" value={incomingForm.supplier} onChange={e=>setIncomingForm({...incomingForm,supplier:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">창고</label><select value={incomingForm.warehouse_id} onChange={e=>setIncomingForm({...incomingForm,warehouse_id:e.target.value})}><option value="">창고 선택</option>{warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        </div>
+        <div className="form-row"><label className="form-label">LOT 번호</label><input placeholder="LOT 번호 (선택)" value={incomingForm.lot_no} onChange={e=>setIncomingForm({...incomingForm,lot_no:e.target.value})}/></div>
+        <div className="form-row"><label className="form-label">비고</label><input placeholder="비고" value={incomingForm.note} onChange={e=>setIncomingForm({...incomingForm,note:e.target.value})}/></div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowIncoming(false)}>취소</button><button className="btn-primary" onClick={handleIncoming}>등록</button></div>
       </div></div>}
 
       {toast && <div className="toast">{toast}</div>}
