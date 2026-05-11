@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ERP 시스템</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #222; }
+  .wrap { display: flex; min-height: 100vh; }
+  .nav { width: 210px; background: #fff; border-right: 1px solid #e5e5e5; padding: 16px 0; display: flex; flex-direction: column; position: fixed; height: 100vh; }
+  .nav-title { font-size: 13px; font-weight: 600; color: #888; padding: 0 16px 12px; letter-spacing: 0.05em; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 9px 16px; cursor: pointer; margin: 0 8px; border-radius: 6px; font-size: 13px; color: #555; }
+  .nav-item:hover { background: #f5f5f5; }
+  .nav-item.active { background: #eef3fb; color: #185fa5; font-weight: 500; }
+  .main { flex: 1; margin-left: 210px; padding: 24px 28px; }
+  .page-title { font-size: 20px; font-weight: 600; margin-bottom: 20px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 10px; padding: 16px; border: 1px solid #e5e5e5; }
+  .card-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+  .card-val { font-size: 24px; font-weight: 600; }
+  .section { background: #fff; border: 1px solid #e5e5e5; border-radius: 10px; margin-bottom: 16px; overflow: hidden; }
+  .section-head { padding: 13px 16px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between; }
+  .section-title { font-size: 14px; font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 9px 12px; border-bottom: 1px solid #e5e5e5; color: #888; font-weight: 500; font-size: 12px; background: #fafafa; }
+  td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+  tr:last-child td { border-bottom: none; }
+  .btn { padding: 7px 14px; border-radius: 7px; border: 1px solid #e0e0e0; background: #fff; cursor: pointer; font-size: 13px; color: #333; }
+  .btn:hover { background: #f5f5f5; }
+  .btn-primary { padding: 8px 16px; border-radius: 7px; border: none; background: #185fa5; color: #fff; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .btn-primary:hover { background: #1450a0; }
+  .btn-danger { padding: 7px 14px; border-radius: 7px; border: 1px solid #e24b4a; background: #fff; cursor: pointer; font-size: 13px; color: #a32d2d; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+  .modal-bg { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .modal { background: #fff; border-radius: 12px; padding: 24px; width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 18px; }
+  .form-row { margin-bottom: 14px; }
+  .form-label { font-size: 12px; color: #666; margin-bottom: 5px; display: block; }
+  input, select { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid #ddd; font-size: 13px; outline: none; }
+  input:focus, select:focus { border-color: #185fa5; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #185fa5; color: #fff; padding: 10px 22px; border-radius: 20px; font-size: 13px; z-index: 9999; }
+  .save-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #3b6d11; background: #eaf3de; padding: 3px 8px; border-radius: 12px; }
+  .nav-bottom { padding: 12px 16px; border-top: 1px solid #e5e5e5; margin-top: auto; display: flex; flex-direction: column; gap: 6px; }
+  .warn { color: #a32d2d; }
+  .loading { display: flex; align-items: center; justify-content: center; height: 100vh; font-size: 15px; color: #888; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+// ⚠️ 여기 두 곳을 수정하세요!
+const SUPABASE_URL = "https://bwxkeuizvhyggdkngraj.supabase.co";        // 예: https://bwxkeuizvhyggdkngraj.supabase.co
+const SUPABASE_KEY = "sb_publishable_zBiSYJfZgt6Yrlafe1-YjA_Yt_Nv0P9";   // 예: sb_publishable_xxxxx...
+
+// Supabase API 호출 함수
+const api = async (table, method = "GET", body = null, query = "") => {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
+    method,
+    headers: {
+      "apikey": SUPABASE_KEY,
+      "Authorization": `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": method === "POST" ? "return=representation" : ""
+    },
+    body: body ? JSON.stringify(body) : null
+  });
+  if (!res.ok) throw new Error(await res.text());
+  if (method === "DELETE" || res.status === 204) return null;
+  return res.json();
+};
+
+const SC = { "대기": { bg: "#e6f1fb", color: "#185fa5" }, "진행중": { bg: "#faeeda", color: "#854f0b" }, "완료": { bg: "#eaf3de", color: "#3b6d11" } };
+
+function App() {
+  const [menu, setMenu] = React.useState("dashboard");
+  const [items, setItems] = React.useState([]);
+  const [workOrders, setWorkOrders] = React.useState([]);
+  const [history, setHistory] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [toast, setToast] = React.useState("");
+  const [showIO, setShowIO] = React.useState(false);
+  const [showWO, setShowWO] = React.useState(false);
+  const [showResult, setShowResult] = React.useState(false);
+  const [selectedWO, setSelectedWO] = React.useState(null);
+  const [ioForm, setIOForm] = React.useState({ type: "입고", code: "", qty: "", note: "" });
+  const [woForm, setWOForm] = React.useState({ product: "", qty: "", planned: "", due: "", assignee: "" });
+  const [resultForm, setResultForm] = React.useState({ actual: "", note: "" });
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
+
+  const loadAll = async () => {
+    try {
+      const [i, w, h] = await Promise.all([
+        api("items", "GET", null, "?order=id"),
+        api("work_orders", "GET", null, "?order=created_at"),
+        api("stock_history", "GET", null, "?order=id.desc&limit=50"),
+      ]);
+      setItems(i); setWorkOrders(w); setHistory(h);
+    } catch(e) { alert("DB 연결 오류: " + e.message); }
+    setLoading(false);
+  };
+
+  React.useEffect(() => { loadAll(); }, []);
+
+  const handleIO = async () => {
+    const item = items.find(i => i.code === ioForm.code);
+    if (!item) return alert("품목 코드를 확인해주세요.");
+    const qty = parseInt(ioForm.qty);
+    const newStock = ioForm.type === "입고" ? item.stock + qty : item.stock - qty;
+    try {
+      await api("items", "PATCH", { stock: newStock }, `?code=eq.${ioForm.code}`);
+      await api("stock_history", "POST", { date: new Date().toISOString().slice(0,10), type: ioForm.type, code: ioForm.code, name: item.name, qty, note: ioForm.note });
+      await loadAll();
+      setShowIO(false); setIOForm({ type: "입고", code: "", qty: "", note: "" });
+      showToast("✓ 입출고 처리 완료");
+    } catch(e) { alert("오류: " + e.message); }
+  };
+
+  const handleWO = async () => {
+    const newId = `WO-${new Date().getFullYear()}-${String(workOrders.length + 1).padStart(3,"0")}`;
+    try {
+      await api("work_orders", "POST", { id: newId, product: woForm.product, qty: parseInt(woForm.qty), planned: woForm.planned, due: woForm.due, assignee: woForm.assignee, status: "대기" });
+      await loadAll();
+      setShowWO(false); setWOForm({ product: "", qty: "", planned: "", due: "", assignee: "" });
+      showToast("✓ 작업지시서 생성 완료");
+    } catch(e) { alert("오류: " + e.message); }
+  };
+
+  const handleStatusChange = async (wo, status) => {
+    try {
+      await api("work_orders", "PATCH", { status }, `?id=eq.${wo.id}`);
+      await loadAll();
+      showToast("✓ 상태 변경 완료");
+    } catch(e) { alert("오류: " + e.message); }
+  };
+
+  const handleResult = async () => {
+    try {
+      await api("work_orders", "PATCH", { status: "완료" }, `?id=eq.${selectedWO.id}`);
+      await api("production_results", "POST", { wo_id: selectedWO.id, actual_qty: parseInt(resultForm.actual), note: resultForm.note });
+      await loadAll();
+      setShowResult(false); setResultForm({ actual: "", note: "" });
+      showToast("✓ 생산 완료 처리");
+    } catch(e) { alert("오류: " + e.message); }
+  };
+
+  const lowStock = items.filter(i => i.stock < i.min_stock);
+  const navItems = [
+    { key: "dashboard", label: "대시보드", icon: "📊" },
+    { key: "inventory", label: "재고 관리", icon: "📦" },
+    { key: "workorder", label: "작업지시서", icon: "📋" },
+    { key: "production", label: "생산 실적", icon: "📈" },
+  ];
+
+  if (loading) return <div className="loading">불러오는 중...</div>;
+
+  return (
+    <div className="wrap">
+      <div className="nav">
+        <div className="nav-title">ERP 시스템</div>
+        {navItems.map(n => (
+          <div key={n.key} className={`nav-item${menu===n.key?" active":""}`} onClick={() => setMenu(n.key)}>
+            <span>{n.icon}</span>{n.label}
+          </div>
+        ))}
+        <div className="nav-bottom">
+          <span className="save-badge">💾 실시간 DB 저장</span>
+        </div>
+      </div>
+
+      <div className="main">
+        {menu === "dashboard" && <>
+          <div className="page-title">대시보드</div>
+          <div className="grid4">
+            {[
+              { label: "전체 품목", val: items.length + " 종" },
+              { label: "재고 부족", val: lowStock.length + " 건", warn: lowStock.length > 0 },
+              { label: "진행중 작업", val: workOrders.filter(w=>w.status==="진행중").length + " 건" },
+              { label: "완료된 작업", val: workOrders.filter(w=>w.status==="완료").length + " 건" },
+            ].map((m,i) => (
+              <div key={i} className="card" style={{ borderLeft: m.warn ? "3px solid #e24b4a" : "3px solid transparent" }}>
+                <div className="card-label">{m.label}</div>
+                <div className="card-val" style={{ color: m.warn ? "#a32d2d" : "#222" }}>{m.val}</div>
+              </div>
+            ))}
+          </div>
+          {lowStock.length > 0 && <div className="section">
+            <div className="section-head"><span className="section-title warn">⚠️ 재고 부족 알림</span></div>
+            <table><thead><tr><th>품목코드</th><th>품목명</th><th>현재고</th><th>최소재고</th><th>단위</th></tr></thead>
+            <tbody>{lowStock.map(i => <tr key={i.id}><td>{i.code}</td><td>{i.name}</td><td style={{color:"#a32d2d",fontWeight:600}}>{i.stock}</td><td>{i.min_stock}</td><td>{i.unit}</td></tr>)}</tbody></table>
+          </div>}
+          <div className="section">
+            <div className="section-head"><span className="section-title">진행중 작업지시</span><button className="btn" onClick={()=>setMenu("workorder")}>전체 보기</button></div>
+            <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량</th><th>완료기한</th><th>담당자</th><th>상태</th></tr></thead>
+            <tbody>{workOrders.filter(w=>w.status!=="완료").map(w=><tr key={w.id}><td style={{fontFamily:"monospace",fontSize:"12px"}}>{w.id}</td><td>{w.product}</td><td>{w.qty}</td><td>{w.due}</td><td>{w.assignee}</td><td><span className="badge" style={{background:SC[w.status]?.bg,color:SC[w.status]?.color}}>{w.status}</span></td></tr>)}</tbody>
+          </table></div>
+        </>}
+
+        {menu === "inventory" && <>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"20px"}}>
+            <div className="page-title">재고 관리</div>
+            <button className="btn-primary" onClick={()=>setShowIO(true)}>+ 입출고 처리</button>
+          </div>
+          <div className="section">
+            <div className="section-head"><span className="section-title">품목 현황</span></div>
+            <table><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>현재고</th><th>최소재고</th><th>단위</th><th>위치</th><th>상태</th></tr></thead>
+            <tbody>{items.map(i=><tr key={i.id}><td style={{fontFamily:"monospace",fontSize:"12px"}}>{i.code}</td><td>{i.name}</td><td>{i.category}</td><td style={{fontWeight:600,color:i.stock<i.min_stock?"#a32d2d":"#222"}}>{i.stock?.toLocaleString()}</td><td>{i.min_stock?.toLocaleString()}</td><td>{i.unit}</td><td>{i.location}</td><td><span className="badge" style={{background:i.stock<i.min_stock?"#fcebeb":"#eaf3de",color:i.stock<i.min_stock?"#a32d2d":"#3b6d11"}}>{i.stock<i.min_stock?"부족":"정상"}</span></td></tr>)}</tbody>
+          </table></div>
+          <div className="section">
+            <div className="section-head"><span className="section-title">입출고 이력</span></div>
+            <table><thead><tr><th>날짜</th><th>구분</th><th>품목코드</th><th>품목명</th><th>수량</th><th>비고</th></tr></thead>
+            <tbody>{history.map(h=><tr key={h.id}><td>{h.date}</td><td><span className="badge" style={{background:h.type==="입고"?"#e6f1fb":"#faeeda",color:h.type==="입고"?"#185fa5":"#854f0b"}}>{h.type}</span></td><td style={{fontFamily:"monospace",fontSize:"12px"}}>{h.code}</td><td>{h.name}</td><td>{h.qty?.toLocaleString()}</td><td style={{color:"#888"}}>{h.note}</td></tr>)}</tbody>
+          </table></div>
+        </>}
+
+        {menu === "workorder" && <>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"20px"}}>
+            <div className="page-title">작업지시서</div>
+            <button className="btn-primary" onClick={()=>setShowWO(true)}>+ 작업지시 생성</button>
+          </div>
+          <div className="section">
+            <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량</th><th>계획일</th><th>완료기한</th><th>담당자</th><th>상태</th><th>액션</th></tr></thead>
+            <tbody>{workOrders.map(w=><tr key={w.id}>
+              <td style={{fontFamily:"monospace",fontSize:"12px"}}>{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{w.planned}</td><td>{w.due}</td><td>{w.assignee}</td>
+              <td><span className="badge" style={{background:SC[w.status]?.bg,color:SC[w.status]?.color}}>{w.status}</span></td>
+              <td>{w.status==="대기"&&<button className="btn" style={{fontSize:"12px",padding:"4px 10px"}} onClick={()=>handleStatusChange(w,"진행중")}>시작</button>}
+              {w.status==="진행중"&&<button className="btn" style={{fontSize:"12px",padding:"4px 10px"}} onClick={()=>{setSelectedWO(w);setShowResult(true);}}>완료처리</button>}</td>
+            </tr>)}</tbody></table>
+          </div>
+        </>}
+
+        {menu === "production" && <>
+          <div className="page-title">생산 실적</div>
+          <div className="grid4">
+            {[{label:"총 작업지시",val:workOrders.length+" 건"},{label:"대기",val:workOrders.filter(w=>w.status==="대기").length+" 건"},{label:"진행중",val:workOrders.filter(w=>w.status==="진행중").length+" 건"},{label:"완료",val:workOrders.filter(w=>w.status==="완료").length+" 건"}].map((m,i)=><div key={i} className="card"><div className="card-label">{m.label}</div><div className="card-val">{m.val}</div></div>)}
+          </div>
+          <div className="section">
+            <div className="section-head"><span className="section-title">완료 작업 내역</span></div>
+            <table><thead><tr><th>지시번호</th><th>제품명</th><th>지시수량</th><th>담당자</th><th>계획일</th><th>완료기한</th></tr></thead>
+            <tbody>{workOrders.filter(w=>w.status==="완료").map(w=><tr key={w.id}><td style={{fontFamily:"monospace",fontSize:"12px"}}>{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{w.assignee}</td><td>{w.planned}</td><td>{w.due}</td></tr>)}</tbody>
+          </table></div>
+        </>}
+      </div>
+
+      {showIO && <div className="modal-bg"><div className="modal">
+        <div className="modal-title">입출고 처리</div>
+        {[{label:"구분",el:<select value={ioForm.type} onChange={e=>setIOForm({...ioForm,type:e.target.value})}><option>입고</option><option>출고</option></select>},{label:"품목코드",el:<input placeholder="예: RM-001" value={ioForm.code} onChange={e=>setIOForm({...ioForm,code:e.target.value})}/>},{label:"수량",el:<input type="number" placeholder="수량" value={ioForm.qty} onChange={e=>setIOForm({...ioForm,qty:e.target.value})}/>},{label:"비고",el:<input placeholder="비고 (선택)" value={ioForm.note} onChange={e=>setIOForm({...ioForm,note:e.target.value})}/>}].map(f=><div key={f.label} className="form-row"><label className="form-label">{f.label}</label>{f.el}</div>)}
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowIO(false)}>취소</button><button className="btn-primary" onClick={handleIO}>처리</button></div>
+      </div></div>}
+
+      {showWO && <div className="modal-bg"><div className="modal">
+        <div className="modal-title">작업지시 생성</div>
+        {[{label:"제품명",el:<input placeholder="제품명" value={woForm.product} onChange={e=>setWOForm({...woForm,product:e.target.value})}/>},{label:"수량",el:<input type="number" placeholder="수량" value={woForm.qty} onChange={e=>setWOForm({...woForm,qty:e.target.value})}/>},{label:"계획일",el:<input type="date" value={woForm.planned} onChange={e=>setWOForm({...woForm,planned:e.target.value})}/>},{label:"완료기한",el:<input type="date" value={woForm.due} onChange={e=>setWOForm({...woForm,due:e.target.value})}/>},{label:"담당자",el:<input placeholder="담당자명" value={woForm.assignee} onChange={e=>setWOForm({...woForm,assignee:e.target.value})}/>}].map(f=><div key={f.label} className="form-row"><label className="form-label">{f.label}</label>{f.el}</div>)}
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowWO(false)}>취소</button><button className="btn-primary" onClick={handleWO}>생성</button></div>
+      </div></div>}
+
+      {showResult && <div className="modal-bg"><div className="modal">
+        <div className="modal-title">생산 완료 처리</div>
+        <div style={{fontSize:"13px",color:"#888",marginBottom:"16px"}}>{selectedWO?.id} · {selectedWO?.product}</div>
+        {[{label:"실제 생산수량",el:<input type="number" placeholder="실적 수량" value={resultForm.actual} onChange={e=>setResultForm({...resultForm,actual:e.target.value})}/>},{label:"비고",el:<input placeholder="특이사항 (선택)" value={resultForm.note} onChange={e=>setResultForm({...resultForm,note:e.target.value})}/>}].map(f=><div key={f.label} className="form-row"><label className="form-label">{f.label}</label>{f.el}</div>)}
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowResult(false)}>취소</button><button className="btn-primary" onClick={handleResult}>완료 처리</button></div>
+      </div></div>}
+
+      {toast && <div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>, document.getElementById("root"));
+</script>
+</body>
+</html>
