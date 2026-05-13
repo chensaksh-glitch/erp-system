@@ -562,7 +562,12 @@ function App() {
         <div className="modal-title">입출고 처리</div>
         <div className="form-row"><label className="form-label">구분</label><select value={ioForm.type} onChange={e=>setIOForm({...ioForm,type:e.target.value})}><option>입고</option><option>출고</option></select></div>
         <div className="form-grid2">
-          <div className="form-row"><label className="form-label">품목코드</label><select value={ioForm.code} onChange={e=>setIOForm({...ioForm,code:e.target.value})}><option value="">품목 선택</option>{items.map(i=><option key={i.id} value={i.code}>{i.code} - {i.name}</option>)}</select></div>
+          <div className="form-row">
+            <label className="form-label">품목코드</label>
+            <input placeholder="코드 입력" value={ioForm.code} onChange={e=>{ const it=items.find(i=>i.code===e.target.value); setIOForm({...ioForm,code:e.target.value,name:it?.name||""}); }} list="item-list"/>
+            <datalist id="item-list">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {ioForm.code && items.find(i=>i.code===ioForm.code) && <div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===ioForm.code).name} ({items.find(i=>i.code===ioForm.code).category})</div>}
+          </div>
           <div className="form-row"><label className="form-label">수량</label><input type="number" value={ioForm.qty} onChange={e=>setIOForm({...ioForm,qty:e.target.value})}/></div>
         </div>
         <div className="form-grid2">
@@ -639,7 +644,12 @@ function App() {
         <div className="modal-title">LOT 등록</div>
         <div className="form-grid2">
           <div className="form-row"><label className="form-label">LOT 번호</label><input placeholder="예: LOT-20250101-001" value={lotForm.lot_no} onChange={e=>setLotForm({...lotForm,lot_no:e.target.value})}/></div>
-          <div className="form-row"><label className="form-label">품목</label><select value={lotForm.item_code} onChange={e=>{ const it=items.find(i=>i.code===e.target.value); setLotForm({...lotForm,item_code:e.target.value,item_name:it?.name||""}); }}><option value="">품목 선택</option>{items.map(i=><option key={i.id} value={i.code}>{i.code} - {i.name}</option>)}</select></div>
+          <div className="form-row">
+            <label className="form-label">품목코드</label>
+            <input placeholder="코드 입력" value={lotForm.item_code} onChange={e=>{ const it=items.find(i=>i.code===e.target.value); setLotForm({...lotForm,item_code:e.target.value,item_name:it?.name||""}); }} list="item-list-lot"/>
+            <datalist id="item-list-lot">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {lotForm.item_code && items.find(i=>i.code===lotForm.item_code) && <div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===lotForm.item_code).name} ({items.find(i=>i.code===lotForm.item_code).category})</div>}
+          </div>
         </div>
         <div className="form-grid2">
           <div className="form-row"><label className="form-label">수량</label><input type="number" value={lotForm.qty} onChange={e=>setLotForm({...lotForm,qty:e.target.value})}/></div>
@@ -657,7 +667,12 @@ function App() {
       {showIncoming && <div className="modal-bg"><div className="modal">
         <div className="modal-title">입고 예정 등록</div>
         <div className="form-grid2">
-          <div className="form-row"><label className="form-label">품목</label><select value={incomingForm.item_code} onChange={e=>{ const it=items.find(i=>i.code===e.target.value); setIncomingForm({...incomingForm,item_code:e.target.value,item_name:it?.name||""}); }}><option value="">품목 선택</option>{items.map(i=><option key={i.id} value={i.code}>{i.code} - {i.name}</option>)}</select></div>
+          <div className="form-row">
+            <label className="form-label">품목코드</label>
+            <input placeholder="코드 입력" value={incomingForm.item_code} onChange={e=>{ const it=items.find(i=>i.code===e.target.value); setIncomingForm({...incomingForm,item_code:e.target.value,item_name:it?.name||""}); }} list="item-list-incoming"/>
+            <datalist id="item-list-incoming">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {incomingForm.item_code && items.find(i=>i.code===incomingForm.item_code) && <div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===incomingForm.item_code).name} ({items.find(i=>i.code===incomingForm.item_code).category})</div>}
+          </div>
           <div className="form-row"><label className="form-label">수량</label><input type="number" value={incomingForm.qty} onChange={e=>setIncomingForm({...incomingForm,qty:e.target.value})}/></div>
         </div>
         <div className="form-grid2">
