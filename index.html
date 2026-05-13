@@ -394,7 +394,7 @@ function App() {
             <div className="section-head"><span className="section-title warn">⚠️ 재고 부족 알림</span></div>
             <table><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>현재고</th><th>최소재고</th><th>단위</th></tr></thead>
             <tbody>{lowStock.map(i => <tr key={i.id}><td className="mono">{i.code}</td><td>{i.name}</td><td><CatBadge c={i.category}/></td><td style={{color:"#a32d2d",fontWeight:700}}>{i.stock}</td><td>{i.min_stock}</td><td>{i.unit}</td></tr>)}</tbody>
-          </div>}
+          </table></div>}
           <div className="section">
             <div className="section-head"><span className="section-title">진행중 작업지시</span><button className="btn" onClick={()=>setMenu("workorder")}>전체 보기</button></div>
             <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량</th><th>공정</th><th>완료기한</th><th>담당자</th><th>상태</th></tr></thead>
