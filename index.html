@@ -156,7 +156,7 @@ function App() {
   const [editBom, setEditBom] = React.useState(null);
   const [bomTab, setBomTab] = React.useState("전체");
   const [bomSearch, setBomSearch] = React.useState("");
-  const [bomForm, setBomForm] = React.useState({product_code:"",product_name:"",material_code:"",material_name:"",qty:"",unit:"",note:""});
+  const [bomForm, setBomForm] = React.useState({product_code:"",product_name:"",materials:[{material_code:"",material_name:"",qty:"",unit:"",note:""}]});
   const bomSel = useSelection();
   const [showIO, setShowIO] = React.useState(false);
   const [showWO, setShowWO] = React.useState(false);
@@ -240,12 +240,22 @@ function App() {
 
   // 핸들러들
   const handleBom = async () => {
-    if(!bomForm.product_code||!bomForm.material_code||!bomForm.qty) return alert("제품코드, 자재코드, 소요량을 입력해주세요.");
+    if(!bomForm.product_code||!bomForm.product_name) return alert("제품코드와 제품명을 입력해주세요.");
+    const validMaterials = bomForm.materials.filter(m=>m.material_code&&m.qty);
+    if(validMaterials.length===0) return alert("자재를 최소 1개 이상 입력해주세요.");
     try {
-      if(editBom){ await api("bom","PATCH",{...bomForm,qty:parseFloat(bomForm.qty)},`?id=eq.${editBom.id}`); showToast("✓ BOM 수정 완료"); }
-      else { await api("bom","POST",{...bomForm,qty:parseFloat(bomForm.qty)}); showToast("✓ BOM 등록 완료"); }
+      if(editBom){
+        await api("bom","PATCH",{...validMaterials[0],product_code:bomForm.product_code,product_name:bomForm.product_name,qty:parseFloat(validMaterials[0].qty)},`?id=eq.${editBom.id}`);
+        showToast("✓ BOM 수정 완료");
+      } else {
+        for(const m of validMaterials){
+          const it=items.find(i=>i.code===m.material_code);
+          await api("bom","POST",{product_code:bomForm.product_code,product_name:bomForm.product_name,material_code:m.material_code,material_name:m.material_name||it?.name||"",qty:parseFloat(m.qty),unit:m.unit||it?.unit||"",note:m.note||""});
+        }
+        showToast(`✓ BOM ${validMaterials.length}개 자재 등록 완료`);
+      }
       await loadAll(); setShowBom(false); setEditBom(null);
-      setBomForm({product_code:"",product_name:"",material_code:"",material_name:"",qty:"",unit:"",note:""});
+      setBomForm({product_code:"",product_name:"",materials:[{material_code:"",material_name:"",qty:"",unit:"",note:""}]});
     } catch(e){alert("오류: "+e.message);}
   };
 
@@ -740,10 +750,10 @@ function App() {
       </div>
 
       {/* BOM 등록/수정 모달 */}
-      {showBom&&<div className="modal-bg"><div className="modal">
+      {showBom&&<div className="modal-bg"><div className="modal" style={{width:"680px"}}>
         <div className="modal-title">{editBom?"BOM 수정":"BOM 등록"}</div>
         <div style={{background:"#f0f5ff",borderRadius:"8px",padding:"10px 14px",marginBottom:"16px",fontSize:"12px",color:"#555"}}>
-          💡 완제품/반제품 1개를 만드는 데 필요한 원자재/부자재 정보를 입력하세요.
+          💡 완제품/반제품 1개를 만드는 데 필요한 자재를 모두 입력하세요.
         </div>
         <div style={{fontWeight:600,fontSize:"13px",color:"#185fa5",marginBottom:"8px"}}>📦 제품 정보</div>
         <div className="form-grid2">
@@ -752,27 +762,58 @@ function App() {
             <datalist id="bom-product-list">{items.filter(i=>i.category==="완제품"||i.category==="반제품").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
             {bomForm.product_code&&items.find(i=>i.code===bomForm.product_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===bomForm.product_code).name} ({items.find(i=>i.code===bomForm.product_code).category})</div>}
           </div>
-          <div className="form-row"><label className="form-label">제품명</label>
+          <div className="form-row"><label className="form-label">제품명 *</label>
             <input placeholder="자동입력 또는 직접입력" value={bomForm.product_name} onChange={e=>setBomForm({...bomForm,product_name:e.target.value})}/>
           </div>
         </div>
-        <div style={{fontWeight:600,fontSize:"13px",color:"#3b6d11",marginBottom:"8px",marginTop:"4px"}}>🔩 자재 정보</div>
-        <div className="form-grid2">
-          <div className="form-row"><label className="form-label">자재코드 *</label>
-            <input placeholder="예: RM-001" value={bomForm.material_code} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setBomForm({...bomForm,material_code:e.target.value,material_name:it?.name||bomForm.material_name,unit:it?.unit||bomForm.unit});}} list="bom-material-list"/>
-            <datalist id="bom-material-list">{items.filter(i=>i.category==="원자재"||i.category==="부자재").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
-            {bomForm.material_code&&items.find(i=>i.code===bomForm.material_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#3b6d11",fontWeight:600}}>✓ {items.find(i=>i.code===bomForm.material_code).name} ({items.find(i=>i.code===bomForm.material_code).category})</div>}
-          </div>
-          <div className="form-row"><label className="form-label">자재명</label>
-            <input placeholder="자동입력 또는 직접입력" value={bomForm.material_name} onChange={e=>setBomForm({...bomForm,material_name:e.target.value})}/>
-          </div>
+
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px",marginTop:"4px"}}>
+          <span style={{fontWeight:600,fontSize:"13px",color:"#3b6d11"}}>🔩 자재 목록</span>
+          {!editBom&&<button className="btn-sm" onClick={()=>setBomForm({...bomForm,materials:[...bomForm.materials,{material_code:"",material_name:"",qty:"",unit:"",note:""}]})}>+ 자재 추가</button>}
         </div>
-        <div className="form-grid2">
-          <div className="form-row"><label className="form-label">소요량 * (제품 1개당)</label><input type="number" step="0.01" placeholder="0" value={bomForm.qty} onChange={e=>setBomForm({...bomForm,qty:e.target.value})}/></div>
-          <div className="form-row"><label className="form-label">단위</label><input placeholder="예: kg, 개, L" value={bomForm.unit} onChange={e=>setBomForm({...bomForm,unit:e.target.value})}/></div>
-        </div>
-        <div className="form-row"><label className="form-label">비고</label><input placeholder="특이사항 (선택)" value={bomForm.note} onChange={e=>setBomForm({...bomForm,note:e.target.value})}/></div>
-        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>{setShowBom(false);setEditBom(null);}}>취소</button><button className="btn-primary" onClick={handleBom}>{editBom?"수정":"등록"}</button></div>
+
+        {!editBom ? <>
+          <div style={{background:"#fafafa",borderRadius:"8px",padding:"8px",marginBottom:"8px"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px"}}>
+              <thead><tr>
+                <th style={{padding:"6px 8px",background:"#f0f0f0",borderRadius:"4px",textAlign:"left",color:"#666"}}>자재코드</th>
+                <th style={{padding:"6px 8px",textAlign:"left",color:"#666"}}>자재명</th>
+                <th style={{padding:"6px 8px",textAlign:"left",color:"#666",width:"80px"}}>소요량</th>
+                <th style={{padding:"6px 8px",textAlign:"left",color:"#666",width:"60px"}}>단위</th>
+                <th style={{padding:"6px 8px",textAlign:"left",color:"#666"}}>비고</th>
+                <th style={{width:"30px"}}></th>
+              </tr></thead>
+              <tbody>{bomForm.materials.map((m,idx)=>(
+                <tr key={idx}>
+                  <td style={{padding:"4px"}}>
+                    <input style={{fontSize:"12px",padding:"5px 8px"}} placeholder="예: RM-001" value={m.material_code} list={`mat-list-${idx}`}
+                      onChange={e=>{const it=items.find(i=>i.code===e.target.value);const mats=[...bomForm.materials];mats[idx]={...mats[idx],material_code:e.target.value,material_name:it?.name||mats[idx].material_name,unit:it?.unit||mats[idx].unit};setBomForm({...bomForm,materials:mats});}}/>
+                    <datalist id={`mat-list-${idx}`}>{items.filter(i=>i.category==="원자재"||i.category==="부자재").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+                  </td>
+                  <td style={{padding:"4px"}}><input style={{fontSize:"12px",padding:"5px 8px"}} placeholder="자동입력" value={m.material_name} onChange={e=>{const mats=[...bomForm.materials];mats[idx]={...mats[idx],material_name:e.target.value};setBomForm({...bomForm,materials:mats});}}/></td>
+                  <td style={{padding:"4px"}}><input style={{fontSize:"12px",padding:"5px 8px"}} type="number" step="0.01" placeholder="0" value={m.qty} onChange={e=>{const mats=[...bomForm.materials];mats[idx]={...mats[idx],qty:e.target.value};setBomForm({...bomForm,materials:mats});}}/></td>
+                  <td style={{padding:"4px"}}><input style={{fontSize:"12px",padding:"5px 8px"}} placeholder="kg" value={m.unit} onChange={e=>{const mats=[...bomForm.materials];mats[idx]={...mats[idx],unit:e.target.value};setBomForm({...bomForm,materials:mats});}}/></td>
+                  <td style={{padding:"4px"}}><input style={{fontSize:"12px",padding:"5px 8px"}} placeholder="비고" value={m.note} onChange={e=>{const mats=[...bomForm.materials];mats[idx]={...mats[idx],note:e.target.value};setBomForm({...bomForm,materials:mats});}}/></td>
+                  <td style={{padding:"4px",textAlign:"center"}}>{bomForm.materials.length>1&&<button style={{background:"none",border:"none",color:"#e24b4a",cursor:"pointer",fontSize:"16px"}} onClick={()=>{const mats=bomForm.materials.filter((_,i)=>i!==idx);setBomForm({...bomForm,materials:mats});}}>×</button>}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </> : <>
+          <div className="form-grid2">
+            <div className="form-row"><label className="form-label">자재코드</label>
+              <input placeholder="예: RM-001" value={bomForm.materials[0]?.material_code||""} onChange={e=>{const it=items.find(i=>i.code===e.target.value);const mats=[{...bomForm.materials[0],material_code:e.target.value,material_name:it?.name||bomForm.materials[0]?.material_name,unit:it?.unit||bomForm.materials[0]?.unit}];setBomForm({...bomForm,materials:mats});}} list="bom-mat-edit"/>
+              <datalist id="bom-mat-edit">{items.filter(i=>i.category==="원자재"||i.category==="부자재").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            </div>
+            <div className="form-row"><label className="form-label">자재명</label><input value={bomForm.materials[0]?.material_name||""} onChange={e=>{const mats=[{...bomForm.materials[0],material_name:e.target.value}];setBomForm({...bomForm,materials:mats});}}/></div>
+          </div>
+          <div className="form-grid2">
+            <div className="form-row"><label className="form-label">소요량</label><input type="number" step="0.01" value={bomForm.materials[0]?.qty||""} onChange={e=>{const mats=[{...bomForm.materials[0],qty:e.target.value}];setBomForm({...bomForm,materials:mats});}}/></div>
+            <div className="form-row"><label className="form-label">단위</label><input value={bomForm.materials[0]?.unit||""} onChange={e=>{const mats=[{...bomForm.materials[0],unit:e.target.value}];setBomForm({...bomForm,materials:mats});}}/></div>
+          </div>
+        </>}
+
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end",marginTop:"8px"}}><button className="btn" onClick={()=>{setShowBom(false);setEditBom(null);}}>취소</button><button className="btn-primary" onClick={handleBom}>{editBom?"수정":"등록"}</button></div>
       </div></div>}
 
       {/* 작업지시 모달 */}
