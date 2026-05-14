@@ -73,6 +73,17 @@ const SUPABASE_KEY = "sb_publishable_zBiSYJfZgt6Yrlafe1-YjA_Yt_Nv0P9";
 
 const TOTAL_DB_MB = 500;
 
+// 엑셀 다운로드 함수
+const downloadCSV = (filename, headers, rows) => {
+  const BOM = "\uFEFF";
+  const csv = BOM + [headers.join(","), ...rows.map(r => r.map(c => `"${String(c??"-").replace(/"/g,'""')}"`).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename + "_" + new Date().toISOString().slice(0,10) + ".csv";
+  a.click(); URL.revokeObjectURL(url);
+};
+
 const api = async (table, method = "GET", body = null, query = "") => {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
     method,
@@ -125,6 +136,7 @@ function App() {
   const [showIO, setShowIO] = React.useState(false);
   const [showWhStock, setShowWhStock] = React.useState(false);
   const [selectedWH, setSelectedWH] = React.useState(null);
+  const [whSearch, setWhSearch] = React.useState("");
   const [showWO, setShowWO] = React.useState(false);
   const [showResult, setShowResult] = React.useState(false);
   const [showWH, setShowWH] = React.useState(false);
@@ -408,7 +420,10 @@ function App() {
         {menu === "itemmaster" && <>
           <div className="row-between">
             <div className="page-title">기초품목 등록</div>
-            <button className="btn-primary" onClick={()=>{ setEditItem(null); setItemForm({ code:"",name:"",category:"원자재",unit:"",stock:0,min_stock:0,location:"",spec:"",maker:"",price:0,lead_time:0,note:"" }); setShowItem(true); }}>+ 품목 등록</button>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button className="btn" onClick={()=>downloadCSV("기초품목",["품목코드","품목명","분류","규격","단위","단가","제조사","리드타임","위치"],filteredItems.map(i=>[i.code,i.name,i.category,i.spec,i.unit,i.price,i.maker,i.lead_time,i.location]))}>📥 엑셀 다운로드</button>
+              <button className="btn-primary" onClick={()=>{ setEditItem(null); setItemForm({ code:"",name:"",category:"원자재",unit:"",stock:0,min_stock:0,location:"",spec:"",maker:"",price:0,lead_time:0,note:"" }); setShowItem(true); }}>+ 품목 등록</button>
+            </div>
           </div>
           <div style={{ display: "flex", gap: "12px", marginBottom: "16px", alignItems: "center" }}>
             <div className="tab-bar" style={{ marginBottom: 0 }}>
@@ -442,7 +457,14 @@ function App() {
         {menu === "inventory" && <>
           <div className="row-between">
             <div className="page-title">재고 관리</div>
-            <button className="btn-primary" onClick={()=>setShowIO(true)}>+ 입출고 처리</button>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button className="btn" onClick={()=>{
+                if(invTab==="품목현황") downloadCSV("재고현황",["품목코드","품목명","분류","현재고","최소재고","단위","위치","상태"],items.map(i=>[i.code,i.name,i.category,i.stock,i.min_stock,i.unit,i.location,i.stock<i.min_stock?"부족":"정상"]));
+                else if(invTab==="입출고이력") downloadCSV("입출고이력",["날짜","구분","품목코드","품목명","수량","LOT","창고","비고"],history.map(h=>[h.date,h.type,h.code,h.name,h.qty,h.lot_no,whName(h.warehouse_id),h.note]));
+                else downloadCSV("창고별재고",["창고명","위치","담당자","입출고건수"],warehouses.map(w=>[w.name,w.location,w.manager,history.filter(h=>h.warehouse_id===w.id).length]));
+              }}>📥 엑셀 다운로드</button>
+              <button className="btn-primary" onClick={()=>setShowIO(true)}>+ 입출고 처리</button>
+            </div>
           </div>
           <div className="tab-bar">
             {["품목현황","창고별재고","입출고이력"].map(t=><div key={t} className={`tab${invTab===t?" active":""}`} onClick={()=>setInvTab(t)}>{t}</div>)}
@@ -465,7 +487,10 @@ function App() {
         {menu === "lot" && <>
           <div className="row-between">
             <div className="page-title">LOT 관리</div>
-            <button className="btn-primary" onClick={()=>setShowLot(true)}>+ LOT 등록</button>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button className="btn" onClick={()=>downloadCSV("LOT현황",["LOT번호","품목코드","품목명","창고","입고수량","잔여수량","입고일","유효기한","공급업체"],lots.map(l=>[l.lot_no,l.item_code,l.item_name,whName(l.warehouse_id),l.qty,l.remaining_qty,l.received_date,l.expiry_date,l.supplier]))}>📥 엑셀 다운로드</button>
+              <button className="btn-primary" onClick={()=>setShowLot(true)}>+ LOT 등록</button>
+            </div>
           </div>
           <div className="section">
             <table><thead><tr><th>LOT 번호</th><th>품목코드</th><th>품목명</th><th>창고</th><th>입고수량</th><th>잔여수량</th><th>입고일</th><th>유효기한</th><th>공급업체</th></tr></thead>
@@ -477,7 +502,10 @@ function App() {
         {menu === "incoming" && <>
           <div className="row-between">
             <div className="page-title">입고 예정</div>
-            <button className="btn-primary" onClick={()=>setShowIncoming(true)}>+ 입고 예정 등록</button>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button className="btn" onClick={()=>downloadCSV("입고예정",["품목코드","품목명","수량","예정일","공급업체","창고","LOT","상태"],incomingPlans.map(p=>[p.item_code,p.item_name,p.qty,p.planned_date,p.supplier,whName(p.warehouse_id),p.lot_no,p.status]))}>📥 엑셀 다운로드</button>
+              <button className="btn-primary" onClick={()=>setShowIncoming(true)}>+ 입고 예정 등록</button>
+            </div>
           </div>
           <div className="section">
             <table><thead><tr><th>품목코드</th><th>품목명</th><th>수량</th><th>예정일</th><th>공급업체</th><th>창고</th><th>LOT</th><th>상태</th><th>액션</th></tr></thead>
@@ -489,7 +517,10 @@ function App() {
         {menu === "workorder" && <>
           <div className="row-between">
             <div className="page-title">작업지시서</div>
-            <button className="btn-primary" onClick={()=>setShowWO(true)}>+ 작업지시 생성</button>
+            <div style={{display:"flex",gap:"8px"}}>
+              <button className="btn" onClick={()=>downloadCSV("작업지시서",["지시번호","제품명","수량","공정","창고","계획일","완료기한","담당자","상태"],workOrders.map(w=>[w.id,w.product,w.qty,prName(w.process_id),whName(w.warehouse_id),w.planned,w.due,w.assignee,w.status]))}>📥 엑셀 다운로드</button>
+              <button className="btn-primary" onClick={()=>setShowWO(true)}>+ 작업지시 생성</button>
+            </div>
           </div>
           <div className="section">
             <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량</th><th>공정</th><th>창고</th><th>계획일</th><th>완료기한</th><th>담당자</th><th>상태</th><th>액션</th></tr></thead>
@@ -499,7 +530,10 @@ function App() {
 
         {/* 생산 실적 */}
         {menu === "production" && <>
-          <div className="page-title">생산 실적</div>
+          <div className="row-between">
+            <div className="page-title">생산 실적</div>
+            <button className="btn" onClick={()=>downloadCSV("생산실적",["지시번호","제품명","지시수량","공정","담당자","계획일","완료기한","상태"],workOrders.filter(w=>w.status==="완료").map(w=>[w.id,w.product,w.qty,prName(w.process_id),w.assignee,w.planned,w.due,w.status]))}>📥 엑셀 다운로드</button>
+          </div>
           <div className="grid4">
             {[{label:"총 작업지시",val:workOrders.length+" 건"},{label:"대기",val:workOrders.filter(w=>w.status==="대기").length+" 건"},{label:"진행중",val:workOrders.filter(w=>w.status==="진행중").length+" 건"},{label:"완료",val:workOrders.filter(w=>w.status==="완료").length+" 건"}].map((m,i)=><div key={i} className="card"><div className="card-label">{m.label}</div><div className="card-val">{m.val}</div></div>)}
           </div>
@@ -509,15 +543,16 @@ function App() {
           </table></div>
         </>}
 
-        {/* 창고 관리 */}
+                {/* 창고 관리 */}
         {menu === "warehouse" && <>
           <div className="row-between">
             <div className="page-title">창고 관리</div>
             <button className="btn-primary" onClick={()=>setShowWH(true)}>+ 창고 등록</button>
           </div>
+          <input style={{width:"260px",padding:"7px 12px",marginBottom:"14px"}} placeholder="🔍 창고명 검색" value={whSearch} onChange={e=>setWhSearch(e.target.value)}/>
           <div className="section">
             <table><thead><tr><th>창고코드</th><th>창고명</th><th>위치</th><th>담당자</th><th>비고</th></tr></thead>
-            <tbody>{warehouses.length===0?<tr><td colSpan="6" className="empty">등록된 창고가 없습니다</td></tr>:warehouses.map(w=><tr key={w.id}><td className="mono">{w.code}</td><td style={{fontWeight:600}}>{w.name}</td><td>{w.location}</td><td>{w.manager}</td><td style={{color:"#888"}}>{w.note}</td><td><button className="btn-sm" onClick={()=>{setSelectedWH(w);setShowWhStock(true);}}>재고확인</button></td></tr>)}</tbody>
+            <tbody>{warehouses.filter(w=>!whSearch||w.name.includes(whSearch)||w.code.includes(whSearch)).length===0?<tr><td colSpan="6" className="empty">검색 결과가 없습니다</td></tr>:warehouses.filter(w=>!whSearch||w.name.includes(whSearch)||w.code.includes(whSearch)).map(w=><tr key={w.id}><td className="mono">{w.code}</td><td style={{fontWeight:600}}>{w.name}</td><td>{w.location}</td><td>{w.manager}</td><td style={{color:"#888"}}>{w.note}</td><td><button className="btn-sm" onClick={()=>{setSelectedWH(w);setShowWhStock(true);}}>재고확인</button></td></tr>)}</tbody>
           </table></div>
 
           {/* 창고별 재고 모달 */}
