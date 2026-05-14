@@ -689,12 +689,12 @@ function App() {
         {menu==="warehouse" && <>
           <div className="row-between">
             <div className="page-title">창고 관리</div>
-            <div style={{display:"flex",gap:"8px"}}>
-              {selectedWHIds.length>0 && <button className="btn-danger-sm" style={{padding:"7px 14px",fontSize:"13px"}} onClick={handleDeleteWHs}>🗑 선택 삭제 ({selectedWHIds.length})</button>}
-              <button className="btn-primary" onClick={()=>{setEditWH(null);setWHForm({code:"",name:"",location:"",manager:"",note:""});setShowWH(true);}}>+ 창고 등록</button>
-            </div>
           </div>
-          <input style={{width:"260px",padding:"7px 12px",marginBottom:"14px"}} placeholder="🔍 창고명 검색" value={whSearch} onChange={e=>setWhSearch(e.target.value)}/>
+          <div style={{display:"flex",gap:"8px",marginBottom:"14px",alignItems:"center"}}>
+            <input style={{width:"260px",padding:"7px 12px"}} placeholder="🔍 창고명 검색" value={whSearch} onChange={e=>setWhSearch(e.target.value)}/>
+            {selectedWHIds.length>0 && <button className="btn-danger-sm" style={{padding:"7px 14px",fontSize:"13px"}} onClick={handleDeleteWHs}>🗑 선택 삭제 ({selectedWHIds.length})</button>}
+            <button className="btn-primary" onClick={()=>{setEditWH(null);setWHForm({code:"",name:"",location:"",manager:"",note:""});setShowWH(true);}}>+ 창고 등록</button>
+          </div>
           {(() => {
             const filtered = warehouses.filter(w=>!whSearch||w.name.includes(whSearch)||w.code.includes(whSearch));
             return <div className="section"><table>
