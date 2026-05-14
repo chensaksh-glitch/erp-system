@@ -158,6 +158,7 @@ function App() {
   const [bomSearch, setBomSearch] = React.useState("");
   const [bomForm, setBomForm] = React.useState({product_code:"",product_name:"",material_code:"",material_name:"",qty:"",unit:"",note:""});
   const bomSel = useSelection();
+  const [showIO, setShowIO] = React.useState(false);
   const [showWO, setShowWO] = React.useState(false);
   const [showWH, setShowWH] = React.useState(false);
   const [showPR, setShowPR] = React.useState(false);
