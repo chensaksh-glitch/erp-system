@@ -150,6 +150,8 @@ function App() {
   const [showIO, setShowIO] = React.useState(false);
   const [showWO, setShowWO] = React.useState(false);
   const [showWH, setShowWH] = React.useState(false);
+  const [editWH, setEditWH] = React.useState(null);
+  const [selectedWHIds, setSelectedWHIds] = React.useState([]);
   const [showPR, setShowPR] = React.useState(false);
   const [showLot, setShowLot] = React.useState(false);
   const [showIncoming, setShowIncoming] = React.useState(false);
@@ -298,8 +300,27 @@ function App() {
   };
 
   const handleWH = async () => {
-    try { await api("warehouses","POST",{...whForm}); await loadAll(); setShowWH(false); setWHForm({code:"",name:"",location:"",manager:"",note:""}); showToast("✓ 창고 등록 완료"); } catch(e){alert("오류: "+e.message);}
+    try {
+      if(editWH){
+        await api("warehouses","PATCH",{...whForm},`?id=eq.${editWH.id}`);
+        showToast("✓ 창고 수정 완료");
+      } else {
+        await api("warehouses","POST",{...whForm});
+        showToast("✓ 창고 등록 완료");
+      }
+      await loadAll(); setShowWH(false); setEditWH(null); setWHForm({code:"",name:"",location:"",manager:"",note:""});
+    } catch(e){alert("오류: "+e.message);}
   };
+  const handleDeleteWHs = async () => {
+    if(selectedWHIds.length===0) return alert("삭제할 창고를 선택해주세요.");
+    if(!window.confirm(`선택한 ${selectedWHIds.length}개 창고를 삭제하시겠습니까?`)) return;
+    try {
+      for(const id of selectedWHIds) await api("warehouses","DELETE",null,`?id=eq.${id}`);
+      setSelectedWHIds([]); await loadAll(); showToast("✓ 창고 삭제 완료");
+    } catch(e){alert("오류: "+e.message);}
+  };
+  const toggleWHCheck = (id) => setSelectedWHIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);
+  const toggleAllWH = (list) => setSelectedWHIds(selectedWHIds.length===list.length?[]:list.map(w=>w.id));
   const handlePR = async () => {
     try {
       if(editPR){
@@ -666,11 +687,37 @@ function App() {
 
         {/* 창고 관리 */}
         {menu==="warehouse" && <>
-          <div className="row-between"><div className="page-title">창고 관리</div><button className="btn-primary" onClick={()=>setShowWH(true)}>+ 창고 등록</button></div>
+          <div className="row-between">
+            <div className="page-title">창고 관리</div>
+            <div style={{display:"flex",gap:"8px"}}>
+              {selectedWHIds.length>0 && <button className="btn-danger-sm" style={{padding:"7px 14px",fontSize:"13px"}} onClick={handleDeleteWHs}>🗑 선택 삭제 ({selectedWHIds.length})</button>}
+              <button className="btn-primary" onClick={()=>{setEditWH(null);setWHForm({code:"",name:"",location:"",manager:"",note:""});setShowWH(true);}}>+ 창고 등록</button>
+            </div>
+          </div>
           <input style={{width:"260px",padding:"7px 12px",marginBottom:"14px"}} placeholder="🔍 창고명 검색" value={whSearch} onChange={e=>setWhSearch(e.target.value)}/>
-          <div className="section"><table><thead><tr><th>창고코드</th><th>창고명</th><th>위치</th><th>담당자</th><th>비고</th><th>액션</th></tr></thead>
-            <tbody>{warehouses.filter(w=>!whSearch||w.name.includes(whSearch)||w.code.includes(whSearch)).length===0?<tr><td colSpan="6" className="empty">검색 결과가 없습니다</td></tr>:warehouses.filter(w=>!whSearch||w.name.includes(whSearch)||w.code.includes(whSearch)).map(w=><tr key={w.id}><td className="mono">{w.code}</td><td style={{fontWeight:600}}>{w.name}</td><td>{w.location}</td><td>{w.manager}</td><td style={{color:"#888"}}>{w.note}</td><td><button className="btn-sm" onClick={()=>{setSelectedWH(w);setShowWhStock(true);}}>재고확인</button></td></tr>)}</tbody>
-          </table></div>
+          {(() => {
+            const filtered = warehouses.filter(w=>!whSearch||w.name.includes(whSearch)||w.code.includes(whSearch));
+            return <div className="section"><table>
+              <thead><tr>
+                <th style={{width:"40px"}}><input type="checkbox" checked={selectedWHIds.length===filtered.length&&filtered.length>0} onChange={()=>toggleAllWH(filtered)}/></th>
+                <th>창고코드</th><th>창고명</th><th>위치</th><th>담당자</th><th>비고</th><th>액션</th>
+              </tr></thead>
+              <tbody>{filtered.length===0?<tr><td colSpan="7" className="empty">검색 결과가 없습니다</td></tr>:filtered.map(w=><tr key={w.id} style={{background:selectedWHIds.includes(w.id)?"#f0f5ff":""}}>
+                <td><input type="checkbox" checked={selectedWHIds.includes(w.id)} onChange={()=>toggleWHCheck(w.id)}/></td>
+                <td className="mono">{w.code}</td>
+                <td style={{fontWeight:600}}>{w.name}</td>
+                <td>{w.location}</td>
+                <td>{w.manager}</td>
+                <td style={{color:"#888"}}>{w.note}</td>
+                <td>
+                  <button className="btn-sm" onClick={()=>{setEditWH(w);setWHForm({code:w.code,name:w.name,location:w.location||"",manager:w.manager||"",note:w.note||""});setShowWH(true);}}>수정</button>
+                  <button className="btn-danger-sm" onClick={()=>{if(window.confirm(`${w.name}을 삭제하시겠습니까?`))api("warehouses","DELETE",null,`?id=eq.${w.id}`).then(()=>{setSelectedWHIds(prev=>prev.filter(x=>x!==w.id));loadAll();showToast("✓ 창고 삭제 완료");});}}>삭제</button>
+                  <button className="btn-sm" onClick={()=>{setSelectedWH(w);setShowWhStock(true);}}>재고확인</button>
+                </td>
+              </tr>)}</tbody>
+            </table></div>;
+          })()}
+
           {showWhStock && selectedWH && <div className="modal-bg"><div className="modal modal-lg">
             <div className="modal-title">🏭 {selectedWH.name} 재고 현황</div>
             <div style={{fontSize:"12px",color:"#888",marginBottom:"14px"}}>{selectedWH.location} · 담당자: {selectedWH.manager}</div>
