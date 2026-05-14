@@ -700,20 +700,22 @@ function App() {
             return <div className="section"><table>
               <thead><tr>
                 <th style={{width:"40px"}}><input type="checkbox" checked={selectedWHIds.length===filtered.length&&filtered.length>0} onChange={()=>toggleAllWH(filtered)}/></th>
-                <th>창고코드</th><th>창고명</th><th>위치</th><th>담당자</th><th>비고</th><th>액션</th>
+                <th>창고코드</th><th>창고명</th><th>위치</th><th>담당자</th><th>비고</th><th>재고</th>
               </tr></thead>
               <tbody>{filtered.length===0?<tr><td colSpan="7" className="empty">검색 결과가 없습니다</td></tr>:filtered.map(w=><tr key={w.id} style={{background:selectedWHIds.includes(w.id)?"#f0f5ff":""}}>
                 <td><input type="checkbox" checked={selectedWHIds.includes(w.id)} onChange={()=>toggleWHCheck(w.id)}/></td>
                 <td className="mono">{w.code}</td>
-                <td style={{fontWeight:600}}>{w.name}</td>
+                <td>
+                  <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                    <span style={{fontWeight:600}}>{w.name}</span>
+                    <button className="btn-sm" onClick={()=>{setEditWH(w);setWHForm({code:w.code,name:w.name,location:w.location||"",manager:w.manager||"",note:w.note||""});setShowWH(true);}}>수정</button>
+                    <button className="btn-danger-sm" onClick={()=>{if(window.confirm(`${w.name}을 삭제하시겠습니까?`))api("warehouses","DELETE",null,`?id=eq.${w.id}`).then(()=>{setSelectedWHIds(prev=>prev.filter(x=>x!==w.id));loadAll();showToast("✓ 창고 삭제 완료");});}}>삭제</button>
+                  </div>
+                </td>
                 <td>{w.location}</td>
                 <td>{w.manager}</td>
                 <td style={{color:"#888"}}>{w.note}</td>
-                <td>
-                  <button className="btn-sm" onClick={()=>{setEditWH(w);setWHForm({code:w.code,name:w.name,location:w.location||"",manager:w.manager||"",note:w.note||""});setShowWH(true);}}>수정</button>
-                  <button className="btn-danger-sm" onClick={()=>{if(window.confirm(`${w.name}을 삭제하시겠습니까?`))api("warehouses","DELETE",null,`?id=eq.${w.id}`).then(()=>{setSelectedWHIds(prev=>prev.filter(x=>x!==w.id));loadAll();showToast("✓ 창고 삭제 완료");});}}>삭제</button>
-                  <button className="btn-sm" onClick={()=>{setSelectedWH(w);setShowWhStock(true);}}>재고확인</button>
-                </td>
+                <td><button className="btn-sm" onClick={()=>{setSelectedWH(w);setShowWhStock(true);}}>재고확인</button></td>
               </tr>)}</tbody>
             </table></div>;
           })()}
@@ -847,7 +849,7 @@ function App() {
 
       {/* 창고 등록 모달 */}
       {showWH && <div className="modal-bg"><div className="modal">
-        <div className="modal-title">창고 등록</div>
+        <div className="modal-title">{editWH?"창고 수정":"창고 등록"}</div>
         <div className="form-grid2">
           <div className="form-row"><label className="form-label">창고코드</label><input placeholder="예: WH-004" value={whForm.code} onChange={e=>setWHForm({...whForm,code:e.target.value})}/></div>
           <div className="form-row"><label className="form-label">창고명</label><input placeholder="창고명" value={whForm.name} onChange={e=>setWHForm({...whForm,name:e.target.value})}/></div>
@@ -856,7 +858,7 @@ function App() {
           <div className="form-row"><label className="form-label">위치</label><input placeholder="위치" value={whForm.location} onChange={e=>setWHForm({...whForm,location:e.target.value})}/></div>
           <div className="form-row"><label className="form-label">담당자</label><input placeholder="담당자" value={whForm.manager} onChange={e=>setWHForm({...whForm,manager:e.target.value})}/></div>
         </div>
-        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setShowWH(false)}>취소</button><button className="btn-primary" onClick={handleWH}>등록</button></div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>{setShowWH(false);setEditWH(null);}}>취소</button><button className="btn-primary" onClick={handleWH}>{editWH?"수정":"등록"}</button></div>
       </div></div>}
 
       {/* 공정 등록 모달 */}
