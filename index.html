@@ -167,6 +167,7 @@ function App() {
   const [invTab, setInvTab] = React.useState("품목현황");
   const [itemTab, setItemTab] = React.useState("전체");
   const [searchItem, setSearchItem] = React.useState("");
+  const [historyFilter, setHistoryFilter] = React.useState({ category:"전체", type:"전체", keyword:"" });
 
   const [ioForm, setIOForm] = React.useState({ type:"입고", code:"", qty:"", lot_no:"", warehouse_id:"", note:"" });
   const [woForm, setWOForm] = React.useState({ product:"", qty:"", planned:"", due:"", warehouse_id:"", selectedProcesses:[] });
@@ -510,9 +511,39 @@ function App() {
               );
             })}
           </>}
-          {invTab==="입출고이력" && <div className="section"><table><thead><tr><th>날짜</th><th>구분</th><th>품목코드</th><th>품목명</th><th>수량</th><th>LOT</th><th>창고</th><th>비고</th></tr></thead>
-            <tbody>{history.map(h=><tr key={h.id}><td>{h.date}</td><td><span className="badge" style={{background:h.type==="입고"?"#e6f1fb":"#faeeda",color:h.type==="입고"?"#185fa5":"#854f0b"}}>{h.type}</span></td><td className="mono">{h.code}</td><td>{h.name}</td><td>{h.qty?.toLocaleString()}</td><td className="mono">{h.lot_no||"-"}</td><td>{whName(h.warehouse_id)}</td><td style={{color:"#888"}}>{h.note}</td></tr>)}</tbody>
-          </table></div>}
+          {invTab==="입출고이력" && <>
+            <div style={{display:"flex",gap:"8px",marginBottom:"14px",flexWrap:"wrap"}}>
+              <div className="tab-bar" style={{marginBottom:0}}>
+                {["전체","입고","출고"].map(t=><div key={t} className={`tab${historyFilter.type===t?" active":""}`} onClick={()=>setHistoryFilter({...historyFilter,type:t})}>{t}</div>)}
+              </div>
+              <div className="tab-bar" style={{marginBottom:0}}>
+                {["전체","원자재","부자재","완제품","반제품"].map(t=><div key={t} className={`tab${historyFilter.category===t?" active":""}`} onClick={()=>setHistoryFilter({...historyFilter,category:t})}>{t}</div>)}
+              </div>
+              <input style={{width:"180px",padding:"7px 12px"}} placeholder="품목코드/품목명 검색" value={historyFilter.keyword} onChange={e=>setHistoryFilter({...historyFilter,keyword:e.target.value})}/>
+            </div>
+            <div className="section"><table><thead><tr><th>날짜</th><th>구분</th><th>품목코드</th><th>품목명</th><th>분류</th><th>수량</th><th>LOT</th><th>창고</th><th>비고</th></tr></thead>
+            <tbody>{history.filter(h=>{
+              const it = items.find(i=>i.code===h.code);
+              const matchType = historyFilter.type==="전체" || h.type===historyFilter.type;
+              const matchCat = historyFilter.category==="전체" || it?.category===historyFilter.category;
+              const matchKw = !historyFilter.keyword || h.code.includes(historyFilter.keyword) || h.name.includes(historyFilter.keyword);
+              return matchType && matchCat && matchKw;
+            }).map(h=>{
+              const it = items.find(i=>i.code===h.code);
+              return <tr key={h.id}>
+                <td>{h.date}</td>
+                <td><span className="badge" style={{background:h.type==="입고"?"#e6f1fb":"#faeeda",color:h.type==="입고"?"#185fa5":"#854f0b"}}>{h.type}</span></td>
+                <td className="mono">{h.code}</td>
+                <td>{h.name}</td>
+                <td><CatBadge c={it?.category}/></td>
+                <td>{h.qty?.toLocaleString()}</td>
+                <td className="mono">{h.lot_no||"-"}</td>
+                <td>{whName(h.warehouse_id)}</td>
+                <td style={{color:"#888"}}>{h.note}</td>
+              </tr>;
+            })}</tbody>
+          </table></div>
+          </>}
         </>}
 
         {/* LOT 관리 */}
