@@ -151,7 +151,13 @@ function App() {
   const inSel = useSelection();
 
   // 모달
-  const [showIO, setShowIO] = React.useState(false);
+  const [boms, setBoms] = React.useState([]);
+  const [showBom, setShowBom] = React.useState(false);
+  const [editBom, setEditBom] = React.useState(null);
+  const [bomTab, setBomTab] = React.useState("전체");
+  const [bomSearch, setBomSearch] = React.useState("");
+  const [bomForm, setBomForm] = React.useState({product_code:"",product_name:"",material_code:"",material_name:"",qty:"",unit:"",note:""});
+  const bomSel = useSelection();
   const [showWO, setShowWO] = React.useState(false);
   const [showWH, setShowWH] = React.useState(false);
   const [showPR, setShowPR] = React.useState(false);
@@ -192,7 +198,7 @@ function App() {
 
   const loadAll = async () => {
     try {
-      const [i,w,wp,h,wh,pr,lt,ip] = await Promise.all([
+      const [i,w,wp,h,wh,pr,lt,ip,bm] = await Promise.all([
         api("items","GET",null,"?order=code"),
         api("work_orders","GET",null,"?order=created_at.desc"),
         api("work_order_processes","GET",null,"?order=wo_id,step_no"),
@@ -201,10 +207,11 @@ function App() {
         api("processes","GET",null,"?order=order_no"),
         api("lots","GET",null,"?order=id.desc"),
         api("incoming_plan","GET",null,"?order=planned_date"),
+        api("bom","GET",null,"?order=product_code"),
       ]);
       setItems(i); setWorkOrders(w); setWoProcesses(wp); setHistory(h);
-      setWarehouses(wh); setProcesses(pr); setLots(lt); setIncomingPlans(ip);
-      const total = i.length*0.5+w.length*0.5+h.length*0.3+lt.length*0.4+ip.length*0.3+wh.length*0.2+pr.length*0.2+wp.length*0.3;
+      setWarehouses(wh); setProcesses(pr); setLots(lt); setIncomingPlans(ip); setBoms(bm);
+      const total = i.length*0.5+w.length*0.5+h.length*0.3+lt.length*0.4+ip.length*0.3+wh.length*0.2+pr.length*0.2+wp.length*0.3+bm.length*0.3;
       setDbUsage(Math.max(0.01,total/1024).toFixed(3));
     } catch(e){alert("DB 연결 오류: "+e.message);}
     setLoading(false);
@@ -231,6 +238,16 @@ function App() {
   };
 
   // 핸들러들
+  const handleBom = async () => {
+    if(!bomForm.product_code||!bomForm.material_code||!bomForm.qty) return alert("제품코드, 자재코드, 소요량을 입력해주세요.");
+    try {
+      if(editBom){ await api("bom","PATCH",{...bomForm,qty:parseFloat(bomForm.qty)},`?id=eq.${editBom.id}`); showToast("✓ BOM 수정 완료"); }
+      else { await api("bom","POST",{...bomForm,qty:parseFloat(bomForm.qty)}); showToast("✓ BOM 등록 완료"); }
+      await loadAll(); setShowBom(false); setEditBom(null);
+      setBomForm({product_code:"",product_name:"",material_code:"",material_name:"",qty:"",unit:"",note:""});
+    } catch(e){alert("오류: "+e.message);}
+  };
+
   const handleIO = async () => {
     const item=items.find(i=>i.code===ioForm.code);
     if(!item) return alert("품목 코드를 확인해주세요.");
@@ -338,7 +355,7 @@ function App() {
 
   const navItems = [
     {section:"메인"},{key:"dashboard",label:"대시보드",icon:"📊"},
-    {section:"기준정보"},{key:"itemmaster",label:"기초품목 등록",icon:"📝"},{key:"warehouse",label:"창고 관리",icon:"🏭"},{key:"process",label:"공정 관리",icon:"⚙️"},
+    {section:"기준정보"},{key:"itemmaster",label:"기초품목 등록",icon:"📝"},{key:"bom",label:"BOM 관리",icon:"🔧"},{key:"warehouse",label:"창고 관리",icon:"🏭"},{key:"process",label:"공정 관리",icon:"⚙️"},
     {section:"재고"},{key:"inventory",label:"재고 관리",icon:"📦"},{key:"lot",label:"LOT 관리",icon:"🔢"},{key:"incoming",label:"입고 예정",icon:"📥"},
     {section:"생산"},{key:"workorder",label:"작업지시서",icon:"📋"},{key:"production",label:"생산 실적",icon:"📈"},
   ];
@@ -399,6 +416,70 @@ function App() {
             <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량</th><th>현재 공정</th><th>완료기한</th><th>상태</th></tr></thead>
             <tbody>{workOrders.filter(w=>w.status!=="완료").map(w=>{const cur=getCurrentStep(w.id);return <tr key={w.id}><td className="mono">{w.id}</td><td>{w.product}</td><td>{w.qty}</td><td>{cur?<span className="badge" style={{background:"#faeeda",color:"#854f0b"}}>{prName(cur.process_id)}</span>:"-"}</td><td>{w.due}</td><td><Badge s={w.status}/></td></tr>;})}</tbody>
           </table></div>
+        </>}
+
+        {/* BOM 관리 */}
+        {menu==="bom" && <>
+          <div className="row-between">
+            <div className="page-title">BOM 관리</div>
+            <button className="btn-primary" onClick={()=>{setEditBom(null);setBomForm({product_code:"",product_name:"",material_code:"",material_name:"",qty:"",unit:"",note:""});setShowBom(true);}}>+ BOM 등록</button>
+          </div>
+          <Toolbar sel={bomSel} onDelete={()=>bulkDelete("bom",bomSel.selected,undefined,bomSel.clear)}>
+            <div className="tab-bar" style={{marginBottom:0}}>{["전체","완제품","반제품"].map(t=><div key={t} className={`tab${bomTab===t?" active":""}`} onClick={()=>setBomTab(t)}>{t}</div>)}</div>
+            <input style={{width:"200px",padding:"7px 12px"}} placeholder="제품코드/제품명 검색" value={bomSearch} onChange={e=>setBomSearch(e.target.value)}/>
+            <button className="btn" onClick={()=>downloadCSV("BOM",["제품코드","제품명","자재코드","자재명","소요량","단위","비고"],boms.map(b=>[b.product_code,b.product_name,b.material_code,b.material_name,b.qty,b.unit,b.note]))}>📥 엑셀</button>
+          </Toolbar>
+
+          {/* 제품별 그룹 표시 */}
+          {(()=>{
+            const filtered = boms.filter(b=>{
+              const item = items.find(i=>i.code===b.product_code);
+              const matchTab = bomTab==="전체"||(item?.category===bomTab);
+              const matchSearch = !bomSearch||b.product_code.includes(bomSearch)||b.product_name.includes(bomSearch);
+              return matchTab && matchSearch;
+            });
+            const grouped = {};
+            filtered.forEach(b=>{
+              if(!grouped[b.product_code]) grouped[b.product_code]={code:b.product_code,name:b.product_name,items:[]};
+              grouped[b.product_code].items.push(b);
+            });
+            const groups = Object.values(grouped);
+            return groups.length===0?<div className="section"><div className="empty">등록된 BOM이 없습니다</div></div>:groups.map(g=>{
+              const prodItem = items.find(i=>i.code===g.code);
+              return <div key={g.code} className="section" style={{marginBottom:"16px"}}>
+                <div className="section-head">
+                  <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                    <CatBadge c={prodItem?.category||"완제품"}/>
+                    <span className="section-title">{g.name}</span>
+                    <span className="mono" style={{color:"#888",fontSize:"12px"}}>{g.code}</span>
+                  </div>
+                  <span style={{fontSize:"12px",color:"#888"}}>{g.items.length}개 자재</span>
+                </div>
+                <table>
+                  <thead><tr>
+                    <th style={{width:"40px"}}><input type="checkbox" checked={g.items.every(b=>bomSel.isSelected(b.id))} onChange={()=>{const ids=g.items.map(b=>b.id);const allSelected=ids.every(id=>bomSel.selected.includes(id));ids.forEach(id=>{if(allSelected&&bomSel.isSelected(id))bomSel.toggle(id);else if(!allSelected&&!bomSel.isSelected(id))bomSel.toggle(id);});}}/></th>
+                    <th>자재코드</th><th>자재명</th><th>분류</th><th>소요량</th><th>단위</th><th>비고</th>
+                  </tr></thead>
+                  <tbody>{g.items.map(b=>{
+                    const matItem = items.find(i=>i.code===b.material_code);
+                    return <tr key={b.id} className={bomSel.isSelected(b.id)?"selected-row":""}>
+                      <td><input type="checkbox" checked={bomSel.isSelected(b.id)} onChange={()=>bomSel.toggle(b.id)}/></td>
+                      <td className="mono">{b.material_code}</td>
+                      <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                        <span>{b.material_name}</span>
+                        <button className="btn-sm" onClick={()=>{setEditBom(b);setBomForm({product_code:b.product_code,product_name:b.product_name,material_code:b.material_code,material_name:b.material_name,qty:b.qty,unit:b.unit||"",note:b.note||""});setShowBom(true);}}>수정</button>
+                        <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제하시겠습니까?"))api("bom","DELETE",null,`?id=eq.${b.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
+                      </div></td>
+                      <td><CatBadge c={matItem?.category||"-"}/></td>
+                      <td style={{fontWeight:600}}>{b.qty}</td>
+                      <td>{b.unit||matItem?.unit||"-"}</td>
+                      <td style={{color:"#888"}}>{b.note||"-"}</td>
+                    </tr>;
+                  })}</tbody>
+                </table>
+              </div>;
+            });
+          })()}
         </>}
 
         {/* 기초품목 */}
@@ -656,6 +737,42 @@ function App() {
         </>}
 
       </div>
+
+      {/* BOM 등록/수정 모달 */}
+      {showBom&&<div className="modal-bg"><div className="modal">
+        <div className="modal-title">{editBom?"BOM 수정":"BOM 등록"}</div>
+        <div style={{background:"#f0f5ff",borderRadius:"8px",padding:"10px 14px",marginBottom:"16px",fontSize:"12px",color:"#555"}}>
+          💡 완제품/반제품 1개를 만드는 데 필요한 원자재/부자재 정보를 입력하세요.
+        </div>
+        <div style={{fontWeight:600,fontSize:"13px",color:"#185fa5",marginBottom:"8px"}}>📦 제품 정보</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">제품코드 *</label>
+            <input placeholder="예: FG-001" value={bomForm.product_code} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setBomForm({...bomForm,product_code:e.target.value,product_name:it?.name||bomForm.product_name});}} list="bom-product-list"/>
+            <datalist id="bom-product-list">{items.filter(i=>i.category==="완제품"||i.category==="반제품").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {bomForm.product_code&&items.find(i=>i.code===bomForm.product_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===bomForm.product_code).name} ({items.find(i=>i.code===bomForm.product_code).category})</div>}
+          </div>
+          <div className="form-row"><label className="form-label">제품명</label>
+            <input placeholder="자동입력 또는 직접입력" value={bomForm.product_name} onChange={e=>setBomForm({...bomForm,product_name:e.target.value})}/>
+          </div>
+        </div>
+        <div style={{fontWeight:600,fontSize:"13px",color:"#3b6d11",marginBottom:"8px",marginTop:"4px"}}>🔩 자재 정보</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">자재코드 *</label>
+            <input placeholder="예: RM-001" value={bomForm.material_code} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setBomForm({...bomForm,material_code:e.target.value,material_name:it?.name||bomForm.material_name,unit:it?.unit||bomForm.unit});}} list="bom-material-list"/>
+            <datalist id="bom-material-list">{items.filter(i=>i.category==="원자재"||i.category==="부자재").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {bomForm.material_code&&items.find(i=>i.code===bomForm.material_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#3b6d11",fontWeight:600}}>✓ {items.find(i=>i.code===bomForm.material_code).name} ({items.find(i=>i.code===bomForm.material_code).category})</div>}
+          </div>
+          <div className="form-row"><label className="form-label">자재명</label>
+            <input placeholder="자동입력 또는 직접입력" value={bomForm.material_name} onChange={e=>setBomForm({...bomForm,material_name:e.target.value})}/>
+          </div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">소요량 * (제품 1개당)</label><input type="number" step="0.01" placeholder="0" value={bomForm.qty} onChange={e=>setBomForm({...bomForm,qty:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">단위</label><input placeholder="예: kg, 개, L" value={bomForm.unit} onChange={e=>setBomForm({...bomForm,unit:e.target.value})}/></div>
+        </div>
+        <div className="form-row"><label className="form-label">비고</label><input placeholder="특이사항 (선택)" value={bomForm.note} onChange={e=>setBomForm({...bomForm,note:e.target.value})}/></div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>{setShowBom(false);setEditBom(null);}}>취소</button><button className="btn-primary" onClick={handleBom}>{editBom?"수정":"등록"}</button></div>
+      </div></div>}
 
       {/* 작업지시 모달 */}
       {showWO&&<div className="modal-bg"><div className="modal modal-lg">
