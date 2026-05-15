@@ -156,7 +156,8 @@ function App() {
   const [editBom, setEditBom] = React.useState(null);
   const [bomTab, setBomTab] = React.useState("전체");
   const [bomSearch, setBomSearch] = React.useState("");
-  const [bomForm, setBomForm] = React.useState({product_code:"",product_name:"",materials:[{material_code:"",material_name:"",qty:"",unit:"",note:""}]});
+  const defaultMaterials = [{material_code:"",material_name:"",qty:"",unit:"",note:""}];
+  const [bomForm, setBomForm] = React.useState({product_code:"",product_name:"",materials:defaultMaterials});
   const bomSel = useSelection();
   const [showIO, setShowIO] = React.useState(false);
   const [showWO, setShowWO] = React.useState(false);
@@ -255,7 +256,7 @@ function App() {
         showToast(`✓ BOM ${validMaterials.length}개 자재 등록 완료`);
       }
       await loadAll(); setShowBom(false); setEditBom(null);
-      setBomForm({product_code:"",product_name:"",materials:[{material_code:"",material_name:"",qty:"",unit:"",note:""}]});
+      setBomForm({product_code:"",product_name:"",materials:defaultMaterials});
     } catch(e){alert("오류: "+e.message);}
   };
 
@@ -769,7 +770,7 @@ function App() {
 
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px",marginTop:"4px"}}>
           <span style={{fontWeight:600,fontSize:"13px",color:"#3b6d11"}}>🔩 자재 목록</span>
-          {!editBom&&<button className="btn-sm" onClick={()=>setBomForm({...bomForm,materials:[...bomForm.materials,{material_code:"",material_name:"",qty:"",unit:"",note:""}]})}>+ 자재 추가</button>}
+          {!editBom&&<button className="btn-sm" onClick={()=>setBomForm({...bomForm,materials:[...(bomForm.materials||defaultMaterials),{material_code:"",material_name:"",qty:"",unit:"",note:""}]})}>+ 자재 추가</button>}
         </div>
 
         {!editBom ? <>
@@ -783,7 +784,7 @@ function App() {
                 <th style={{padding:"6px 8px",textAlign:"left",color:"#666"}}>비고</th>
                 <th style={{width:"30px"}}></th>
               </tr></thead>
-              <tbody>{bomForm.materials.map((m,idx)=>(
+              <tbody>{(bomForm.materials||defaultMaterials).map((m,idx)=>(
                 <tr key={idx}>
                   <td style={{padding:"4px"}}>
                     <input style={{fontSize:"12px",padding:"5px 8px"}} placeholder="예: RM-001" value={m.material_code} list={`mat-list-${idx}`}
