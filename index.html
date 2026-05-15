@@ -278,13 +278,13 @@ function App() {
     } catch(e){ alert("오류: "+e.message); }
   };
 
-  const handleBomExpand = () => {
-    if(!beProd||!beQty) return alert("제품과 수량을 입력하세요.");
-    const qty=parseFloat(beQty);
-    const pb=boms.filter(b=>b.product_code===beProd);
+  const handleBomExpand = (prod=beProd, qty=beQty) => {
+    if(!prod) return alert("제품을 선택하세요.");
+    const pb=boms.filter(b=>b.product_code===prod);
     if(pb.length===0) return alert("해당 제품의 BOM이 없습니다.");
+    const q=parseFloat(qty)||1;
     setBeResult(pb.map(b=>{
-      const needed=b.qty*qty;
+      const needed=b.qty*q;
       const it=items.find(i=>i.code===b.material_code);
       const stock=it?.stock||0;
       const short=Math.max(0,needed-stock);
