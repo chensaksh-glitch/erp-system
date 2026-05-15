@@ -225,14 +225,77 @@ function App() {
   const useColor = usePct>80?"#e24b4a":usePct>50?"#f0a500":"#3b9e3b";
   const filtItems = items.filter(i=>(itemTab==="전체"||i.category===itemTab)&&(!itemSrch||i.code.includes(itemSrch)||i.name.includes(itemSrch)));
 
-  const bulkDel = async (table, ids, clear, isWO=false) => {
-    if(!ids||ids.length===0) return alert("삭제할 항목을 선택해주세요.");
-    if(!window.confirm(`${ids.length}개 삭제하시겠습니까?`)) return;
+  const checkAndDelete = async (table, id, label, checks, afterDel) => {
+    // 연계 확인
+    for(const chk of checks){
+      if(chk.count > 0){
+        alert(`❌ 삭제 불가!\n\n[${label}]은(는) 현재 [${chk.label}]에서 ${chk.count}건 사용중입니다.\n\n먼저 연결된 [${chk.label}] 데이터를 삭제해주세요.`);
+        return;
+      }
+    }
+    if(!window.confirm(`[${label}]을(를) 삭제하시겠습니까?`)) return;
     try {
-      for(const id of ids){ if(isWO) await api("work_order_processes","DELETE",null,`?wo_id=eq.${id}`); await api(table,"DELETE",null,`?id=eq.${id}`); }
+      await api(table,"DELETE",null,`?id=eq.${id}`);
+      await loadAll(); showToast("✓ 삭제 완료");
+      if(afterDel) afterDel();
+    } catch(e){ alert("오류: "+e.message); }
+  };
+
+  const checkAndBulkDelete = async (table, ids, labels, getChecks, clear, isWO=false) => {
+    if(!ids||ids.length===0) return alert("삭제할 항목을 선택해주세요.");
+    // 연계 확인
+    for(const id of ids){
+      const checks = getChecks(id);
+      const label = labels(id);
+      for(const chk of checks){
+        if(chk.count > 0){
+          alert(`❌ 삭제 불가!\n\n[${label}]은(는) 현재 [${chk.label}]에서 ${chk.count}건 사용중입니다.\n\n먼저 연결된 데이터를 삭제해주세요.`);
+          return;
+        }
+      }
+    }
+    if(!window.confirm(`선택한 ${ids.length}개를 삭제하시겠습니까?`)) return;
+    try {
+      for(const id of ids){
+        if(isWO) await api("work_order_processes","DELETE",null,`?wo_id=eq.${id}`);
+        await api(table,"DELETE",null,`?id=eq.${id}`);
+      }
       clear(); await loadAll(); showToast(`✓ ${ids.length}개 삭제 완료`);
     } catch(e){ alert("오류: "+e.message); }
   };
+
+  // 연계 체크 함수들
+  const itemChecks = (code) => [
+    {label:"BOM 자재", count: boms.filter(b=>b.material_code===code).length},
+    {label:"BOM 제품", count: boms.filter(b=>b.product_code===code).length},
+    {label:"LOT", count: lots.filter(l=>l.item_code===code).length},
+    {label:"입출고이력", count: hist.filter(h=>h.code===code).length},
+    {label:"입고예정", count: inPlan.filter(p=>p.item_code===code).length},
+  ].filter(c=>c.count>0);
+
+  const whChecks = (id) => [
+    {label:"재고이력", count: hist.filter(h=>h.warehouse_id===id).length},
+    {label:"LOT", count: lots.filter(l=>l.warehouse_id===id).length},
+    {label:"입고예정", count: inPlan.filter(p=>p.warehouse_id===id).length},
+    {label:"작업지시", count: workOrders.filter(w=>w.warehouse_id===id).length},
+  ].filter(c=>c.count>0);
+
+  const procChecks = (id) => [
+    {label:"작업지시 공정", count: wop.filter(p=>p.process_id===id).length},
+  ].filter(c=>c.count>0);
+
+  const lotChecks = (lot_no) => [
+    {label:"입출고이력", count: hist.filter(h=>h.lot_no===lot_no).length},
+  ].filter(c=>c.count>0);
+
+  const woChecks = (id) => {
+    const wo = workOrders.find(w=>w.id===id);
+    if(wo?.status==="진행중") return [{label:"진행중 상태", count:1}];
+    if(wo?.status==="완료") return [{label:"완료 상태", count:1}];
+    return [];
+  };
+
+  const bomChecks = () => [];
 
   const doBomExpand = (prod, qty) => {
     if(!prod) return;
@@ -457,7 +520,7 @@ function App() {
               <button className="btn-primary" onClick={()=>{setEBom(null);setFBomProd({product_code:"",product_name:""});setFBomMats([{...EMPTY_MAT}]);setMBom(true);}}>+ BOM 등록</button>
             </div>
           </div>
-          <Toolbar s={bomSel} onDel={()=>bulkDel("bom",bomSel.sel,bomSel.clear)}>
+          <Toolbar s={bomSel} onDel={()=>checkAndBulkDelete("bom",bomSel.sel,id=>boms.find(b=>b.id===id)?.material_name||id,()=>bomChecks(),bomSel.clear)}>
             <div className="tab-bar" style={{marginBottom:0}}>{["전체","완제품","반제품"].map(t=><div key={t} className={`tab${bomTab===t?" active":""}`} onClick={()=>setBomTab(t)}>{t}</div>)}</div>
             <input style={{width:"200px",padding:"7px 12px"}} placeholder="제품코드/제품명 검색" value={bomSrch} onChange={e=>setBomSrch(e.target.value)}/>
             <button className="btn" onClick={()=>dlCSV("BOM",["제품코드","제품명","자재코드","자재명","소요량","단위"],boms.map(b=>[b.product_code,b.product_name,b.material_code,b.material_name,b.qty,b.unit]))}>📥 엑셀</button>
@@ -467,10 +530,9 @@ function App() {
             ? <div className="section"><div className="empty">등록된 BOM이 없습니다</div></div>
             : bomGroups.map(g=>{
                 const pi=items.find(i=>i.code===g.code);
-                const isExp=expBom===g.code;
+                const isExp = expBom === g.code;
                 return <div key={g.code} className="section" style={{marginBottom:"16px"}}>
-                  {/* 헤더 - 클릭하면 펼치기/접기 */}
-                  <div className="section-head bom-header" onClick={()=>setExpBom(isExp?null:g.code)}>
+                  <div className="section-head bom-header" onClick={()=>setExpBom(expBom===g.code ? null : g.code)}>
                     <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
                       <span style={{fontSize:"16px"}}>{isExp?"▼":"▶"}</span>
                       <CatBadge c={pi?.category||"완제품"}/>
@@ -513,7 +575,7 @@ function App() {
           <div className="row-between"><div className="page-title">기초품목 등록</div>
             <button className="btn-primary" onClick={()=>{setEItem(null);setFItem({code:"",name:"",category:"원자재",unit:"",stock:0,min_stock:0,location:"",spec:"",maker:"",price:0,lead_time:0,note:""});setMItem(true);}}>+ 품목 등록</button>
           </div>
-          <Toolbar s={iSel} onDel={()=>bulkDel("items",iSel.sel,iSel.clear)}>
+          <Toolbar s={iSel} onDel={()=>checkAndBulkDelete("items",iSel.sel,id=>items.find(i=>i.id===id)?.name||id,id=>itemChecks(items.find(i=>i.id===id)?.code),iSel.clear)}>
             <div className="tab-bar" style={{marginBottom:0}}>{["전체","원자재","부자재","완제품","반제품"].map(t=><div key={t} className={`tab${itemTab===t?" active":""}`} onClick={()=>setItemTab(t)}>{t}</div>)}</div>
             <input style={{width:"200px",padding:"7px 12px"}} placeholder="코드/품목명 검색" value={itemSrch} onChange={e=>setItemSrch(e.target.value)}/>
             <button className="btn" onClick={()=>dlCSV("기초품목",["코드","품목명","분류","규격","단위","단가","제조사","리드타임","위치"],filtItems.map(i=>[i.code,i.name,i.category,i.spec,i.unit,i.price,i.maker,i.lead_time,i.location]))}>📥 엑셀</button>
@@ -527,7 +589,7 @@ function App() {
             <td className="mono" style={{fontWeight:600}}>{i.code}</td>
             <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span>{i.name}</span>
               <button className="btn-sm" onClick={()=>{setEItem(i);setFItem({code:i.code,name:i.name,category:i.category,unit:i.unit,stock:i.stock,min_stock:i.min_stock,location:i.location||"",spec:i.spec||"",maker:i.maker||"",price:i.price||0,lead_time:i.lead_time||0,note:i.note||""});setMItem(true);}}>수정</button>
-              <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제?"))api("items","DELETE",null,`?id=eq.${i.id}`).then(()=>{loadAll();showToast("✓ 삭제");});}}>삭제</button>
+              <button className="btn-danger-sm" onClick={()=>checkAndDelete("items",i.id,i.name,itemChecks(i.code))}>삭제</button>
             </div></td>
             <td><CatBadge c={i.category}/></td><td style={{color:"#888",fontSize:"12px"}}>{i.spec||"-"}</td><td>{i.unit}</td>
             <td>{i.price?i.price.toLocaleString()+"원":"-"}</td><td>{i.maker||"-"}</td><td>{i.lead_time?i.lead_time+"일":"-"}</td><td>{i.location||"-"}</td>
@@ -570,7 +632,7 @@ function App() {
         {/* LOT 관리 */}
         {menu==="lot"&&<>
           <div className="row-between"><div className="page-title">LOT 관리</div><button className="btn-primary" onClick={()=>{setELot(null);setFLot({lot_no:"",item_code:"",item_name:"",wh_id:"",qty:"",recv:"",exp:"",supplier:"",note:""});setMLot(true);}}>+ LOT 등록</button></div>
-          <Toolbar s={lotSel} onDel={()=>bulkDel("lots",lotSel.sel,lotSel.clear)}>
+          <Toolbar s={lotSel} onDel={()=>checkAndBulkDelete("lots",lotSel.sel,id=>lots.find(l=>l.id===id)?.lot_no||id,id=>lotChecks(lots.find(l=>l.id===id)?.lot_no),lotSel.clear)}>
             <button className="btn" onClick={()=>dlCSV("LOT",["LOT번호","코드","품목명","창고","입고수량","잔여수량","입고일","유효기한","공급업체"],lots.map(l=>[l.lot_no,l.item_code,l.item_name,whName(l.warehouse_id),l.qty,l.remaining_qty,l.received_date,l.expiry_date,l.supplier]))}>📥 엑셀</button>
           </Toolbar>
           <div className="section"><table><thead><tr>
@@ -581,7 +643,7 @@ function App() {
             <td><input type="checkbox" checked={lotSel.has(l.id)} onChange={()=>lotSel.toggle(l.id)}/></td>
             <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span className="mono" style={{fontWeight:600}}>{l.lot_no}</span>
               <button className="btn-sm" onClick={()=>{setELot(l);setFLot({lot_no:l.lot_no,item_code:l.item_code,item_name:l.item_name,wh_id:l.warehouse_id||"",qty:l.qty,recv:l.received_date||"",exp:l.expiry_date||"",supplier:l.supplier||"",note:l.note||""});setMLot(true);}}>수정</button>
-              <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제?"))api("lots","DELETE",null,`?id=eq.${l.id}`).then(()=>{loadAll();showToast("✓ 삭제");});}}>삭제</button>
+              <button className="btn-danger-sm" onClick={()=>checkAndDelete("lots",l.id,l.lot_no,lotChecks(l.lot_no))}>삭제</button>
             </div></td>
             <td className="mono">{l.item_code}</td><td>{l.item_name}</td><td>{whName(l.warehouse_id)}</td>
             <td>{l.qty?.toLocaleString()}</td><td style={{fontWeight:700,color:l.remaining_qty===0?"#a32d2d":"#3b6d11"}}>{l.remaining_qty?.toLocaleString()}</td>
@@ -592,7 +654,7 @@ function App() {
         {/* 입고 예정 */}
         {menu==="incoming"&&<>
           <div className="row-between"><div className="page-title">입고 예정</div><button className="btn-primary" onClick={()=>{setEIn(null);setFIn({item_code:"",item_name:"",qty:"",planned_date:"",supplier:"",wh_id:"",lot_no:"",note:""});setMIn(true);}}>+ 입고 예정 등록</button></div>
-          <Toolbar s={inSel} onDel={()=>bulkDel("incoming_plan",inSel.sel,inSel.clear)}>
+          <Toolbar s={inSel} onDel={()=>checkAndBulkDelete("incoming_plan",inSel.sel,id=>inPlan.find(p=>p.id===id)?.item_name||id,()=>[],inSel.clear)}>
             <button className="btn" onClick={()=>dlCSV("입고예정",["코드","품목명","수량","예정일","공급업체","창고","LOT","상태"],inPlan.map(p=>[p.item_code,p.item_name,p.qty,p.planned_date,p.supplier,whName(p.warehouse_id),p.lot_no,p.status]))}>📥 엑셀</button>
           </Toolbar>
           <div className="section"><table><thead><tr>
@@ -615,7 +677,7 @@ function App() {
         {/* 작업지시서 */}
         {menu==="workorder"&&<>
           <div className="row-between"><div className="page-title">작업지시서</div><button className="btn-primary" onClick={()=>{setEWO(null);setFWO({product:"",qty:"",planned:"",due:"",wh_id:"",procs:[]});setMWO(true);}}>+ 작업지시 생성</button></div>
-          <Toolbar s={woSel} onDel={()=>bulkDel("work_orders",woSel.sel,woSel.clear,true)}>
+          <Toolbar s={woSel} onDel={()=>checkAndBulkDelete("work_orders",woSel.sel,id=>id,id=>woChecks(id),woSel.clear,true)}>
             <button className="btn" onClick={()=>dlCSV("작업지시",["번호","제품명","수량","창고","계획일","완료기한","상태"],workOrders.map(w=>[w.id,w.product,w.qty,whName(w.warehouse_id),w.planned,w.due,w.status]))}>📥 엑셀</button>
           </Toolbar>
           <div className="section"><table><thead><tr>
@@ -630,7 +692,7 @@ function App() {
                 <td className="mono">{w.id}</td>
                 <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontWeight:600}}>{w.product}</span>
                   {w.status==="대기"&&<><button className="btn-sm" onClick={e=>{e.stopPropagation();setEWO(w);setFWO({product:w.product,qty:w.qty,planned:w.planned||"",due:w.due||"",wh_id:w.warehouse_id||"",procs:[]});setMWO(true);}}>수정</button>
-                  <button className="btn-danger-sm" onClick={e=>{e.stopPropagation();if(window.confirm("삭제?"))Promise.all([api("work_order_processes","DELETE",null,`?wo_id=eq.${w.id}`),api("work_orders","DELETE",null,`?id=eq.${w.id}`)]).then(()=>{loadAll();showToast("✓ 삭제");});}}>삭제</button></>}
+                  <button className="btn-danger-sm" onClick={e=>{e.stopPropagation();const checks=woChecks(w.id);if(checks.length>0){alert(`❌ 삭제 불가!\n\n[${w.id}]은(는) ${checks[0].label}이라 삭제할 수 없습니다.\n대기 상태일 때만 삭제 가능합니다.`);return;}if(window.confirm("삭제?"))Promise.all([api("work_order_processes","DELETE",null,`?wo_id=eq.${w.id}`),api("work_orders","DELETE",null,`?id=eq.${w.id}`)]).then(()=>{loadAll();showToast("✓ 삭제");});}}>삭제</button></>}
                 </div></td>
                 <td>{w.qty?.toLocaleString()}</td>
                 <td><div className="process-step">{steps.map((s,i)=>[<span key={s.id} className="process-chip" style={{background:s.status==="완료"?"#eaf3de":s.status==="진행중"?"#faeeda":"#f0f0f0",color:s.status==="완료"?"#3b6d11":s.status==="진행중"?"#854f0b":"#888"}}>{s.status==="완료"?"✓ ":s.status==="진행중"?"▶ ":""}{prName(s.process_id)}</span>,i<steps.length-1&&<span key={"a"+i} style={{color:"#ccc"}}>→</span>])}</div></td>
@@ -664,7 +726,7 @@ function App() {
         {/* 창고 관리 */}
         {menu==="warehouse"&&<>
           <div className="row-between"><div className="page-title">창고 관리</div><button className="btn-primary" onClick={()=>{setEWH(null);setFWH({code:"",name:"",location:"",manager:"",note:""});setMWH(true);}}>+ 창고 등록</button></div>
-          <Toolbar s={whSel} onDel={()=>bulkDel("warehouses",whSel.sel,whSel.clear)}>
+          <Toolbar s={whSel} onDel={()=>checkAndBulkDelete("warehouses",whSel.sel,id=>whs.find(w=>w.id===id)?.name||id,id=>whChecks(id),whSel.clear)}>
             <input style={{width:"240px",padding:"7px 12px"}} placeholder="🔍 창고명 검색" value={whSrch} onChange={e=>setWhSrch(e.target.value)}/>
           </Toolbar>
           {(()=>{const fil=whs.filter(w=>!whSrch||w.name.includes(whSrch)||w.code.includes(whSrch));
@@ -677,7 +739,7 @@ function App() {
             <td className="mono">{w.code}</td>
             <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontWeight:600}}>{w.name}</span>
               <button className="btn-sm" onClick={()=>{setEWH(w);setFWH({code:w.code,name:w.name,location:w.location||"",manager:w.manager||"",note:w.note||""});setMWH(true);}}>수정</button>
-              <button className="btn-danger-sm" onClick={()=>{if(window.confirm(`${w.name} 삭제?`))api("warehouses","DELETE",null,`?id=eq.${w.id}`).then(()=>{loadAll();showToast("✓ 삭제");});}}>삭제</button>
+              <button className="btn-danger-sm" onClick={()=>checkAndDelete("warehouses",w.id,w.name,whChecks(w.id))}>삭제</button>
             </div></td>
             <td>{w.location}</td><td>{w.manager}</td><td style={{color:"#888"}}>{w.note}</td>
             <td><button className="btn-sm" onClick={()=>{setSelWH(w);setMWhStock(true);}}>재고확인</button></td>
@@ -698,7 +760,7 @@ function App() {
         {/* 공정 관리 */}
         {menu==="process"&&<>
           <div className="row-between"><div className="page-title">공정 관리</div><button className="btn-primary" onClick={()=>{setEPR(null);setFPR({code:"",name:"",order_no:"",machine:"",manager:"",note:""});setMPR(true);}}>+ 공정 등록</button></div>
-          <Toolbar s={prSel} onDel={()=>bulkDel("processes",prSel.sel,prSel.clear)}/>
+          <Toolbar s={prSel} onDel={()=>checkAndBulkDelete("processes",prSel.sel,id=>procs.find(p=>p.id===id)?.name||id,id=>procChecks(id),prSel.clear)}/>
           <div className="section"><table><thead><tr>
             <th style={{width:"40px"}}><input type="checkbox" checked={prSel.allOf(procs)} onChange={()=>prSel.toggleAll(procs)}/></th>
             <th>순서</th><th>공정코드</th><th>공정명</th><th>설비</th><th>담당자</th><th>비고</th>
@@ -708,7 +770,7 @@ function App() {
             <td style={{fontWeight:700,color:"#185fa5"}}>{p.order_no}</td><td className="mono">{p.code}</td>
             <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontWeight:600}}>{p.name}</span>
               <button className="btn-sm" onClick={()=>{setEPR(p);setFPR({code:p.code,name:p.name,order_no:p.order_no,machine:p.machine||"",manager:p.manager||"",note:p.note||""});setMPR(true);}}>수정</button>
-              <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제?"))api("processes","DELETE",null,`?id=eq.${p.id}`).then(()=>{loadAll();showToast("✓ 삭제");});}}>삭제</button>
+              <button className="btn-danger-sm" onClick={()=>checkAndDelete("processes",p.id,p.name,procChecks(p.id))}>삭제</button>
             </div></td>
             <td>{p.machine}</td><td>{p.manager}</td><td style={{color:"#888"}}>{p.note}</td>
           </tr>)}</tbody></table></div>
