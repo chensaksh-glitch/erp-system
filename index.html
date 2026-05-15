@@ -48,7 +48,7 @@
   .form-label { font-size: 12px; color: #666; margin-bottom: 5px; display: block; font-weight: 500; }
   .form-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .form-grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-  input, select, textarea { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid #ddd; font-size: 13px; outline: none; font-family: inherit; }
+  input, select { width: 100%; padding: 8px 10px; border-radius: 7px; border: 1px solid #ddd; font-size: 13px; outline: none; font-family: inherit; }
   input:focus, select:focus { border-color: #185fa5; }
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #185fa5; color: #fff; padding: 10px 22px; border-radius: 20px; font-size: 13px; z-index: 9999; }
   .save-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: #3b6d11; background: #eaf3de; padding: 3px 8px; border-radius: 12px; }
@@ -75,6 +75,8 @@
   .bmt th { padding: 7px 8px; background: #f5f5f5; color: #666; font-weight: 600; text-align: left; border-bottom: 1px solid #e5e5e5; }
   .bmt td { padding: 4px; border-bottom: 1px solid #f0f0f0; }
   .bmt input { padding: 5px 8px; font-size: 12px; }
+  .bom-header { cursor: pointer; transition: background 0.15s; }
+  .bom-header:hover { background: #f5f9ff; }
 </style>
 </head>
 <body>
@@ -112,7 +114,7 @@ const CatBadge = ({c}) => <span className="cat-badge" style={{background:CAT[c]?
 const calcMin = (s,e) => { if(!s||!e) return null; const [sh,sm]=s.split(":").map(Number),[eh,em]=e.split(":").map(Number),d=(eh*60+em)-(sh*60+sm); return d>0?d:null; };
 
 const useSel = () => {
-  const [sel, setSel] = React.useState([]);
+  const [sel,setSel] = React.useState([]);
   return {
     sel, clear:()=>setSel([]),
     toggle:id=>setSel(p=>p.includes(id)?p.filter(x=>x!==id):[...p,id]),
@@ -122,12 +124,12 @@ const useSel = () => {
   };
 };
 
-const Toolbar = ({s, onDel, children}) => (
+const Toolbar = ({s,onDel,children}) => (
   <div className="toolbar">{children}{s&&s.sel.length>0&&<button className="btn-danger" onClick={onDel}>🗑 선택 삭제 ({s.sel.length})</button>}</div>
 );
 
 function App() {
-  // 데이터
+  const [menu,setMenu] = React.useState("dashboard");
   const [items,setItems] = React.useState([]);
   const [workOrders,setWorkOrders] = React.useState([]);
   const [wop,setWop] = React.useState([]);
@@ -140,13 +142,11 @@ function App() {
   const [loading,setLoading] = React.useState(true);
   const [toast,setToast] = React.useState("");
   const [dbMB,setDbMB] = React.useState(0);
-  const [expandedBom, setExpandedBom] = React.useState(null);
-  const [menu,setMenu] = React.useState("dashboard");
+  const [expWO,setExpWO] = React.useState(null);
+  const [expBom,setExpBom] = React.useState(null);
 
-  // 선택
   const iSel=useSel(),woSel=useSel(),whSel=useSel(),prSel=useSel(),lotSel=useSel(),inSel=useSel(),bomSel=useSel();
 
-  // 모달
   const [mIO,setMIO]=React.useState(false);
   const [mWO,setMWO]=React.useState(false);
   const [mWH,setMWH]=React.useState(false);
@@ -159,7 +159,6 @@ function App() {
   const [mWhStock,setMWhStock]=React.useState(false);
   const [mProcRes,setMProcRes]=React.useState(false);
 
-  // 편집
   const [eItem,setEItem]=React.useState(null);
   const [eWO,setEWO]=React.useState(null);
   const [eWH,setEWH]=React.useState(null);
@@ -170,7 +169,6 @@ function App() {
   const [selWH,setSelWH]=React.useState(null);
   const [selProc,setSelProc]=React.useState(null);
 
-  // 필터
   const [whSrch,setWhSrch]=React.useState("");
   const [invTab,setInvTab]=React.useState("품목현황");
   const [itemTab,setItemTab]=React.useState("전체");
@@ -179,12 +177,10 @@ function App() {
   const [bomSrch,setBomSrch]=React.useState("");
   const [hFilter,setHFilter]=React.useState({cat:"전체",type:"전체",kw:""});
 
-  // BOM 전개
   const [beProd,setBeProd]=React.useState("");
   const [beQty,setBeQty]=React.useState("");
   const [beResult,setBeResult]=React.useState([]);
 
-  // 폼
   const [fIO,setFIO]=React.useState({type:"입고",code:"",qty:"",lot_no:"",wh_id:"",note:""});
   const [fWO,setFWO]=React.useState({product:"",qty:"",planned:"",due:"",wh_id:"",procs:[]});
   const [fWH,setFWH]=React.useState({code:"",name:"",location:"",manager:"",note:""});
@@ -238,6 +234,27 @@ function App() {
     } catch(e){ alert("오류: "+e.message); }
   };
 
+  const doBomExpand = (prod, qty) => {
+    if(!prod) return;
+    const pb = boms.filter(b=>b.product_code===prod);
+    if(pb.length===0) { setBeResult([]); return; }
+    const q = parseFloat(qty)||1;
+    setBeResult(pb.map(b=>{
+      const needed = b.qty*q;
+      const it = items.find(i=>i.code===b.material_code);
+      const stock = it?.stock||0;
+      const short = Math.max(0,needed-stock);
+      return {code:b.material_code,name:b.material_name,unit:b.unit||it?.unit||"-",qty_per:b.qty,needed,stock,short,ok:short===0,cat:it?.category||"-"};
+    }));
+  };
+
+  const openBomExp = (prodCode) => {
+    setBeProd(prodCode);
+    setBeQty("");
+    doBomExpand(prodCode, "");
+    setMBomExp(true);
+  };
+
   const handleIO = async () => {
     const item=items.find(i=>i.code===fIO.code);
     if(!item) return alert("품목 코드 확인");
@@ -276,20 +293,6 @@ function App() {
       }
       await loadAll(); setMBom(false); setEBom(null); setFBomProd({product_code:"",product_name:""}); setFBomMats([{...EMPTY_MAT}]);
     } catch(e){ alert("오류: "+e.message); }
-  };
-
-  const handleBomExpand = (prod=beProd, qty=beQty) => {
-    if(!prod) return alert("제품을 선택하세요.");
-    const pb=boms.filter(b=>b.product_code===prod);
-    if(pb.length===0) return alert("해당 제품의 BOM이 없습니다.");
-    const q=parseFloat(qty)||1;
-    setBeResult(pb.map(b=>{
-      const needed=b.qty*q;
-      const it=items.find(i=>i.code===b.material_code);
-      const stock=it?.stock||0;
-      const short=Math.max(0,needed-stock);
-      return {code:b.material_code,name:b.material_name,unit:b.unit||it?.unit||"-",qty_per:b.qty,needed,stock,short,ok:short===0,cat:it?.category||"-"};
-    }));
   };
 
   const handleWO = async () => {
@@ -386,7 +389,6 @@ function App() {
     {s:"생산"},{k:"workorder",l:"작업지시서",i:"📋"},{k:"production",l:"생산 실적",i:"📈"},
   ];
 
-  // BOM 그룹
   const bomFiltered = boms.filter(b=>{
     const it=items.find(i=>i.code===b.product_code);
     return (bomTab==="전체"||(it?.category===bomTab))&&(!bomSrch||(b.product_code||"").includes(bomSrch)||(b.product_name||"").includes(bomSrch));
@@ -415,6 +417,7 @@ function App() {
 
       <div className="main">
 
+        {/* 대시보드 */}
         {menu==="dashboard"&&<>
           <div className="page-title">대시보드</div>
           <div className="grid4">
@@ -445,6 +448,7 @@ function App() {
           </table></div>
         </>}
 
+        {/* BOM 관리 */}
         {menu==="bom"&&<>
           <div className="row-between">
             <div className="page-title">BOM 관리</div>
@@ -458,31 +462,53 @@ function App() {
             <input style={{width:"200px",padding:"7px 12px"}} placeholder="제품코드/제품명 검색" value={bomSrch} onChange={e=>setBomSrch(e.target.value)}/>
             <button className="btn" onClick={()=>dlCSV("BOM",["제품코드","제품명","자재코드","자재명","소요량","단위"],boms.map(b=>[b.product_code,b.product_name,b.material_code,b.material_name,b.qty,b.unit]))}>📥 엑셀</button>
           </Toolbar>
-          {bomGroups.length===0?<div className="section"><div className="empty">등록된 BOM이 없습니다</div></div>:bomGroups.map(g=>{
-            const pi=items.find(i=>i.code===g.code);
-            return <div key={g.code} className="section" style={{marginBottom:"16px"}}>
-              <div className="section-head">
-                <div style={{display:"flex",alignItems:"center",gap:"10px"}}><CatBadge c={pi?.category||"완제품"}/><span className="section-title" style={{cursor:"pointer",color:"#185fa5",textDecoration:"underline"}} onClick={()=>{setBeProd(g.code);setBeQty("");setBeResult([]);setMBomExp(true);}}>{g.name}</span><span className="mono" style={{color:"#888",fontSize:"12px"}}>{g.code}</span></div>
-                <span style={{fontSize:"12px",color:"#888"}}>{g.rows.length}개 자재</span>
-              </div>
-              <table><thead><tr>
-                <th style={{width:"40px"}}><input type="checkbox" checked={g.rows.every(b=>bomSel.has(b.id))} onChange={()=>{const ids=g.rows.map(b=>b.id);const all=ids.every(id=>bomSel.sel.includes(id));ids.forEach(id=>{if(all&&bomSel.has(id))bomSel.toggle(id);else if(!all&&!bomSel.has(id))bomSel.toggle(id);});}}/></th>
-                <th>자재코드</th><th>자재명</th><th>분류</th><th>소요량</th><th>단위</th><th>비고</th>
-              </tr></thead>
-              <tbody>{g.rows.map(b=>{const mi=items.find(i=>i.code===b.material_code);return<tr key={b.id} className={bomSel.has(b.id)?"sel-row":""}>
-                <td><input type="checkbox" checked={bomSel.has(b.id)} onChange={()=>bomSel.toggle(b.id)}/></td>
-                <td className="mono">{b.material_code}</td>
-                <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span>{b.material_name}</span>
-                  <button className="btn-sm" onClick={()=>{setEBom(b);setFBomProd({product_code:b.product_code,product_name:b.product_name});setFBomMats([{material_code:b.material_code,material_name:b.material_name,qty:b.qty,unit:b.unit||"",note:b.note||""}]);setMBom(true);}}>수정</button>
-                  <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제?"))api("bom","DELETE",null,`?id=eq.${b.id}`).then(()=>{loadAll();showToast("✓ 삭제");});}}>삭제</button>
-                </div></td>
-                <td><CatBadge c={mi?.category}/></td><td style={{fontWeight:600}}>{b.qty}</td><td>{b.unit||mi?.unit||"-"}</td><td style={{color:"#888"}}>{b.note||"-"}</td>
-              </tr>;})}
-              </tbody></table>
-            </div>;
-          })}
+
+          {bomGroups.length===0
+            ? <div className="section"><div className="empty">등록된 BOM이 없습니다</div></div>
+            : bomGroups.map(g=>{
+                const pi=items.find(i=>i.code===g.code);
+                const isExp=expBom===g.code;
+                return <div key={g.code} className="section" style={{marginBottom:"16px"}}>
+                  {/* 헤더 - 클릭하면 펼치기/접기 */}
+                  <div className="section-head bom-header" onClick={()=>setExpBom(isExp?null:g.code)}>
+                    <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                      <span style={{fontSize:"16px"}}>{isExp?"▼":"▶"}</span>
+                      <CatBadge c={pi?.category||"완제품"}/>
+                      <span className="section-title" style={{color:"#185fa5"}}>{g.name}</span>
+                      <span className="mono" style={{color:"#888",fontSize:"12px"}}>{g.code}</span>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                      <span style={{fontSize:"12px",color:"#888"}}>{g.rows.length}개 자재</span>
+                      <button className="btn-sm" onClick={e=>{e.stopPropagation();openBomExp(g.code);}}>📋 BOM 전개</button>
+                    </div>
+                  </div>
+
+                  {/* 자재 목록 - 펼쳤을 때만 표시 */}
+                  {isExp&&<table>
+                    <thead><tr>
+                      <th style={{width:"40px"}}><input type="checkbox" checked={g.rows.every(b=>bomSel.has(b.id))} onChange={()=>{const ids=g.rows.map(b=>b.id);const all=ids.every(id=>bomSel.sel.includes(id));ids.forEach(id=>{if(all&&bomSel.has(id))bomSel.toggle(id);else if(!all&&!bomSel.has(id))bomSel.toggle(id);});}}/></th>
+                      <th>자재코드</th><th>자재명</th><th>분류</th><th>소요량</th><th>단위</th><th>비고</th>
+                    </tr></thead>
+                    <tbody>{g.rows.map(b=>{const mi=items.find(i=>i.code===b.material_code);return<tr key={b.id} className={bomSel.has(b.id)?"sel-row":""}>
+                      <td><input type="checkbox" checked={bomSel.has(b.id)} onChange={()=>bomSel.toggle(b.id)}/></td>
+                      <td className="mono">{b.material_code}</td>
+                      <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span>{b.material_name}</span>
+                        <button className="btn-sm" onClick={()=>{setEBom(b);setFBomProd({product_code:b.product_code,product_name:b.product_name});setFBomMats([{material_code:b.material_code,material_name:b.material_name,qty:b.qty,unit:b.unit||"",note:b.note||""}]);setMBom(true);}}>수정</button>
+                        <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제?"))api("bom","DELETE",null,`?id=eq.${b.id}`).then(()=>{loadAll();showToast("✓ 삭제");});}}>삭제</button>
+                      </div></td>
+                      <td><CatBadge c={mi?.category}/></td>
+                      <td style={{fontWeight:600}}>{b.qty}</td>
+                      <td>{b.unit||mi?.unit||"-"}</td>
+                      <td style={{color:"#888"}}>{b.note||"-"}</td>
+                    </tr>;})}
+                    </tbody>
+                  </table>}
+                </div>;
+              })
+          }
         </>}
 
+        {/* 기초품목 */}
         {menu==="itemmaster"&&<>
           <div className="row-between"><div className="page-title">기초품목 등록</div>
             <button className="btn-primary" onClick={()=>{setEItem(null);setFItem({code:"",name:"",category:"원자재",unit:"",stock:0,min_stock:0,location:"",spec:"",maker:"",price:0,lead_time:0,note:""});setMItem(true);}}>+ 품목 등록</button>
@@ -508,6 +534,7 @@ function App() {
           </tr>)}</tbody></table></div>
         </>}
 
+        {/* 재고 관리 */}
         {menu==="inventory"&&<>
           <div className="row-between"><div className="page-title">재고 관리</div>
             <div style={{display:"flex",gap:"8px"}}>
@@ -524,8 +551,8 @@ function App() {
             wh.forEach(h=>{if(!sm[h.code])sm[h.code]={code:h.code,name:h.name,qty:0};sm[h.code].qty+=h.type==="입고"?h.qty:-h.qty;});
             const sl=Object.values(sm).filter(s=>s.qty>0);
             return<div key={w.id} className="section"><div className="section-head"><span className="section-title">🏭 {w.name} <span style={{fontSize:"12px",color:"#888",fontWeight:400}}>· {w.location} · {w.manager}</span></span><span style={{fontSize:"12px",color:"#185fa5",fontWeight:600}}>{sl.length}개 품목</span></div>
-              {sl.length===0?<div className="empty">재고 없음</div>:<table><thead><tr><th>코드</th><th>품목명</th><th>분류</th><th>규격</th><th>단위</th><th>현재고</th></tr></thead>
-              <tbody>{sl.map(s=>{const it=items.find(i=>i.code===s.code);return<tr key={s.code}><td className="mono">{s.code}</td><td>{s.name}</td><td><CatBadge c={it?.category}/></td><td style={{color:"#888",fontSize:"12px"}}>{it?.spec||"-"}</td><td>{it?.unit||"-"}</td><td style={{fontWeight:700,color:"#185fa5"}}>{s.qty?.toLocaleString()}</td></tr>;})}</tbody></table>}
+              {sl.length===0?<div className="empty">재고 없음</div>:<table><thead><tr><th>코드</th><th>품목명</th><th>분류</th><th>단위</th><th>현재고</th></tr></thead>
+              <tbody>{sl.map(s=>{const it=items.find(i=>i.code===s.code);return<tr key={s.code}><td className="mono">{s.code}</td><td>{s.name}</td><td><CatBadge c={it?.category}/></td><td>{it?.unit||"-"}</td><td style={{fontWeight:700,color:"#185fa5"}}>{s.qty?.toLocaleString()}</td></tr>;})}</tbody></table>}
             </div>;
           })}</>}
           {invTab==="입출고이력"&&<>
@@ -540,6 +567,7 @@ function App() {
           </>}
         </>}
 
+        {/* LOT 관리 */}
         {menu==="lot"&&<>
           <div className="row-between"><div className="page-title">LOT 관리</div><button className="btn-primary" onClick={()=>{setELot(null);setFLot({lot_no:"",item_code:"",item_name:"",wh_id:"",qty:"",recv:"",exp:"",supplier:"",note:""});setMLot(true);}}>+ LOT 등록</button></div>
           <Toolbar s={lotSel} onDel={()=>bulkDel("lots",lotSel.sel,lotSel.clear)}>
@@ -561,6 +589,7 @@ function App() {
           </tr>)}</tbody></table></div>
         </>}
 
+        {/* 입고 예정 */}
         {menu==="incoming"&&<>
           <div className="row-between"><div className="page-title">입고 예정</div><button className="btn-primary" onClick={()=>{setEIn(null);setFIn({item_code:"",item_name:"",qty:"",planned_date:"",supplier:"",wh_id:"",lot_no:"",note:""});setMIn(true);}}>+ 입고 예정 등록</button></div>
           <Toolbar s={inSel} onDel={()=>bulkDel("incoming_plan",inSel.sel,inSel.clear)}>
@@ -583,6 +612,7 @@ function App() {
           </tr>)}</tbody></table></div>
         </>}
 
+        {/* 작업지시서 */}
         {menu==="workorder"&&<>
           <div className="row-between"><div className="page-title">작업지시서</div><button className="btn-primary" onClick={()=>{setEWO(null);setFWO({product:"",qty:"",planned:"",due:"",wh_id:"",procs:[]});setMWO(true);}}>+ 작업지시 생성</button></div>
           <Toolbar s={woSel} onDel={()=>bulkDel("work_orders",woSel.sel,woSel.clear,true)}>
@@ -622,6 +652,7 @@ function App() {
           })}</tbody></table></div>
         </>}
 
+        {/* 생산 실적 */}
         {menu==="production"&&<>
           <div className="row-between"><div className="page-title">생산 실적</div><button className="btn" onClick={()=>dlCSV("생산실적",["번호","제품명","수량","계획일","완료기한","상태"],workOrders.filter(w=>w.status==="완료").map(w=>[w.id,w.product,w.qty,w.planned,w.due,w.status]))}>📥 엑셀</button></div>
           <div className="grid4">{[{l:"총 작업지시",v:workOrders.length+" 건"},{l:"대기",v:workOrders.filter(w=>w.status==="대기").length+" 건"},{l:"진행중",v:workOrders.filter(w=>w.status==="진행중").length+" 건"},{l:"완료",v:workOrders.filter(w=>w.status==="완료").length+" 건"}].map((m,i)=><div key={i} className="card"><div className="card-label">{m.l}</div><div className="card-val">{m.v}</div></div>)}</div>
@@ -630,6 +661,7 @@ function App() {
           </table></div>
         </>}
 
+        {/* 창고 관리 */}
         {menu==="warehouse"&&<>
           <div className="row-between"><div className="page-title">창고 관리</div><button className="btn-primary" onClick={()=>{setEWH(null);setFWH({code:"",name:"",location:"",manager:"",note:""});setMWH(true);}}>+ 창고 등록</button></div>
           <Toolbar s={whSel} onDel={()=>bulkDel("warehouses",whSel.sel,whSel.clear)}>
@@ -663,6 +695,7 @@ function App() {
           </div></div>}
         </>}
 
+        {/* 공정 관리 */}
         {menu==="process"&&<>
           <div className="row-between"><div className="page-title">공정 관리</div><button className="btn-primary" onClick={()=>{setEPR(null);setFPR({code:"",name:"",order_no:"",machine:"",manager:"",note:""});setMPR(true);}}>+ 공정 등록</button></div>
           <Toolbar s={prSel} onDel={()=>bulkDel("processes",prSel.sel,prSel.clear)}/>
@@ -689,16 +722,15 @@ function App() {
         <div style={{display:"flex",gap:"12px",alignItems:"flex-end",marginBottom:"16px"}}>
           <div style={{flex:1}}>
             <label className="form-label">제품 선택</label>
-            <select value={beProd} onChange={e=>{setBeProd(e.target.value);setBeResult([]);}}>
+            <select value={beProd} onChange={e=>{setBeProd(e.target.value);doBomExpand(e.target.value,beQty);}}>
               <option value="">제품 선택</option>
               {[...new Set(boms.map(b=>b.product_code))].map(code=>{const b=boms.find(x=>x.product_code===code);return<option key={code} value={code}>{code} - {b?.product_name}</option>;})}
             </select>
           </div>
-          <div style={{width:"140px"}}>
-            <label className="form-label">생산 수량</label>
-            <input type="number" placeholder="수량" value={beQty} onChange={e=>{setBeQty(e.target.value);setBeResult([]);}}/>
+          <div style={{width:"180px"}}>
+            <label className="form-label">생산 수량 (미입력시 1개 기준)</label>
+            <input type="number" placeholder="기본: 1개" value={beQty} onChange={e=>{setBeQty(e.target.value);doBomExpand(beProd,e.target.value);}}/>
           </div>
-          <button className="btn-primary" style={{whiteSpace:"nowrap",marginBottom:"1px"}} onClick={handleBomExpand}>전개</button>
         </div>
         {beResult.length>0&&<>
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"10px",marginBottom:"16px"}}>
@@ -728,9 +760,10 @@ function App() {
             </table>
           </div>
           <div style={{display:"flex",justifyContent:"flex-end"}}>
-            <button className="btn" onClick={()=>dlCSV(`BOM전개_${beProd}_${beQty}개`,["자재코드","자재명","분류","단위","단위당소요","총필요수량","현재고","부족수량","상태"],beResult.map(r=>[r.code,r.name,r.cat,r.unit,r.qty_per,r.needed,r.stock,r.short||0,r.ok?"충분":"부족"]))}>📥 엑셀</button>
+            <button className="btn" onClick={()=>dlCSV(`BOM전개_${beProd}_${beQty||1}개`,["자재코드","자재명","분류","단위","단위당소요","총필요수량","현재고","부족수량","상태"],beResult.map(r=>[r.code,r.name,r.cat,r.unit,r.qty_per,r.needed,r.stock,r.short||0,r.ok?"충분":"부족"]))}>📥 엑셀</button>
           </div>
         </>}
+        {beProd&&beResult.length===0&&<div className="empty">BOM 데이터가 없습니다.</div>}
         <div style={{display:"flex",justifyContent:"flex-end",marginTop:"12px"}}><button className="btn" onClick={()=>setMBomExp(false)}>닫기</button></div>
       </div></div>}
 
@@ -911,7 +944,7 @@ function App() {
         <div className="modal-title">{eIn?"입고 예정 수정":"입고 예정 등록"}</div>
         <div className="form-grid2">
           <div className="form-row"><label className="form-label">품목코드</label>
-            <input placeholder="코드 입력" value={fIn.item_code} list="in-list" onChange={e=>{const it=items.find(i=>i.code===e.target.value);setFIn({...fIn,item_code:e.target.value,item_name:it?.name||""}); }}/>
+            <input placeholder="코드 입력" value={fIn.item_code} list="in-list" onChange={e=>{const it=items.find(i=>i.code===e.target.value);setFIn({...fIn,item_code:e.target.value,item_name:it?.name||""});}}/>
             <datalist id="in-list">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
             {fIn.item_code&&items.find(i=>i.code===fIn.item_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===fIn.item_code).name}</div>}
           </div>
