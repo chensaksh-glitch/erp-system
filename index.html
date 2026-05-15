@@ -462,7 +462,7 @@ function App() {
             const pi=items.find(i=>i.code===g.code);
             return <div key={g.code} className="section" style={{marginBottom:"16px"}}>
               <div className="section-head">
-                <div style={{display:"flex",alignItems:"center",gap:"10px"}}><CatBadge c={pi?.category||"완제품"}/><span className="section-title">{g.name}</span><span className="mono" style={{color:"#888",fontSize:"12px"}}>{g.code}</span></div>
+                <div style={{display:"flex",alignItems:"center",gap:"10px"}}><CatBadge c={pi?.category||"완제품"}/><span className="section-title" style={{cursor:"pointer",color:"#185fa5",textDecoration:"underline"}} onClick={()=>{setBeProd(g.code);setBeQty("");setBeResult([]);setMBomExp(true);}}>{g.name}</span><span className="mono" style={{color:"#888",fontSize:"12px"}}>{g.code}</span></div>
                 <span style={{fontSize:"12px",color:"#888"}}>{g.rows.length}개 자재</span>
               </div>
               <table><thead><tr>
