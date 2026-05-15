@@ -685,4 +685,278 @@ function App() {
 
       {/* BOM 전개 모달 */}
       {mBomExp&&<div className="modal-bg"><div className="modal modal-xl">
-        <div className="modal-title">�
+        <div className="modal-title">📋 BOM 전개</div>
+        <div style={{display:"flex",gap:"12px",alignItems:"flex-end",marginBottom:"16px"}}>
+          <div style={{flex:1}}>
+            <label className="form-label">제품 선택</label>
+            <select value={beProd} onChange={e=>{setBeProd(e.target.value);setBeResult([]);}}>
+              <option value="">제품 선택</option>
+              {[...new Set(boms.map(b=>b.product_code))].map(code=>{const b=boms.find(x=>x.product_code===code);return<option key={code} value={code}>{code} - {b?.product_name}</option>;})}
+            </select>
+          </div>
+          <div style={{width:"140px"}}>
+            <label className="form-label">생산 수량</label>
+            <input type="number" placeholder="수량" value={beQty} onChange={e=>{setBeQty(e.target.value);setBeResult([]);}}/>
+          </div>
+          <button className="btn-primary" style={{whiteSpace:"nowrap",marginBottom:"1px"}} onClick={handleBomExpand}>전개</button>
+        </div>
+        {beResult.length>0&&<>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:"10px",marginBottom:"16px"}}>
+            {[{l:"총 자재 종류",v:beResult.length+" 종",c:"#185fa5"},{l:"충분한 자재",v:beResult.filter(r=>r.ok).length+" 종",c:"#3b9e3b"},{l:"부족한 자재",v:beResult.filter(r=>!r.ok).length+" 종",c:beResult.some(r=>!r.ok)?"#a32d2d":"#888"}].map((m,i)=><div key={i} style={{background:"#f5f5f5",borderRadius:"8px",padding:"12px 14px"}}>
+              <div style={{fontSize:"12px",color:"#888",marginBottom:"4px"}}>{m.l}</div>
+              <div style={{fontSize:"20px",fontWeight:700,color:m.c}}>{m.v}</div>
+            </div>)}
+          </div>
+          <div style={{border:"1px solid #e5e5e5",borderRadius:"8px",overflow:"hidden",marginBottom:"14px"}}>
+            <table><thead><tr>
+              <th>자재코드</th><th>자재명</th><th>분류</th><th>단위</th>
+              <th style={{textAlign:"right"}}>단위당 소요</th>
+              <th style={{textAlign:"right"}}>총 필요수량</th>
+              <th style={{textAlign:"right"}}>현재고</th>
+              <th style={{textAlign:"right"}}>부족수량</th>
+              <th style={{textAlign:"center"}}>상태</th>
+            </tr></thead>
+            <tbody>{beResult.map((r,i)=><tr key={i} style={{background:!r.ok?"#fff8f8":""}}>
+              <td className="mono">{r.code}</td><td style={{fontWeight:500}}>{r.name}</td>
+              <td><CatBadge c={r.cat}/></td><td>{r.unit}</td>
+              <td style={{textAlign:"right"}}>{r.qty_per}</td>
+              <td style={{textAlign:"right",fontWeight:700,color:"#185fa5"}}>{r.needed.toLocaleString()}</td>
+              <td style={{textAlign:"right"}}>{r.stock.toLocaleString()}</td>
+              <td style={{textAlign:"right",fontWeight:700,color:!r.ok?"#a32d2d":"#888"}}>{!r.ok?r.short.toLocaleString():"-"}</td>
+              <td style={{textAlign:"center"}}><span className="badge" style={{background:r.ok?"#eaf3de":"#fcebeb",color:r.ok?"#3b6d11":"#a32d2d"}}>{r.ok?"✓ 충분":"⚠ 부족"}</span></td>
+            </tr>)}</tbody>
+            </table>
+          </div>
+          <div style={{display:"flex",justifyContent:"flex-end"}}>
+            <button className="btn" onClick={()=>dlCSV(`BOM전개_${beProd}_${beQty}개`,["자재코드","자재명","분류","단위","단위당소요","총필요수량","현재고","부족수량","상태"],beResult.map(r=>[r.code,r.name,r.cat,r.unit,r.qty_per,r.needed,r.stock,r.short||0,r.ok?"충분":"부족"]))}>📥 엑셀</button>
+          </div>
+        </>}
+        <div style={{display:"flex",justifyContent:"flex-end",marginTop:"12px"}}><button className="btn" onClick={()=>setMBomExp(false)}>닫기</button></div>
+      </div></div>}
+
+      {/* BOM 등록/수정 모달 */}
+      {mBom&&<div className="modal-bg"><div className="modal modal-xl">
+        <div className="modal-title">{eBom?"BOM 수정":"BOM 등록"}</div>
+        <div style={{background:"#f0f5ff",borderRadius:"8px",padding:"10px 14px",marginBottom:"14px",fontSize:"12px",color:"#555"}}>💡 완제품/반제품 1개당 필요한 자재를 입력하세요.</div>
+        <div style={{fontWeight:600,fontSize:"13px",color:"#185fa5",marginBottom:"8px"}}>📦 제품 정보</div>
+        <div className="form-grid2" style={{marginBottom:"16px"}}>
+          <div className="form-row"><label className="form-label">제품코드 *</label>
+            <input placeholder="예: FG-001" value={fBomProd.product_code} list="bp-list" onChange={e=>{const it=items.find(i=>i.code===e.target.value);setFBomProd({product_code:e.target.value,product_name:it?.name||fBomProd.product_name});}}/>
+            <datalist id="bp-list">{items.filter(i=>i.category==="완제품"||i.category==="반제품").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {fBomProd.product_code&&items.find(i=>i.code===fBomProd.product_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===fBomProd.product_code).name}</div>}
+          </div>
+          <div className="form-row"><label className="form-label">제품명 *</label><input placeholder="자동입력 또는 직접입력" value={fBomProd.product_name} onChange={e=>setFBomProd({...fBomProd,product_name:e.target.value})}/></div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}}>
+          <span style={{fontWeight:600,fontSize:"13px",color:"#3b6d11"}}>🔩 자재 목록</span>
+          {!eBom&&<button className="btn-sm" onClick={()=>setFBomMats([...fBomMats,{...EMPTY_MAT}])}>+ 자재 추가</button>}
+        </div>
+        <table className="bmt"><thead><tr><th>자재코드</th><th>자재명</th><th style={{width:"80px"}}>소요량</th><th style={{width:"70px"}}>단위</th><th>비고</th>{!eBom&&<th style={{width:"30px"}}></th>}</tr></thead>
+        <tbody>{fBomMats.map((m,idx)=><tr key={idx}>
+          <td><input placeholder="예: RM-001" value={m.material_code} list={`bm-${idx}`} onChange={e=>updMat(idx,"material_code",e.target.value)}/>
+            <datalist id={`bm-${idx}`}>{items.filter(i=>i.category==="원자재"||i.category==="부자재").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {m.material_code&&items.find(i=>i.code===m.material_code)&&<div style={{fontSize:"11px",color:"#3b6d11",marginTop:"2px"}}>✓ {items.find(i=>i.code===m.material_code).name}</div>}
+          </td>
+          <td><input placeholder="자동입력" value={m.material_name} onChange={e=>updMat(idx,"material_name",e.target.value)}/></td>
+          <td><input type="number" step="0.01" placeholder="0" value={m.qty} onChange={e=>updMat(idx,"qty",e.target.value)}/></td>
+          <td><input placeholder="kg" value={m.unit} onChange={e=>updMat(idx,"unit",e.target.value)}/></td>
+          <td><input placeholder="비고" value={m.note} onChange={e=>updMat(idx,"note",e.target.value)}/></td>
+          {!eBom&&<td style={{textAlign:"center"}}>{fBomMats.length>1&&<button style={{background:"none",border:"none",color:"#e24b4a",cursor:"pointer",fontSize:"18px",lineHeight:1}} onClick={()=>setFBomMats(fBomMats.filter((_,i)=>i!==idx))}>×</button>}</td>}
+        </tr>)}</tbody></table>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end",marginTop:"16px"}}>
+          <button className="btn" onClick={()=>{setMBom(false);setEBom(null);}}>취소</button>
+          <button className="btn-primary" onClick={handleBom}>{eBom?"수정":"등록"}</button>
+        </div>
+      </div></div>}
+
+      {/* 작업지시 모달 */}
+      {mWO&&<div className="modal-bg"><div className="modal modal-lg">
+        <div className="modal-title">{eWO?"작업지시 수정":"작업지시 생성"}</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">제품명 *</label><input placeholder="제품명" value={fWO.product} onChange={e=>setFWO({...fWO,product:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">수량 *</label><input type="number" value={fWO.qty} onChange={e=>setFWO({...fWO,qty:e.target.value})}/></div>
+        </div>
+        <div className="form-grid3">
+          <div className="form-row"><label className="form-label">계획일</label><input type="date" value={fWO.planned} onChange={e=>setFWO({...fWO,planned:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">완료기한</label><input type="date" value={fWO.due} onChange={e=>setFWO({...fWO,due:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">창고</label><select value={fWO.wh_id} onChange={e=>setFWO({...fWO,wh_id:e.target.value})}><option value="">창고 선택</option>{whs.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        </div>
+        {!eWO&&<div className="form-row">
+          <label className="form-label">공정 순서 * (순서대로 클릭)</label>
+          <div style={{display:"flex",gap:"8px",flexWrap:"wrap",marginBottom:"8px"}}>
+            {procs.map(p=><button key={p.id} type="button" style={{padding:"6px 12px",borderRadius:"20px",border:"1px solid",borderColor:fWO.procs.includes(String(p.id))?"#185fa5":"#ddd",background:fWO.procs.includes(String(p.id))?"#185fa5":"#fff",color:fWO.procs.includes(String(p.id))?"#fff":"#333",cursor:"pointer",fontSize:"12px"}}
+              onClick={()=>{const id=String(p.id);const arr=fWO.procs.includes(id)?fWO.procs.filter(x=>x!==id):[...fWO.procs,id];setFWO({...fWO,procs:arr});}}>
+              {p.name}
+            </button>)}
+          </div>
+          {fWO.procs.length>0&&<div style={{background:"#f0f5ff",borderRadius:"8px",padding:"10px 12px",fontSize:"12px"}}>
+            <span style={{color:"#555",fontWeight:600}}>선택 순서: </span>
+            {fWO.procs.map((id,i)=>[<span key={id} style={{color:"#185fa5",fontWeight:600}}>{prName(parseInt(id))}</span>,i<fWO.procs.length-1&&<span key={"a"+i} style={{color:"#ccc",margin:"0 4px"}}>→</span>])}
+          </div>}
+        </div>}
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>{setMWO(false);setEWO(null);}}>취소</button><button className="btn-primary" onClick={handleWO}>{eWO?"수정":"생성"}</button></div>
+      </div></div>}
+
+      {/* 공정 완료 처리 모달 */}
+      {mProcRes&&selProc&&<div className="modal-bg"><div className="modal">
+        <div className="modal-title">공정 완료 처리</div>
+        <div style={{background:"#f0f5ff",borderRadius:"8px",padding:"10px 14px",marginBottom:"16px",fontSize:"13px"}}>
+          <span style={{color:"#555"}}>작업지시: </span><span style={{fontWeight:700}}>{selProc.wo_id}</span>
+          <span style={{margin:"0 12px",color:"#ccc"}}>|</span>
+          <span style={{color:"#555"}}>공정: </span><span style={{fontWeight:700,color:"#185fa5"}}>{prName(selProc.process_id)}</span>
+          <span style={{margin:"0 12px",color:"#ccc"}}>|</span>
+          <span style={{color:"#555"}}>단계: </span><span style={{fontWeight:700}}>{selProc.step_no}번째</span>
+        </div>
+        <div className="form-grid3">
+          <div className="form-row"><label className="form-label">작업일 *</label><input type="date" value={fProcRes.work_date} onChange={e=>setFProcRes({...fProcRes,work_date:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">시작시간</label><input type="time" value={fProcRes.start_time} onChange={e=>setFProcRes({...fProcRes,start_time:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">종료시간</label><input type="time" value={fProcRes.end_time} onChange={e=>setFProcRes({...fProcRes,end_time:e.target.value})}/>{fProcRes.start_time&&fProcRes.end_time&&calcMin(fProcRes.start_time,fProcRes.end_time)&&<div style={{fontSize:"11px",color:"#185fa5",marginTop:"3px"}}>작업시간: {calcMin(fProcRes.start_time,fProcRes.end_time)}분</div>}</div>
+        </div>
+        <div className="form-grid3">
+          <div className="form-row"><label className="form-label">작업수량 *</label><input type="number" placeholder="0" value={fProcRes.work_qty} onChange={e=>setFProcRes({...fProcRes,work_qty:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">불량수량</label><input type="number" placeholder="0" value={fProcRes.defect_qty} onChange={e=>setFProcRes({...fProcRes,defect_qty:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">양품수량</label><input readOnly value={(parseInt(fProcRes.work_qty)||0)-(parseInt(fProcRes.defect_qty)||0)} style={{background:"#f5f5f5",color:"#3b6d11",fontWeight:700}}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">담당자</label><input placeholder="담당자명" value={fProcRes.assignee} onChange={e=>setFProcRes({...fProcRes,assignee:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">비고</label><input placeholder="특이사항" value={fProcRes.note} onChange={e=>setFProcRes({...fProcRes,note:e.target.value})}/></div>
+        </div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setMProcRes(false)}>취소</button><button className="btn-primary" onClick={handleProcRes}>완료 처리</button></div>
+      </div></div>}
+
+      {/* 입출고 모달 */}
+      {mIO&&<div className="modal-bg"><div className="modal">
+        <div className="modal-title">입출고 처리</div>
+        <div className="form-row"><label className="form-label">구분</label><select value={fIO.type} onChange={e=>setFIO({...fIO,type:e.target.value})}><option>입고</option><option>출고</option></select></div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">품목코드</label>
+            <input placeholder="코드 입력" value={fIO.code} list="io-list" onChange={e=>setFIO({...fIO,code:e.target.value})}/>
+            <datalist id="io-list">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {fIO.code&&items.find(i=>i.code===fIO.code)&&<div style={{marginTop:"6px",background:"#eef3fb",borderRadius:"6px",padding:"8px 10px"}}>
+              <div style={{fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===fIO.code).name} ({items.find(i=>i.code===fIO.code).category})</div>
+              <div style={{display:"flex",gap:"16px",marginTop:"4px",fontSize:"12px",color:"#555"}}>
+                <span>규격: <b>{items.find(i=>i.code===fIO.code).spec||"-"}</b></span>
+                <span>단위: <b>{items.find(i=>i.code===fIO.code).unit||"-"}</b></span>
+                <span>현재고: <b>{items.find(i=>i.code===fIO.code).stock?.toLocaleString()}</b></span>
+              </div>
+            </div>}
+          </div>
+          <div className="form-row"><label className="form-label">수량</label><input type="number" value={fIO.qty} onChange={e=>setFIO({...fIO,qty:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">LOT 번호</label><input placeholder="LOT (선택)" value={fIO.lot_no} onChange={e=>setFIO({...fIO,lot_no:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">창고</label><select value={fIO.wh_id} onChange={e=>setFIO({...fIO,wh_id:e.target.value})}><option value="">창고 선택</option>{whs.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        </div>
+        <div className="form-row"><label className="form-label">비고</label><input placeholder="비고 (선택)" value={fIO.note} onChange={e=>setFIO({...fIO,note:e.target.value})}/></div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>setMIO(false)}>취소</button><button className="btn-primary" onClick={handleIO}>처리</button></div>
+      </div></div>}
+
+      {/* 창고 모달 */}
+      {mWH&&<div className="modal-bg"><div className="modal">
+        <div className="modal-title">{eWH?"창고 수정":"창고 등록"}</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">창고코드</label><input placeholder="예: WH-004" value={fWH.code} onChange={e=>setFWH({...fWH,code:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">창고명</label><input placeholder="창고명" value={fWH.name} onChange={e=>setFWH({...fWH,name:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">위치</label><input placeholder="위치" value={fWH.location} onChange={e=>setFWH({...fWH,location:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">담당자</label><input placeholder="담당자" value={fWH.manager} onChange={e=>setFWH({...fWH,manager:e.target.value})}/></div>
+        </div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>{setMWH(false);setEWH(null);}}>취소</button><button className="btn-primary" onClick={handleWH}>{eWH?"수정":"등록"}</button></div>
+      </div></div>}
+
+      {/* 공정 모달 */}
+      {mPR&&<div className="modal-bg"><div className="modal">
+        <div className="modal-title">{ePR?"공정 수정":"공정 등록"}</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">공정코드</label><input placeholder="예: PR-006" value={fPR.code} onChange={e=>setFPR({...fPR,code:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">공정명</label><input placeholder="공정명" value={fPR.name} onChange={e=>setFPR({...fPR,name:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">순서</label><input type="number" placeholder="순서번호" value={fPR.order_no} onChange={e=>setFPR({...fPR,order_no:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">설비</label><input placeholder="설비명" value={fPR.machine} onChange={e=>setFPR({...fPR,machine:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">담당자</label><input placeholder="담당자" value={fPR.manager} onChange={e=>setFPR({...fPR,manager:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">비고</label><input placeholder="비고" value={fPR.note} onChange={e=>setFPR({...fPR,note:e.target.value})}/></div>
+        </div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>{setMPR(false);setEPR(null);}}>취소</button><button className="btn-primary" onClick={handlePR}>{ePR?"수정":"등록"}</button></div>
+      </div></div>}
+
+      {/* LOT 모달 */}
+      {mLot&&<div className="modal-bg"><div className="modal">
+        <div className="modal-title">{eLot?"LOT 수정":"LOT 등록"}</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">LOT 번호</label><input placeholder="예: LOT-20250101-001" value={fLot.lot_no} onChange={e=>setFLot({...fLot,lot_no:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">품목코드</label>
+            <input placeholder="코드 입력" value={fLot.item_code} list="lot-list" onChange={e=>{const it=items.find(i=>i.code===e.target.value);setFLot({...fLot,item_code:e.target.value,item_name:it?.name||""});}}/>
+            <datalist id="lot-list">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {fLot.item_code&&items.find(i=>i.code===fLot.item_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===fLot.item_code).name}</div>}
+          </div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">수량</label><input type="number" value={fLot.qty} onChange={e=>setFLot({...fLot,qty:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">창고</label><select value={fLot.wh_id} onChange={e=>setFLot({...fLot,wh_id:e.target.value})}><option value="">창고 선택</option>{whs.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">입고일</label><input type="date" value={fLot.recv} onChange={e=>setFLot({...fLot,recv:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">유효기한</label><input type="date" value={fLot.exp} onChange={e=>setFLot({...fLot,exp:e.target.value})}/></div>
+        </div>
+        <div className="form-row"><label className="form-label">공급업체</label><input placeholder="공급업체" value={fLot.supplier} onChange={e=>setFLot({...fLot,supplier:e.target.value})}/></div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>{setMLot(false);setELot(null);}}>취소</button><button className="btn-primary" onClick={handleLot}>{eLot?"수정":"등록"}</button></div>
+      </div></div>}
+
+      {/* 입고 예정 모달 */}
+      {mIn&&<div className="modal-bg"><div className="modal">
+        <div className="modal-title">{eIn?"입고 예정 수정":"입고 예정 등록"}</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">품목코드</label>
+            <input placeholder="코드 입력" value={fIn.item_code} list="in-list" onChange={e=>{const it=items.find(i=>i.code===e.target.value);setFIn({...fIn,item_code:e.target.value,item_name:it?.name||""}); }}/>
+            <datalist id="in-list">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {fIn.item_code&&items.find(i=>i.code===fIn.item_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===fIn.item_code).name}</div>}
+          </div>
+          <div className="form-row"><label className="form-label">수량</label><input type="number" value={fIn.qty} onChange={e=>setFIn({...fIn,qty:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">예정일</label><input type="date" value={fIn.planned_date} onChange={e=>setFIn({...fIn,planned_date:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">공급업체</label><input placeholder="공급업체" value={fIn.supplier} onChange={e=>setFIn({...fIn,supplier:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">창고</label><select value={fIn.wh_id} onChange={e=>setFIn({...fIn,wh_id:e.target.value})}><option value="">창고 선택</option>{whs.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+          <div className="form-row"><label className="form-label">LOT 번호</label><input placeholder="LOT (선택)" value={fIn.lot_no} onChange={e=>setFIn({...fIn,lot_no:e.target.value})}/></div>
+        </div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>{setMIn(false);setEIn(null);}}>취소</button><button className="btn-primary" onClick={handleIn}>{eIn?"수정":"등록"}</button></div>
+      </div></div>}
+
+      {/* 품목 모달 */}
+      {mItem&&<div className="modal-bg"><div className="modal">
+        <div className="modal-title">{eItem?"품목 수정":"기초품목 등록"}</div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">품목코드 *</label><input placeholder="예: RM-001" value={fItem.code} onChange={e=>setFItem({...fItem,code:e.target.value})} disabled={!!eItem}/></div>
+          <div className="form-row"><label className="form-label">품목명 *</label><input placeholder="품목명" value={fItem.name} onChange={e=>setFItem({...fItem,name:e.target.value})}/></div>
+        </div>
+        <div className="form-grid3">
+          <div className="form-row"><label className="form-label">분류 *</label><select value={fItem.category} onChange={e=>setFItem({...fItem,category:e.target.value})}><option>원자재</option><option>부자재</option><option>완제품</option><option>반제품</option></select></div>
+          <div className="form-row"><label className="form-label">단위 *</label><input placeholder="kg, 개, L" value={fItem.unit} onChange={e=>setFItem({...fItem,unit:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">보관위치</label><input placeholder="예: A-1" value={fItem.location} onChange={e=>setFItem({...fItem,location:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">규격</label><input placeholder="규격/사양" value={fItem.spec} onChange={e=>setFItem({...fItem,spec:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">제조사</label><input placeholder="제조사" value={fItem.maker} onChange={e=>setFItem({...fItem,maker:e.target.value})}/></div>
+        </div>
+        <div className="form-grid2">
+          <div className="form-row"><label className="form-label">단가 (원)</label><input type="number" value={fItem.price} onChange={e=>setFItem({...fItem,price:e.target.value})}/></div>
+          <div className="form-row"><label className="form-label">리드타임 (일)</label><input type="number" value={fItem.lead_time} onChange={e=>setFItem({...fItem,lead_time:e.target.value})}/></div>
+        </div>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end"}}><button className="btn" onClick={()=>{setMItem(false);setEItem(null);}}>취소</button><button className="btn-primary" onClick={handleItem}>{eItem?"수정":"등록"}</button></div>
+      </div></div>}
+
+      {toast&&<div className="toast">{toast}</div>}
+    </div>
+  );
+}
+
+ReactDOM.render(<App/>, document.getElementById("root"));
+</script>
+</body>
+</html>
