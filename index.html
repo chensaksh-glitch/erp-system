@@ -44,6 +44,7 @@
   .modal-bg { position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 1000; }
   .modal { background: #fff; border-radius: 12px; padding: 24px; width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.15); }
   .modal-lg { width: 720px; }
+  .modal-xl { width: 800px; }
   .modal-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; }
   .form-row { margin-bottom: 14px; }
   .form-label { font-size: 12px; color: #666; margin-bottom: 5px; display: block; font-weight: 500; }
@@ -73,6 +74,10 @@
   .toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
   .selected-row td { background: #f0f5ff !important; }
   input[type="checkbox"] { width: auto; cursor: pointer; }
+  .bom-mat-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .bom-mat-table th { padding: 7px 8px; background: #f5f5f5; color: #666; font-weight: 600; text-align: left; border-bottom: 1px solid #e5e5e5; }
+  .bom-mat-table td { padding: 5px 4px; border-bottom: 1px solid #f0f0f0; }
+  .bom-mat-table input { padding: 5px 8px; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -82,10 +87,11 @@
 const SUPABASE_URL = "https://bwxkeuizvhyggdkngraj.supabase.co";
 const SUPABASE_KEY = "sb_publishable_zBiSYJfZgt6Yrlafe1-YjA_Yt_Nv0P9";
 const TOTAL_DB_MB = 500;
+const EMPTY_MAT = {material_code:"",material_name:"",qty:"",unit:"",note:""};
 
 const downloadCSV = (filename, headers, rows) => {
-  const BOM = "\uFEFF";
-  const csv = BOM + [headers.join(","), ...rows.map(r => r.map(c => `"${String(c??"-").replace(/"/g,'""')}"`).join(","))].join("\n");
+  const BOM_MARK = "\uFEFF";
+  const csv = BOM_MARK + [headers.join(","), ...rows.map(r => r.map(c => `"${String(c??"-").replace(/"/g,'""')}"`).join(","))].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -93,18 +99,13 @@ const downloadCSV = (filename, headers, rows) => {
   a.click(); URL.revokeObjectURL(url);
 };
 
-const api = async (table, method = "GET", body = null, query = "") => {
+const api = async (table, method="GET", body=null, query="") => {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
     method,
-    headers: {
-      "apikey": SUPABASE_KEY,
-      "Authorization": `Bearer ${SUPABASE_KEY}`,
-      "Content-Type": "application/json",
-      "Prefer": "return=representation"
-    },
+    headers: { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/json", "Prefer": "return=representation" },
     body: body ? JSON.stringify(body) : null
   });
-  if (method === "DELETE" || res.status === 204) return null;
+  if (method==="DELETE" || res.status===204) return null;
   const data = await res.json();
   if (!res.ok) throw new Error(JSON.stringify(data));
   return data;
@@ -113,19 +114,25 @@ const api = async (table, method = "GET", body = null, query = "") => {
 const SC = { "대기":{bg:"#e6f1fb",color:"#185fa5"}, "진행중":{bg:"#faeeda",color:"#854f0b"}, "완료":{bg:"#eaf3de",color:"#3b6d11"}, "예정":{bg:"#e6f1fb",color:"#185fa5"}, "입고완료":{bg:"#eaf3de",color:"#3b6d11"} };
 const CAT = { "완제품":{bg:"#e6f1fb",color:"#185fa5"}, "원자재":{bg:"#eaf3de",color:"#3b6d11"}, "부자재":{bg:"#faeeda",color:"#854f0b"}, "반제품":{bg:"#f3e8fb",color:"#6b2fa0"} };
 const Badge = ({s}) => <span className="badge" style={{background:SC[s]?.bg||"#f0f0f0",color:SC[s]?.color||"#666"}}>{s}</span>;
-const CatBadge = ({c}) => <span className="cat-badge" style={{background:CAT[c]?.bg||"#f0f0f0",color:CAT[c]?.color||"#666"}}>{c}</span>;
+const CatBadge = ({c}) => <span className="cat-badge" style={{background:CAT[c]?.bg||"#f0f0f0",color:CAT[c]?.color||"#666"}}>{c||"-"}</span>;
 const calcMinutes = (s,e) => { if(!s||!e) return null; const [sh,sm]=s.split(":").map(Number),[eh,em]=e.split(":").map(Number),d=(eh*60+em)-(sh*60+sm); return d>0?d:null; };
 
-// 체크박스 훅
 const useSelection = () => {
   const [selected, setSelected] = React.useState([]);
-  const toggle = (id) => setSelected(p => p.includes(id) ? p.filter(x=>x!==id) : [...p,id]);
-  const toggleAll = (list) => setSelected(selected.length===list.length ? [] : list.map(x=>x.id));
+  const toggle = id => setSelected(p => p.includes(id)?p.filter(x=>x!==id):[...p,id]);
+  const toggleAll = list => setSelected(selected.length===list.length?[]:list.map(x=>x.id));
   const clear = () => setSelected([]);
-  const isSelected = (id) => selected.includes(id);
-  const isAllSelected = (list) => list.length>0 && selected.length===list.length;
+  const isSelected = id => selected.includes(id);
+  const isAllSelected = list => list.length>0 && selected.length===list.length;
   return {selected, toggle, toggleAll, clear, isSelected, isAllSelected};
 };
+
+const Toolbar = ({sel, onDelete, children}) => (
+  <div className="toolbar">
+    {children}
+    {sel && sel.selected.length>0 && <button className="btn-danger" onClick={onDelete}>🗑 선택 삭제 ({sel.selected.length})</button>}
+  </div>
+);
 
 function App() {
   const [menu, setMenu] = React.useState("dashboard");
@@ -137,28 +144,20 @@ function App() {
   const [processes, setProcesses] = React.useState([]);
   const [lots, setLots] = React.useState([]);
   const [incomingPlans, setIncomingPlans] = React.useState([]);
+  const [boms, setBoms] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [toast, setToast] = React.useState("");
   const [dbUsage, setDbUsage] = React.useState(0);
   const [expandedWO, setExpandedWO] = React.useState(null);
 
-  // 선택 상태
   const itemSel = useSelection();
   const woSel = useSelection();
   const whSel = useSelection();
   const prSel = useSelection();
   const lotSel = useSelection();
   const inSel = useSelection();
-
-  // 모달
-  const [boms, setBoms] = React.useState([]);
-  const [showBom, setShowBom] = React.useState(false);
-  const [editBom, setEditBom] = React.useState(null);
-  const [bomTab, setBomTab] = React.useState("전체");
-  const [bomSearch, setBomSearch] = React.useState("");
-  const defaultMaterials = [{material_code:"",material_name:"",qty:"",unit:"",note:""}];
-  const [bomForm, setBomForm] = React.useState({product_code:"",product_name:"",materials:defaultMaterials});
   const bomSel = useSelection();
+
   const [showIO, setShowIO] = React.useState(false);
   const [showWO, setShowWO] = React.useState(false);
   const [showWH, setShowWH] = React.useState(false);
@@ -166,27 +165,28 @@ function App() {
   const [showLot, setShowLot] = React.useState(false);
   const [showIncoming, setShowIncoming] = React.useState(false);
   const [showItem, setShowItem] = React.useState(false);
+  const [showBom, setShowBom] = React.useState(false);
   const [showWhStock, setShowWhStock] = React.useState(false);
   const [showProcessResult, setShowProcessResult] = React.useState(false);
   const [selectedWH, setSelectedWH] = React.useState(null);
   const [selectedProc, setSelectedProc] = React.useState(null);
 
-  // 편집 상태
   const [editItem, setEditItem] = React.useState(null);
   const [editWO, setEditWO] = React.useState(null);
   const [editWH, setEditWH] = React.useState(null);
   const [editPR, setEditPR] = React.useState(null);
   const [editLot, setEditLot] = React.useState(null);
   const [editIncoming, setEditIncoming] = React.useState(null);
+  const [editBom, setEditBom] = React.useState(null);
 
-  // 검색/필터
   const [whSearch, setWhSearch] = React.useState("");
   const [invTab, setInvTab] = React.useState("품목현황");
   const [itemTab, setItemTab] = React.useState("전체");
   const [searchItem, setSearchItem] = React.useState("");
+  const [bomTab, setBomTab] = React.useState("전체");
+  const [bomSearch, setBomSearch] = React.useState("");
   const [historyFilter, setHistoryFilter] = React.useState({category:"전체",type:"전체",keyword:""});
 
-  // 폼
   const [ioForm, setIOForm] = React.useState({type:"입고",code:"",qty:"",lot_no:"",warehouse_id:"",note:""});
   const [woForm, setWOForm] = React.useState({product:"",qty:"",planned:"",due:"",warehouse_id:"",selectedProcesses:[]});
   const [whForm, setWHForm] = React.useState({code:"",name:"",location:"",manager:"",note:""});
@@ -194,9 +194,11 @@ function App() {
   const [lotForm, setLotForm] = React.useState({lot_no:"",item_code:"",item_name:"",warehouse_id:"",qty:"",received_date:"",expiry_date:"",supplier:"",note:""});
   const [incomingForm, setIncomingForm] = React.useState({item_code:"",item_name:"",qty:"",planned_date:"",supplier:"",warehouse_id:"",lot_no:"",note:""});
   const [itemForm, setItemForm] = React.useState({code:"",name:"",category:"원자재",unit:"",stock:0,min_stock:0,location:"",spec:"",maker:"",price:0,lead_time:0,note:""});
+  const [bomProdForm, setBomProdForm] = React.useState({product_code:"",product_name:""});
+  const [bomMaterials, setBomMaterials] = React.useState([{...EMPTY_MAT}]);
   const [procResultForm, setProcResultForm] = React.useState({work_date:"",start_time:"",end_time:"",work_qty:"",defect_qty:"0",assignee:"",note:""});
 
-  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+  const showToast = msg => { setToast(msg); setTimeout(()=>setToast(""),2500); };
 
   const loadAll = async () => {
     try {
@@ -211,52 +213,33 @@ function App() {
         api("incoming_plan","GET",null,"?order=planned_date"),
         api("bom","GET",null,"?order=product_code"),
       ]);
-      setItems(i); setWorkOrders(w); setWoProcesses(wp); setHistory(h);
-      setWarehouses(wh); setProcesses(pr); setLots(lt); setIncomingPlans(ip); setBoms(bm);
-      const total = i.length*0.5+w.length*0.5+h.length*0.3+lt.length*0.4+ip.length*0.3+wh.length*0.2+pr.length*0.2+wp.length*0.3+bm.length*0.3;
+      setItems(i||[]); setWorkOrders(w||[]); setWoProcesses(wp||[]); setHistory(h||[]);
+      setWarehouses(wh||[]); setProcesses(pr||[]); setLots(lt||[]); setIncomingPlans(ip||[]); setBoms(bm||[]);
+      const total=(i||[]).length*0.5+(w||[]).length*0.5+(h||[]).length*0.3+(lt||[]).length*0.4+(ip||[]).length*0.3+(wh||[]).length*0.2+(pr||[]).length*0.2+(wp||[]).length*0.3+(bm||[]).length*0.3;
       setDbUsage(Math.max(0.01,total/1024).toFixed(3));
     } catch(e){alert("DB 연결 오류: "+e.message);}
     setLoading(false);
   };
   React.useEffect(()=>{loadAll();},[]);
 
-  const whName = (id) => warehouses.find(w=>w.id===id)?.name||"-";
-  const prName = (id) => processes.find(p=>p.id===id)?.name||"-";
+  const whName = id => warehouses.find(w=>w.id===id)?.name||"-";
+  const prName = id => processes.find(p=>p.id===id)?.name||"-";
   const lowStock = items.filter(i=>i.stock<i.min_stock);
   const usagePct = Math.min(100,(dbUsage/TOTAL_DB_MB*100)).toFixed(2);
   const usageColor = usagePct>80?"#e24b4a":usagePct>50?"#f0a500":"#3b9e3b";
-  const getWOProcesses = (woId) => woProcesses.filter(p=>p.wo_id===woId).sort((a,b)=>a.step_no-b.step_no);
-  const getCurrentStep = (woId) => { const steps=getWOProcesses(woId); return steps.find(s=>s.status==="진행중")||steps.find(s=>s.status==="대기"); };
+  const getWOProcesses = woId => woProcesses.filter(p=>p.wo_id===woId).sort((a,b)=>a.step_no-b.step_no);
+  const getCurrentStep = woId => { const steps=getWOProcesses(woId); return steps.find(s=>s.status==="진행중")||steps.find(s=>s.status==="대기"); };
   const filteredItems = items.filter(i=>(itemTab==="전체"||i.category===itemTab)&&(!searchItem||i.code.includes(searchItem)||i.name.includes(searchItem)));
 
-  // 일괄 삭제 함수
-  const bulkDelete = async (table, ids, key="id", afterClear) => {
-    if(ids.length===0) return alert("삭제할 항목을 선택해주세요.");
+  const bulkDelete = async (table, ids, afterClear, woIds=false) => {
+    if(!ids||ids.length===0) return alert("삭제할 항목을 선택해주세요.");
     if(!window.confirm(`선택한 ${ids.length}개 항목을 삭제하시겠습니까?`)) return;
     try {
-      for(const id of ids) await api(table,"DELETE",null,`?${key}=eq.${id}`);
-      afterClear(); await loadAll(); showToast(`✓ ${ids.length}개 삭제 완료`);
-    } catch(e){alert("오류: "+e.message);}
-  };
-
-  // 핸들러들
-  const handleBom = async () => {
-    if(!bomForm.product_code||!bomForm.product_name) return alert("제품코드와 제품명을 입력해주세요.");
-    const validMaterials = bomForm.materials.filter(m=>m.material_code&&m.qty);
-    if(validMaterials.length===0) return alert("자재를 최소 1개 이상 입력해주세요.");
-    try {
-      if(editBom){
-        await api("bom","PATCH",{...validMaterials[0],product_code:bomForm.product_code,product_name:bomForm.product_name,qty:parseFloat(validMaterials[0].qty)},`?id=eq.${editBom.id}`);
-        showToast("✓ BOM 수정 완료");
-      } else {
-        for(const m of validMaterials){
-          const it=items.find(i=>i.code===m.material_code);
-          await api("bom","POST",{product_code:bomForm.product_code,product_name:bomForm.product_name,material_code:m.material_code,material_name:m.material_name||it?.name||"",qty:parseFloat(m.qty),unit:m.unit||it?.unit||"",note:m.note||""});
-        }
-        showToast(`✓ BOM ${validMaterials.length}개 자재 등록 완료`);
+      for(const id of ids){
+        if(woIds){ await api("work_order_processes","DELETE",null,`?wo_id=eq.${id}`); }
+        await api(table,"DELETE",null,`?id=eq.${id}`);
       }
-      await loadAll(); setShowBom(false); setEditBom(null);
-      setBomForm({product_code:"",product_name:"",materials:defaultMaterials});
+      afterClear(); await loadAll(); showToast(`✓ ${ids.length}개 삭제 완료`);
     } catch(e){alert("오류: "+e.message);}
   };
 
@@ -283,6 +266,26 @@ function App() {
     } catch(e){alert("오류: "+e.message);}
   };
 
+  const handleBom = async () => {
+    if(!bomProdForm.product_code||!bomProdForm.product_name) return alert("제품코드와 제품명을 입력해주세요.");
+    const validMats = bomMaterials.filter(m=>m.material_code&&m.qty);
+    if(validMats.length===0) return alert("자재를 최소 1개 이상 입력해주세요.");
+    try {
+      if(editBom){
+        await api("bom","PATCH",{product_code:bomProdForm.product_code,product_name:bomProdForm.product_name,material_code:validMats[0].material_code,material_name:validMats[0].material_name,qty:parseFloat(validMats[0].qty),unit:validMats[0].unit||"",note:validMats[0].note||""},`?id=eq.${editBom.id}`);
+        showToast("✓ BOM 수정 완료");
+      } else {
+        for(const m of validMats){
+          const it=items.find(i=>i.code===m.material_code);
+          await api("bom","POST",{product_code:bomProdForm.product_code,product_name:bomProdForm.product_name,material_code:m.material_code,material_name:m.material_name||it?.name||"",qty:parseFloat(m.qty),unit:m.unit||it?.unit||"",note:m.note||""});
+        }
+        showToast(`✓ BOM ${validMats.length}개 자재 등록 완료`);
+      }
+      await loadAll(); setShowBom(false); setEditBom(null);
+      setBomProdForm({product_code:"",product_name:""}); setBomMaterials([{...EMPTY_MAT}]);
+    } catch(e){alert("오류: "+e.message);}
+  };
+
   const handleWO = async () => {
     if(!woForm.product||!woForm.qty) return alert("제품명, 수량을 입력해주세요.");
     try {
@@ -300,7 +303,7 @@ function App() {
     } catch(e){alert("오류: "+e.message);}
   };
 
-  const handleStartWO = async (wo) => {
+  const handleStartWO = async wo => {
     try {
       await api("work_orders","PATCH",{status:"진행중"},`?id=eq.${wo.id}`);
       const steps=getWOProcesses(wo.id);
@@ -311,10 +314,9 @@ function App() {
 
   const handleProcResult = async () => {
     const minutes=calcMinutes(procResultForm.start_time,procResultForm.end_time);
-    const workQty=parseInt(procResultForm.work_qty)||0;
-    const defectQty=parseInt(procResultForm.defect_qty)||0;
+    const wq=parseInt(procResultForm.work_qty)||0, dq=parseInt(procResultForm.defect_qty)||0;
     try {
-      await api("work_order_processes","PATCH",{status:"완료",work_date:procResultForm.work_date,start_time:procResultForm.start_time,end_time:procResultForm.end_time,work_minutes:minutes,work_qty:workQty,defect_qty:defectQty,good_qty:workQty-defectQty,assignee:procResultForm.assignee,note:procResultForm.note},`?id=eq.${selectedProc.id}`);
+      await api("work_order_processes","PATCH",{status:"완료",work_date:procResultForm.work_date,start_time:procResultForm.start_time,end_time:procResultForm.end_time,work_minutes:minutes,work_qty:wq,defect_qty:dq,good_qty:wq-dq,assignee:procResultForm.assignee,note:procResultForm.note},`?id=eq.${selectedProc.id}`);
       const steps=getWOProcesses(selectedProc.wo_id);
       const nextStep=steps.find(s=>s.step_no===selectedProc.step_no+1);
       if(nextStep){ await api("work_order_processes","PATCH",{status:"진행중"},`?id=eq.${nextStep.id}`); showToast("✓ 공정 완료 → 다음 공정 시작"); }
@@ -355,7 +357,7 @@ function App() {
     } catch(e){alert("오류: "+e.message);}
   };
 
-  const handleIncomingComplete = async (plan) => {
+  const handleIncomingComplete = async plan => {
     try {
       await api("incoming_plan","PATCH",{status:"입고완료"},`?id=eq.${plan.id}`);
       const item=items.find(i=>i.code===plan.item_code);
@@ -365,6 +367,16 @@ function App() {
     } catch(e){alert("오류: "+e.message);}
   };
 
+  const updateMat = (idx, field, val) => {
+    const mats = [...bomMaterials];
+    mats[idx] = {...mats[idx], [field]: val};
+    if(field==="material_code"){
+      const it=items.find(i=>i.code===val);
+      if(it){ mats[idx].material_name=it.name; mats[idx].unit=it.unit||""; }
+    }
+    setBomMaterials(mats);
+  };
+
   const navItems = [
     {section:"메인"},{key:"dashboard",label:"대시보드",icon:"📊"},
     {section:"기준정보"},{key:"itemmaster",label:"기초품목 등록",icon:"📝"},{key:"bom",label:"BOM 관리",icon:"🔧"},{key:"warehouse",label:"창고 관리",icon:"🏭"},{key:"process",label:"공정 관리",icon:"⚙️"},
@@ -372,15 +384,18 @@ function App() {
     {section:"생산"},{key:"workorder",label:"작업지시서",icon:"📋"},{key:"production",label:"생산 실적",icon:"📈"},
   ];
 
-  // 툴바 컴포넌트
-  const Toolbar = ({sel, onDelete, children}) => (
-    <div className="toolbar">
-      {children}
-      {sel.selected.length>0 && <button className="btn-danger" onClick={onDelete}>🗑 선택 삭제 ({sel.selected.length})</button>}
-    </div>
-  );
-
   if(loading) return <div className="loading">불러오는 중...</div>;
+
+  // BOM 그룹핑
+  const bomFiltered = boms.filter(b=>{
+    const it=items.find(i=>i.code===b.product_code);
+    const matchTab=bomTab==="전체"||(it?.category===bomTab);
+    const matchSearch=!bomSearch||(b.product_code||"").includes(bomSearch)||(b.product_name||"").includes(bomSearch);
+    return matchTab&&matchSearch;
+  });
+  const bomGrouped = {};
+  bomFiltered.forEach(b=>{ if(!bomGrouped[b.product_code]) bomGrouped[b.product_code]={code:b.product_code,name:b.product_name,rows:[]}; bomGrouped[b.product_code].rows.push(b); });
+  const bomGroups = Object.values(bomGrouped);
 
   return (
     <div className="wrap">
@@ -419,7 +434,7 @@ function App() {
               </div>
             </div>
           </div>
-          {lowStock.length>0 && <div className="section"><div className="section-head"><span className="section-title warn">⚠️ 재고 부족 알림</span></div>
+          {lowStock.length>0&&<div className="section"><div className="section-head"><span className="section-title warn">⚠️ 재고 부족 알림</span></div>
             <table><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>현재고</th><th>최소재고</th><th>단위</th></tr></thead>
             <tbody>{lowStock.map(i=><tr key={i.id}><td className="mono">{i.code}</td><td>{i.name}</td><td><CatBadge c={i.category}/></td><td style={{color:"#a32d2d",fontWeight:700}}>{i.stock}</td><td>{i.min_stock}</td><td>{i.unit}</td></tr>)}</tbody>
           </table></div>}
@@ -434,64 +449,51 @@ function App() {
         {menu==="bom" && <>
           <div className="row-between">
             <div className="page-title">BOM 관리</div>
-            <button className="btn-primary" onClick={()=>{setEditBom(null);setBomForm({product_code:"",product_name:"",material_code:"",material_name:"",qty:"",unit:"",note:""});setShowBom(true);}}>+ BOM 등록</button>
+            <button className="btn-primary" onClick={()=>{setEditBom(null);setBomProdForm({product_code:"",product_name:""});setBomMaterials([{...EMPTY_MAT}]);setShowBom(true);}}>+ BOM 등록</button>
           </div>
-          <Toolbar sel={bomSel} onDelete={()=>bulkDelete("bom",bomSel.selected,undefined,bomSel.clear)}>
+          <Toolbar sel={bomSel} onDelete={()=>bulkDelete("bom",bomSel.selected,bomSel.clear)}>
             <div className="tab-bar" style={{marginBottom:0}}>{["전체","완제품","반제품"].map(t=><div key={t} className={`tab${bomTab===t?" active":""}`} onClick={()=>setBomTab(t)}>{t}</div>)}</div>
             <input style={{width:"200px",padding:"7px 12px"}} placeholder="제품코드/제품명 검색" value={bomSearch} onChange={e=>setBomSearch(e.target.value)}/>
             <button className="btn" onClick={()=>downloadCSV("BOM",["제품코드","제품명","자재코드","자재명","소요량","단위","비고"],boms.map(b=>[b.product_code,b.product_name,b.material_code,b.material_name,b.qty,b.unit,b.note]))}>📥 엑셀</button>
           </Toolbar>
-
-          {/* 제품별 그룹 표시 */}
-          {(()=>{
-            const filtered = boms.filter(b=>{
-              const item = items.find(i=>i.code===b.product_code);
-              const matchTab = bomTab==="전체"||(item?.category===bomTab);
-              const matchSearch = !bomSearch||b.product_code.includes(bomSearch)||b.product_name.includes(bomSearch);
-              return matchTab && matchSearch;
-            });
-            const grouped = {};
-            filtered.forEach(b=>{
-              if(!grouped[b.product_code]) grouped[b.product_code]={code:b.product_code,name:b.product_name,items:[]};
-              grouped[b.product_code].items.push(b);
-            });
-            const groups = Object.values(grouped);
-            return groups.length===0?<div className="section"><div className="empty">등록된 BOM이 없습니다</div></div>:groups.map(g=>{
-              const prodItem = items.find(i=>i.code===g.code);
-              return <div key={g.code} className="section" style={{marginBottom:"16px"}}>
-                <div className="section-head">
-                  <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
-                    <CatBadge c={prodItem?.category||"완제품"}/>
-                    <span className="section-title">{g.name}</span>
-                    <span className="mono" style={{color:"#888",fontSize:"12px"}}>{g.code}</span>
+          {bomGroups.length===0
+            ? <div className="section"><div className="empty">등록된 BOM이 없습니다</div></div>
+            : bomGroups.map(g=>{
+                const prodItem=items.find(i=>i.code===g.code);
+                return <div key={g.code} className="section" style={{marginBottom:"16px"}}>
+                  <div className="section-head">
+                    <div style={{display:"flex",alignItems:"center",gap:"10px"}}>
+                      <CatBadge c={prodItem?.category||"완제품"}/>
+                      <span className="section-title">{g.name}</span>
+                      <span className="mono" style={{color:"#888",fontSize:"12px"}}>{g.code}</span>
+                    </div>
+                    <span style={{fontSize:"12px",color:"#888"}}>{g.rows.length}개 자재</span>
                   </div>
-                  <span style={{fontSize:"12px",color:"#888"}}>{g.items.length}개 자재</span>
-                </div>
-                <table>
-                  <thead><tr>
-                    <th style={{width:"40px"}}><input type="checkbox" checked={g.items.every(b=>bomSel.isSelected(b.id))} onChange={()=>{const ids=g.items.map(b=>b.id);const allSelected=ids.every(id=>bomSel.selected.includes(id));ids.forEach(id=>{if(allSelected&&bomSel.isSelected(id))bomSel.toggle(id);else if(!allSelected&&!bomSel.isSelected(id))bomSel.toggle(id);});}}/></th>
-                    <th>자재코드</th><th>자재명</th><th>분류</th><th>소요량</th><th>단위</th><th>비고</th>
-                  </tr></thead>
-                  <tbody>{g.items.map(b=>{
-                    const matItem = items.find(i=>i.code===b.material_code);
-                    return <tr key={b.id} className={bomSel.isSelected(b.id)?"selected-row":""}>
-                      <td><input type="checkbox" checked={bomSel.isSelected(b.id)} onChange={()=>bomSel.toggle(b.id)}/></td>
-                      <td className="mono">{b.material_code}</td>
-                      <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-                        <span>{b.material_name}</span>
-                        <button className="btn-sm" onClick={()=>{setEditBom(b);setBomForm({product_code:b.product_code,product_name:b.product_name,material_code:b.material_code,material_name:b.material_name,qty:b.qty,unit:b.unit||"",note:b.note||""});setShowBom(true);}}>수정</button>
-                        <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제하시겠습니까?"))api("bom","DELETE",null,`?id=eq.${b.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
-                      </div></td>
-                      <td><CatBadge c={matItem?.category||"-"}/></td>
-                      <td style={{fontWeight:600}}>{b.qty}</td>
-                      <td>{b.unit||matItem?.unit||"-"}</td>
-                      <td style={{color:"#888"}}>{b.note||"-"}</td>
-                    </tr>;
-                  })}</tbody>
-                </table>
-              </div>;
-            });
-          })()}
+                  <table>
+                    <thead><tr>
+                      <th style={{width:"40px"}}><input type="checkbox" checked={g.rows.every(b=>bomSel.isSelected(b.id))} onChange={()=>{const ids=g.rows.map(b=>b.id);const all=ids.every(id=>bomSel.selected.includes(id));ids.forEach(id=>{if(all&&bomSel.isSelected(id))bomSel.toggle(id);else if(!all&&!bomSel.isSelected(id))bomSel.toggle(id);}); }}/></th>
+                      <th>자재코드</th><th>자재명</th><th>분류</th><th>소요량</th><th>단위</th><th>비고</th>
+                    </tr></thead>
+                    <tbody>{g.rows.map(b=>{
+                      const matItem=items.find(i=>i.code===b.material_code);
+                      return <tr key={b.id} className={bomSel.isSelected(b.id)?"selected-row":""}>
+                        <td><input type="checkbox" checked={bomSel.isSelected(b.id)} onChange={()=>bomSel.toggle(b.id)}/></td>
+                        <td className="mono">{b.material_code}</td>
+                        <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}>
+                          <span>{b.material_name}</span>
+                          <button className="btn-sm" onClick={()=>{setEditBom(b);setBomProdForm({product_code:b.product_code,product_name:b.product_name});setBomMaterials([{material_code:b.material_code,material_name:b.material_name,qty:b.qty,unit:b.unit||"",note:b.note||""}]);setShowBom(true);}}>수정</button>
+                          <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제하시겠습니까?"))api("bom","DELETE",null,`?id=eq.${b.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
+                        </div></td>
+                        <td><CatBadge c={matItem?.category}/></td>
+                        <td style={{fontWeight:600}}>{b.qty}</td>
+                        <td>{b.unit||matItem?.unit||"-"}</td>
+                        <td style={{color:"#888"}}>{b.note||"-"}</td>
+                      </tr>;
+                    })}</tbody>
+                  </table>
+                </div>;
+              })
+          }
         </>}
 
         {/* 기초품목 */}
@@ -500,7 +502,7 @@ function App() {
             <div className="page-title">기초품목 등록</div>
             <button className="btn-primary" onClick={()=>{setEditItem(null);setItemForm({code:"",name:"",category:"원자재",unit:"",stock:0,min_stock:0,location:"",spec:"",maker:"",price:0,lead_time:0,note:""});setShowItem(true);}}>+ 품목 등록</button>
           </div>
-          <Toolbar sel={itemSel} onDelete={()=>bulkDelete("items",itemSel.selected,undefined,itemSel.clear)}>
+          <Toolbar sel={itemSel} onDelete={()=>bulkDelete("items",itemSel.selected,itemSel.clear)}>
             <div className="tab-bar" style={{marginBottom:0}}>{["전체","원자재","부자재","완제품","반제품"].map(t=><div key={t} className={`tab${itemTab===t?" active":""}`} onClick={()=>setItemTab(t)}>{t}</div>)}</div>
             <input style={{width:"200px",padding:"7px 12px"}} placeholder="코드/품목명 검색" value={searchItem} onChange={e=>setSearchItem(e.target.value)}/>
             <button className="btn" onClick={()=>downloadCSV("기초품목",["품목코드","품목명","분류","규격","단위","단가","제조사","리드타임","위치"],filteredItems.map(i=>[i.code,i.name,i.category,i.spec,i.unit,i.price,i.maker,i.lead_time,i.location]))}>📥 엑셀</button>
@@ -513,18 +515,14 @@ function App() {
             <tbody>{filteredItems.length===0?<tr><td colSpan="10" className="empty">등록된 품목이 없습니다</td></tr>:filteredItems.map(i=><tr key={i.id} className={itemSel.isSelected(i.id)?"selected-row":""}>
               <td><input type="checkbox" checked={itemSel.isSelected(i.id)} onChange={()=>itemSel.toggle(i.id)}/></td>
               <td className="mono" style={{fontWeight:600}}>{i.code}</td>
-              <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-                <span>{i.name}</span>
+              <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span>{i.name}</span>
                 <button className="btn-sm" onClick={()=>{setEditItem(i);setItemForm({code:i.code,name:i.name,category:i.category,unit:i.unit,stock:i.stock,min_stock:i.min_stock,location:i.location||"",spec:i.spec||"",maker:i.maker||"",price:i.price||0,lead_time:i.lead_time||0,note:i.note||""});setShowItem(true);}}>수정</button>
-                <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제하시겠습니까?"))api("items","DELETE",null,`?id=eq.${i.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
+                <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제?"))api("items","DELETE",null,`?id=eq.${i.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
               </div></td>
               <td><CatBadge c={i.category}/></td>
-              <td style={{color:"#888",fontSize:"12px"}}>{i.spec||"-"}</td>
-              <td>{i.unit}</td>
-              <td>{i.price?i.price.toLocaleString()+"원":"-"}</td>
-              <td>{i.maker||"-"}</td>
-              <td>{i.lead_time?i.lead_time+"일":"-"}</td>
-              <td>{i.location||"-"}</td>
+              <td style={{color:"#888",fontSize:"12px"}}>{i.spec||"-"}</td><td>{i.unit}</td>
+              <td>{i.price?i.price.toLocaleString()+"원":"-"}</td><td>{i.maker||"-"}</td>
+              <td>{i.lead_time?i.lead_time+"일":"-"}</td><td>{i.location||"-"}</td>
             </tr>)}</tbody></table>
           </div>
         </>}
@@ -534,46 +532,39 @@ function App() {
           <div className="row-between">
             <div className="page-title">재고 관리</div>
             <div style={{display:"flex",gap:"8px"}}>
-              <button className="btn" onClick={()=>{if(invTab==="품목현황")downloadCSV("재고현황",["품목코드","품목명","분류","현재고","최소재고","단위","위치","상태"],items.map(i=>[i.code,i.name,i.category,i.stock,i.min_stock,i.unit,i.location,i.stock<i.min_stock?"부족":"정상"]));else if(invTab==="입출고이력")downloadCSV("입출고이력",["날짜","구분","품목코드","품목명","수량","LOT","창고","비고"],history.map(h=>[h.date,h.type,h.code,h.name,h.qty,h.lot_no,whName(h.warehouse_id),h.note]));else downloadCSV("창고별재고",["창고명","위치","담당자"],warehouses.map(w=>[w.name,w.location,w.manager]));}}>📥 엑셀</button>
+              <button className="btn" onClick={()=>{if(invTab==="품목현황")downloadCSV("재고현황",["품목코드","품목명","분류","현재고","최소재고","단위","위치","상태"],items.map(i=>[i.code,i.name,i.category,i.stock,i.min_stock,i.unit,i.location,i.stock<i.min_stock?"부족":"정상"]));else if(invTab==="입출고이력")downloadCSV("입출고이력",["날짜","구분","품목코드","품목명","수량","LOT","창고"],history.map(h=>[h.date,h.type,h.code,h.name,h.qty,h.lot_no,whName(h.warehouse_id)]));else downloadCSV("창고별재고",["창고명","위치","담당자"],warehouses.map(w=>[w.name,w.location,w.manager]));}}>📥 엑셀</button>
               <button className="btn-primary" onClick={()=>setShowIO(true)}>+ 입출고 처리</button>
             </div>
           </div>
           <div className="tab-bar">{["품목현황","창고별재고","입출고이력"].map(t=><div key={t} className={`tab${invTab===t?" active":""}`} onClick={()=>setInvTab(t)}>{t}</div>)}</div>
-          {invTab==="품목현황" && <div className="section"><table><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>현재고</th><th>최소재고</th><th>단위</th><th>위치</th><th>상태</th></tr></thead>
+          {invTab==="품목현황"&&<div className="section"><table><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>현재고</th><th>최소재고</th><th>단위</th><th>위치</th><th>상태</th></tr></thead>
             <tbody>{items.map(i=><tr key={i.id}><td className="mono">{i.code}</td><td>{i.name}</td><td><CatBadge c={i.category}/></td><td style={{fontWeight:700,color:i.stock<i.min_stock?"#a32d2d":"#222"}}>{i.stock?.toLocaleString()}</td><td>{i.min_stock?.toLocaleString()}</td><td>{i.unit}</td><td>{i.location}</td><td><span className="badge" style={{background:i.stock<i.min_stock?"#fcebeb":"#eaf3de",color:i.stock<i.min_stock?"#a32d2d":"#3b6d11"}}>{i.stock<i.min_stock?"부족":"정상"}</span></td></tr>)}</tbody>
           </table></div>}
-          {invTab==="창고별재고" && <>
-            {warehouses.map(w=>{
-              const wh=history.filter(h=>h.warehouse_id===w.id);
-              const sm={};
-              wh.forEach(h=>{if(!sm[h.code])sm[h.code]={code:h.code,name:h.name,qty:0};sm[h.code].qty+=h.type==="입고"?h.qty:-h.qty;});
-              const sl=Object.values(sm).filter(s=>s.qty>0);
-              return <div key={w.id} className="section">
-                <div className="section-head"><span className="section-title">🏭 {w.name} <span style={{fontSize:"12px",color:"#888",fontWeight:400}}>· {w.location} · {w.manager}</span></span><span style={{fontSize:"12px",color:"#185fa5",fontWeight:600}}>{sl.length}개 품목</span></div>
-                {sl.length===0?<div className="empty">재고 없음</div>:<table><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>규격</th><th>단위</th><th>현재고</th></tr></thead>
-                <tbody>{sl.map(s=>{const it=items.find(i=>i.code===s.code);return <tr key={s.code}><td className="mono">{s.code}</td><td>{s.name}</td><td><CatBadge c={it?.category}/></td><td style={{color:"#888",fontSize:"12px"}}>{it?.spec||"-"}</td><td>{it?.unit||"-"}</td><td style={{fontWeight:700,color:"#185fa5"}}>{s.qty?.toLocaleString()}</td></tr>;})}</tbody></table>}
-              </div>;
-            })}
-          </>}
-          {invTab==="입출고이력" && <>
+          {invTab==="창고별재고"&&<>{warehouses.map(w=>{
+            const wh=history.filter(h=>h.warehouse_id===w.id);
+            const sm={};wh.forEach(h=>{if(!sm[h.code])sm[h.code]={code:h.code,name:h.name,qty:0};sm[h.code].qty+=h.type==="입고"?h.qty:-h.qty;});
+            const sl=Object.values(sm).filter(s=>s.qty>0);
+            return <div key={w.id} className="section"><div className="section-head"><span className="section-title">🏭 {w.name} <span style={{fontSize:"12px",color:"#888",fontWeight:400}}>· {w.location} · {w.manager}</span></span><span style={{fontSize:"12px",color:"#185fa5",fontWeight:600}}>{sl.length}개 품목</span></div>
+              {sl.length===0?<div className="empty">재고 없음</div>:<table><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>규격</th><th>단위</th><th>현재고</th></tr></thead>
+              <tbody>{sl.map(s=>{const it=items.find(i=>i.code===s.code);return<tr key={s.code}><td className="mono">{s.code}</td><td>{s.name}</td><td><CatBadge c={it?.category}/></td><td style={{color:"#888",fontSize:"12px"}}>{it?.spec||"-"}</td><td>{it?.unit||"-"}</td><td style={{fontWeight:700,color:"#185fa5"}}>{s.qty?.toLocaleString()}</td></tr>;})}</tbody></table>}
+            </div>;
+          })}</>}
+          {invTab==="입출고이력"&&<>
             <div className="toolbar">
               <div className="tab-bar" style={{marginBottom:0}}>{["전체","입고","출고"].map(t=><div key={t} className={`tab${historyFilter.type===t?" active":""}`} onClick={()=>setHistoryFilter({...historyFilter,type:t})}>{t}</div>)}</div>
               <div className="tab-bar" style={{marginBottom:0}}>{["전체","원자재","부자재","완제품","반제품"].map(t=><div key={t} className={`tab${historyFilter.category===t?" active":""}`} onClick={()=>setHistoryFilter({...historyFilter,category:t})}>{t}</div>)}</div>
               <input style={{width:"180px",padding:"7px 12px"}} placeholder="품목코드/품목명 검색" value={historyFilter.keyword} onChange={e=>setHistoryFilter({...historyFilter,keyword:e.target.value})}/>
             </div>
             <div className="section"><table><thead><tr><th>날짜</th><th>구분</th><th>품목코드</th><th>품목명</th><th>분류</th><th>수량</th><th>LOT</th><th>창고</th><th>비고</th></tr></thead>
-            <tbody>{history.filter(h=>{const it=items.find(i=>i.code===h.code);return(historyFilter.type==="전체"||h.type===historyFilter.type)&&(historyFilter.category==="전체"||it?.category===historyFilter.category)&&(!historyFilter.keyword||h.code.includes(historyFilter.keyword)||h.name.includes(historyFilter.keyword));}).map(h=>{const it=items.find(i=>i.code===h.code);return <tr key={h.id}><td>{h.date}</td><td><span className="badge" style={{background:h.type==="입고"?"#e6f1fb":"#faeeda",color:h.type==="입고"?"#185fa5":"#854f0b"}}>{h.type}</span></td><td className="mono">{h.code}</td><td>{h.name}</td><td><CatBadge c={it?.category}/></td><td>{h.qty?.toLocaleString()}</td><td className="mono">{h.lot_no||"-"}</td><td>{whName(h.warehouse_id)}</td><td style={{color:"#888"}}>{h.note}</td></tr>;})}</tbody>
-          </table></div>
+            <tbody>{history.filter(h=>{const it=items.find(i=>i.code===h.code);return(historyFilter.type==="전체"||h.type===historyFilter.type)&&(historyFilter.category==="전체"||it?.category===historyFilter.category)&&(!historyFilter.keyword||h.code.includes(historyFilter.keyword)||h.name.includes(historyFilter.keyword));}).map(h=>{const it=items.find(i=>i.code===h.code);return<tr key={h.id}><td>{h.date}</td><td><span className="badge" style={{background:h.type==="입고"?"#e6f1fb":"#faeeda",color:h.type==="입고"?"#185fa5":"#854f0b"}}>{h.type}</span></td><td className="mono">{h.code}</td><td>{h.name}</td><td><CatBadge c={it?.category}/></td><td>{h.qty?.toLocaleString()}</td><td className="mono">{h.lot_no||"-"}</td><td>{whName(h.warehouse_id)}</td><td style={{color:"#888"}}>{h.note}</td></tr>;})}</tbody>
+            </table></div>
           </>}
         </>}
 
         {/* LOT 관리 */}
-        {menu==="lot" && <>
-          <div className="row-between">
-            <div className="page-title">LOT 관리</div>
-            <button className="btn-primary" onClick={()=>{setEditLot(null);setLotForm({lot_no:"",item_code:"",item_name:"",warehouse_id:"",qty:"",received_date:"",expiry_date:"",supplier:"",note:""});setShowLot(true);}}>+ LOT 등록</button>
-          </div>
-          <Toolbar sel={lotSel} onDelete={()=>bulkDelete("lots",lotSel.selected,undefined,lotSel.clear)}>
+        {menu==="lot"&&<>
+          <div className="row-between"><div className="page-title">LOT 관리</div><button className="btn-primary" onClick={()=>{setEditLot(null);setLotForm({lot_no:"",item_code:"",item_name:"",warehouse_id:"",qty:"",received_date:"",expiry_date:"",supplier:"",note:""});setShowLot(true);}}>+ LOT 등록</button></div>
+          <Toolbar sel={lotSel} onDelete={()=>bulkDelete("lots",lotSel.selected,lotSel.clear)}>
             <button className="btn" onClick={()=>downloadCSV("LOT현황",["LOT번호","품목코드","품목명","창고","입고수량","잔여수량","입고일","유효기한","공급업체"],lots.map(l=>[l.lot_no,l.item_code,l.item_name,whName(l.warehouse_id),l.qty,l.remaining_qty,l.received_date,l.expiry_date,l.supplier]))}>📥 엑셀</button>
           </Toolbar>
           <div className="section"><table><thead><tr>
@@ -585,7 +576,7 @@ function App() {
             <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}>
               <span className="mono" style={{fontWeight:600}}>{l.lot_no}</span>
               <button className="btn-sm" onClick={()=>{setEditLot(l);setLotForm({lot_no:l.lot_no,item_code:l.item_code,item_name:l.item_name,warehouse_id:l.warehouse_id||"",qty:l.qty,received_date:l.received_date||"",expiry_date:l.expiry_date||"",supplier:l.supplier||"",note:l.note||""});setShowLot(true);}}>수정</button>
-              <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제하시겠습니까?"))api("lots","DELETE",null,`?id=eq.${l.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
+              <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제?"))api("lots","DELETE",null,`?id=eq.${l.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
             </div></td>
             <td className="mono">{l.item_code}</td><td>{l.item_name}</td><td>{whName(l.warehouse_id)}</td>
             <td>{l.qty?.toLocaleString()}</td><td style={{fontWeight:700,color:l.remaining_qty===0?"#a32d2d":"#3b6d11"}}>{l.remaining_qty?.toLocaleString()}</td>
@@ -594,12 +585,9 @@ function App() {
         </>}
 
         {/* 입고 예정 */}
-        {menu==="incoming" && <>
-          <div className="row-between">
-            <div className="page-title">입고 예정</div>
-            <button className="btn-primary" onClick={()=>{setEditIncoming(null);setIncomingForm({item_code:"",item_name:"",qty:"",planned_date:"",supplier:"",warehouse_id:"",lot_no:"",note:""});setShowIncoming(true);}}>+ 입고 예정 등록</button>
-          </div>
-          <Toolbar sel={inSel} onDelete={()=>bulkDelete("incoming_plan",inSel.selected,undefined,inSel.clear)}>
+        {menu==="incoming"&&<>
+          <div className="row-between"><div className="page-title">입고 예정</div><button className="btn-primary" onClick={()=>{setEditIncoming(null);setIncomingForm({item_code:"",item_name:"",qty:"",planned_date:"",supplier:"",warehouse_id:"",lot_no:"",note:""});setShowIncoming(true);}}>+ 입고 예정 등록</button></div>
+          <Toolbar sel={inSel} onDelete={()=>bulkDelete("incoming_plan",inSel.selected,inSel.clear)}>
             <button className="btn" onClick={()=>downloadCSV("입고예정",["품목코드","품목명","수량","예정일","공급업체","창고","LOT","상태"],incomingPlans.map(p=>[p.item_code,p.item_name,p.qty,p.planned_date,p.supplier,whName(p.warehouse_id),p.lot_no,p.status]))}>📥 엑셀</button>
           </Toolbar>
           <div className="section"><table><thead><tr>
@@ -609,10 +597,9 @@ function App() {
           <tbody>{incomingPlans.length===0?<tr><td colSpan="10" className="empty">등록된 입고 예정이 없습니다</td></tr>:incomingPlans.map(p=><tr key={p.id} className={inSel.isSelected(p.id)?"selected-row":""}>
             <td><input type="checkbox" checked={inSel.isSelected(p.id)} onChange={()=>inSel.toggle(p.id)}/></td>
             <td className="mono">{p.item_code}</td>
-            <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-              <span>{p.item_name}</span>
+            <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span>{p.item_name}</span>
               {p.status==="예정"&&<><button className="btn-sm" onClick={()=>{setEditIncoming(p);setIncomingForm({item_code:p.item_code,item_name:p.item_name,qty:p.qty,planned_date:p.planned_date||"",supplier:p.supplier||"",warehouse_id:p.warehouse_id||"",lot_no:p.lot_no||"",note:p.note||""});setShowIncoming(true);}}>수정</button>
-              <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제하시겠습니까?"))api("incoming_plan","DELETE",null,`?id=eq.${p.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button></>}
+              <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제?"))api("incoming_plan","DELETE",null,`?id=eq.${p.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button></>}
             </div></td>
             <td>{p.qty?.toLocaleString()}</td><td>{p.planned_date}</td><td>{p.supplier}</td>
             <td>{whName(p.warehouse_id)}</td><td className="mono">{p.lot_no||"-"}</td><td><Badge s={p.status}/></td>
@@ -621,128 +608,102 @@ function App() {
         </>}
 
         {/* 작업지시서 */}
-        {menu==="workorder" && <>
-          <div className="row-between">
-            <div className="page-title">작업지시서</div>
-            <button className="btn-primary" onClick={()=>{setEditWO(null);setWOForm({product:"",qty:"",planned:"",due:"",warehouse_id:"",selectedProcesses:[]});setShowWO(true);}}>+ 작업지시 생성</button>
-          </div>
-          <Toolbar sel={woSel} onDelete={async()=>{
-            if(woSel.selected.length===0) return alert("삭제할 항목을 선택해주세요.");
-            if(!window.confirm(`선택한 ${woSel.selected.length}개 작업지시를 삭제하시겠습니까?`)) return;
-            try {
-              for(const id of woSel.selected){
-                await api("work_order_processes","DELETE",null,`?wo_id=eq.${id}`);
-                await api("work_orders","DELETE",null,`?id=eq.${id}`);
-              }
-              woSel.clear(); await loadAll(); showToast(`✓ ${woSel.selected.length}개 삭제 완료`);
-            } catch(e){alert("오류: "+e.message);}
-          }}>
+        {menu==="workorder"&&<>
+          <div className="row-between"><div className="page-title">작업지시서</div><button className="btn-primary" onClick={()=>{setEditWO(null);setWOForm({product:"",qty:"",planned:"",due:"",warehouse_id:"",selectedProcesses:[]});setShowWO(true);}}>+ 작업지시 생성</button></div>
+          <Toolbar sel={woSel} onDelete={()=>bulkDelete("work_orders",woSel.selected,woSel.clear,true)}>
             <button className="btn" onClick={()=>downloadCSV("작업지시서",["지시번호","제품명","수량","창고","계획일","완료기한","상태"],workOrders.map(w=>[w.id,w.product,w.qty,whName(w.warehouse_id),w.planned,w.due,w.status]))}>📥 엑셀</button>
           </Toolbar>
-          <div className="section">
-            <table><thead><tr>
-              <th style={{width:"40px"}}><input type="checkbox" checked={woSel.isAllSelected(workOrders)} onChange={()=>woSel.toggleAll(workOrders)}/></th>
-              <th>지시번호</th><th>제품명</th><th>수량</th><th>공정 현황</th><th>창고</th><th>계획일</th><th>완료기한</th><th>상태</th><th>액션</th>
-            </tr></thead>
-            <tbody>{workOrders.map(w=>{
-              const steps=getWOProcesses(w.id);
-              const cur=getCurrentStep(w.id);
-              return [
-                <tr key={w.id} className={woSel.isSelected(w.id)?"selected-row":""} style={{cursor:"pointer"}} onClick={()=>setExpandedWO(expandedWO===w.id?null:w.id)}>
-                  <td onClick={e=>e.stopPropagation()}><input type="checkbox" checked={woSel.isSelected(w.id)} onChange={()=>woSel.toggle(w.id)}/></td>
-                  <td className="mono">{w.id}</td>
-                  <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-                    <span style={{fontWeight:600}}>{w.product}</span>
-                    {w.status==="대기"&&<><button className="btn-sm" onClick={e=>{e.stopPropagation();setEditWO(w);setWOForm({product:w.product,qty:w.qty,planned:w.planned||"",due:w.due||"",warehouse_id:w.warehouse_id||"",selectedProcesses:[]});setShowWO(true);}}>수정</button>
-                    <button className="btn-danger-sm" onClick={e=>{e.stopPropagation();if(window.confirm("삭제하시겠습니까?"))Promise.all([api("work_order_processes","DELETE",null,`?wo_id=eq.${w.id}`),api("work_orders","DELETE",null,`?id=eq.${w.id}`)]).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button></>}
-                  </div></td>
-                  <td>{w.qty?.toLocaleString()}</td>
-                  <td><div className="process-step">{steps.map((s,i)=>[<span key={s.id} className="process-chip" style={{background:s.status==="완료"?"#eaf3de":s.status==="진행중"?"#faeeda":"#f0f0f0",color:s.status==="완료"?"#3b6d11":s.status==="진행중"?"#854f0b":"#888"}}>{s.status==="완료"?"✓ ":s.status==="진행중"?"▶ ":""}{prName(s.process_id)}</span>,i<steps.length-1&&<span key={"a"+i} style={{color:"#ccc"}}>→</span>])}</div></td>
-                  <td>{whName(w.warehouse_id)}</td><td>{w.planned}</td><td>{w.due}</td><td><Badge s={w.status}/></td>
-                  <td onClick={e=>e.stopPropagation()}>
-                    {w.status==="대기"&&<button className="btn-sm" onClick={()=>handleStartWO(w)}>시작</button>}
-                    {w.status==="진행중"&&cur&&<button className="btn-green" onClick={()=>{setSelectedProc(cur);setShowProcessResult(true);}}>공정완료</button>}
-                  </td>
-                </tr>,
-                expandedWO===w.id&&<tr key={w.id+"_d"} className="wo-detail-row">
-                  <td colSpan="10" style={{padding:"0 12px 12px"}}>
-                    <div style={{fontSize:"12px",fontWeight:600,color:"#555",padding:"10px 0 6px"}}>📋 공정별 실적</div>
-                    <table className="wo-process-table"><thead><tr><th>순서</th><th>공정명</th><th>상태</th><th>작업일</th><th>시작</th><th>종료</th><th>작업시간</th><th>작업수량</th><th>불량</th><th>양품</th><th>담당자</th><th>비고</th></tr></thead>
-                    <tbody>{steps.map(s=><tr key={s.id}><td style={{fontWeight:700,color:"#185fa5"}}>{s.step_no}</td><td style={{fontWeight:600}}>{prName(s.process_id)}</td><td><Badge s={s.status}/></td><td>{s.work_date||"-"}</td><td>{s.start_time||"-"}</td><td>{s.end_time||"-"}</td><td>{s.work_minutes?s.work_minutes+"분":"-"}</td><td>{s.work_qty?.toLocaleString()||"-"}</td><td style={{color:"#a32d2d"}}>{s.defect_qty?.toLocaleString()||"-"}</td><td style={{color:"#3b6d11",fontWeight:600}}>{s.good_qty?.toLocaleString()||"-"}</td><td>{s.assignee||"-"}</td><td style={{color:"#888"}}>{s.note||"-"}</td></tr>)}</tbody>
-                    </table>
-                  </td>
-                </tr>
-              ];
-            })}</tbody></table>
-          </div>
+          <div className="section"><table><thead><tr>
+            <th style={{width:"40px"}}><input type="checkbox" checked={woSel.isAllSelected(workOrders)} onChange={()=>woSel.toggleAll(workOrders)}/></th>
+            <th>지시번호</th><th>제품명</th><th>수량</th><th>공정 현황</th><th>창고</th><th>계획일</th><th>완료기한</th><th>상태</th><th>액션</th>
+          </tr></thead>
+          <tbody>{workOrders.map(w=>{
+            const steps=getWOProcesses(w.id);const cur=getCurrentStep(w.id);
+            return [
+              <tr key={w.id} className={woSel.isSelected(w.id)?"selected-row":""} style={{cursor:"pointer"}} onClick={()=>setExpandedWO(expandedWO===w.id?null:w.id)}>
+                <td onClick={e=>e.stopPropagation()}><input type="checkbox" checked={woSel.isSelected(w.id)} onChange={()=>woSel.toggle(w.id)}/></td>
+                <td className="mono">{w.id}</td>
+                <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontWeight:600}}>{w.product}</span>
+                  {w.status==="대기"&&<><button className="btn-sm" onClick={e=>{e.stopPropagation();setEditWO(w);setWOForm({product:w.product,qty:w.qty,planned:w.planned||"",due:w.due||"",warehouse_id:w.warehouse_id||"",selectedProcesses:[]});setShowWO(true);}}>수정</button>
+                  <button className="btn-danger-sm" onClick={e=>{e.stopPropagation();if(window.confirm("삭제?"))Promise.all([api("work_order_processes","DELETE",null,`?wo_id=eq.${w.id}`),api("work_orders","DELETE",null,`?id=eq.${w.id}`)]).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button></>}
+                </div></td>
+                <td>{w.qty?.toLocaleString()}</td>
+                <td><div className="process-step">{steps.map((s,i)=>[<span key={s.id} className="process-chip" style={{background:s.status==="완료"?"#eaf3de":s.status==="진행중"?"#faeeda":"#f0f0f0",color:s.status==="완료"?"#3b6d11":s.status==="진행중"?"#854f0b":"#888"}}>{s.status==="완료"?"✓ ":s.status==="진행중"?"▶ ":""}{prName(s.process_id)}</span>,i<steps.length-1&&<span key={"a"+i} style={{color:"#ccc"}}>→</span>])}</div></td>
+                <td>{whName(w.warehouse_id)}</td><td>{w.planned}</td><td>{w.due}</td><td><Badge s={w.status}/></td>
+                <td onClick={e=>e.stopPropagation()}>
+                  {w.status==="대기"&&<button className="btn-sm" onClick={()=>handleStartWO(w)}>시작</button>}
+                  {w.status==="진행중"&&cur&&<button className="btn-green" onClick={()=>{setSelectedProc(cur);setShowProcessResult(true);}}>공정완료</button>}
+                </td>
+              </tr>,
+              expandedWO===w.id&&<tr key={w.id+"_d"} className="wo-detail-row">
+                <td colSpan="10" style={{padding:"0 12px 12px"}}>
+                  <div style={{fontSize:"12px",fontWeight:600,color:"#555",padding:"10px 0 6px"}}>📋 공정별 실적</div>
+                  <table className="wo-process-table"><thead><tr><th>순서</th><th>공정명</th><th>상태</th><th>작업일</th><th>시작</th><th>종료</th><th>작업시간</th><th>작업수량</th><th>불량</th><th>양품</th><th>담당자</th><th>비고</th></tr></thead>
+                  <tbody>{steps.map(s=><tr key={s.id}><td style={{fontWeight:700,color:"#185fa5"}}>{s.step_no}</td><td style={{fontWeight:600}}>{prName(s.process_id)}</td><td><Badge s={s.status}/></td><td>{s.work_date||"-"}</td><td>{s.start_time||"-"}</td><td>{s.end_time||"-"}</td><td>{s.work_minutes?s.work_minutes+"분":"-"}</td><td>{s.work_qty?.toLocaleString()||"-"}</td><td style={{color:"#a32d2d"}}>{s.defect_qty?.toLocaleString()||"-"}</td><td style={{color:"#3b6d11",fontWeight:600}}>{s.good_qty?.toLocaleString()||"-"}</td><td>{s.assignee||"-"}</td><td style={{color:"#888"}}>{s.note||"-"}</td></tr>)}</tbody>
+                  </table>
+                </td>
+              </tr>
+            ];
+          })}</tbody></table></div>
         </>}
 
         {/* 생산 실적 */}
-        {menu==="production" && <>
-          <div className="row-between">
-            <div className="page-title">생산 실적</div>
-            <button className="btn" onClick={()=>downloadCSV("생산실적",["지시번호","제품명","지시수량","계획일","완료기한","상태"],workOrders.filter(w=>w.status==="완료").map(w=>[w.id,w.product,w.qty,w.planned,w.due,w.status]))}>📥 엑셀</button>
-          </div>
+        {menu==="production"&&<>
+          <div className="row-between"><div className="page-title">생산 실적</div><button className="btn" onClick={()=>downloadCSV("생산실적",["지시번호","제품명","지시수량","계획일","완료기한","상태"],workOrders.filter(w=>w.status==="완료").map(w=>[w.id,w.product,w.qty,w.planned,w.due,w.status]))}>📥 엑셀</button></div>
           <div className="grid4">{[{label:"총 작업지시",val:workOrders.length+" 건"},{label:"대기",val:workOrders.filter(w=>w.status==="대기").length+" 건"},{label:"진행중",val:workOrders.filter(w=>w.status==="진행중").length+" 건"},{label:"완료",val:workOrders.filter(w=>w.status==="완료").length+" 건"}].map((m,i)=><div key={i} className="card"><div className="card-label">{m.label}</div><div className="card-val">{m.val}</div></div>)}</div>
           <div className="section"><table><thead><tr><th>지시번호</th><th>제품명</th><th>지시수량</th><th>총 작업시간</th><th>총 불량수량</th><th>불량률</th><th>계획일</th><th>완료기한</th></tr></thead>
-            <tbody>{workOrders.filter(w=>w.status==="완료").map(w=>{const steps=getWOProcesses(w.id);const tm=steps.reduce((s,p)=>s+(p.work_minutes||0),0);const td=steps.reduce((s,p)=>s+(p.defect_qty||0),0);const tw=steps.reduce((s,p)=>s+(p.work_qty||0),0);return <tr key={w.id}><td className="mono">{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{tm?tm+"분":"-"}</td><td style={{color:"#a32d2d"}}>{td||"-"}</td><td>{tw>0?(td/tw*100).toFixed(1)+"%":"-"}</td><td>{w.planned}</td><td>{w.due}</td></tr>;})}</tbody>
+            <tbody>{workOrders.filter(w=>w.status==="완료").map(w=>{const steps=getWOProcesses(w.id);const tm=steps.reduce((s,p)=>s+(p.work_minutes||0),0);const td=steps.reduce((s,p)=>s+(p.defect_qty||0),0);const tw=steps.reduce((s,p)=>s+(p.work_qty||0),0);return<tr key={w.id}><td className="mono">{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{tm?tm+"분":"-"}</td><td style={{color:"#a32d2d"}}>{td||"-"}</td><td>{tw>0?(td/tw*100).toFixed(1)+"%":"-"}</td><td>{w.planned}</td><td>{w.due}</td></tr>;})}</tbody>
           </table></div>
         </>}
 
         {/* 창고 관리 */}
-        {menu==="warehouse" && <>
-          <div className="row-between">
-            <div className="page-title">창고 관리</div>
-            <button className="btn-primary" onClick={()=>{setEditWH(null);setWHForm({code:"",name:"",location:"",manager:"",note:""});setShowWH(true);}}>+ 창고 등록</button>
-          </div>
-          <Toolbar sel={whSel} onDelete={()=>bulkDelete("warehouses",whSel.selected,undefined,whSel.clear)}>
+        {menu==="warehouse"&&<>
+          <div className="row-between"><div className="page-title">창고 관리</div><button className="btn-primary" onClick={()=>{setEditWH(null);setWHForm({code:"",name:"",location:"",manager:"",note:""});setShowWH(true);}}>+ 창고 등록</button></div>
+          <Toolbar sel={whSel} onDelete={()=>bulkDelete("warehouses",whSel.selected,whSel.clear)}>
             <input style={{width:"240px",padding:"7px 12px"}} placeholder="🔍 창고명 검색" value={whSearch} onChange={e=>setWhSearch(e.target.value)}/>
           </Toolbar>
-          {(()=>{
-            const filtered=warehouses.filter(w=>!whSearch||w.name.includes(whSearch)||w.code.includes(whSearch));
-            return <div className="section"><table><thead><tr>
-              <th style={{width:"40px"}}><input type="checkbox" checked={whSel.isAllSelected(filtered)} onChange={()=>whSel.toggleAll(filtered)}/></th>
-              <th>창고코드</th><th>창고명</th><th>위치</th><th>담당자</th><th>비고</th><th>재고</th>
-            </tr></thead>
-            <tbody>{filtered.length===0?<tr><td colSpan="7" className="empty">검색 결과 없음</td></tr>:filtered.map(w=><tr key={w.id} className={whSel.isSelected(w.id)?"selected-row":""}>
-              <td><input type="checkbox" checked={whSel.isSelected(w.id)} onChange={()=>whSel.toggle(w.id)}/></td>
-              <td className="mono">{w.code}</td>
-              <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-                <span style={{fontWeight:600}}>{w.name}</span>
-                <button className="btn-sm" onClick={()=>{setEditWH(w);setWHForm({code:w.code,name:w.name,location:w.location||"",manager:w.manager||"",note:w.note||""});setShowWH(true);}}>수정</button>
-                <button className="btn-danger-sm" onClick={()=>{if(window.confirm(`${w.name}을 삭제하시겠습니까?`))api("warehouses","DELETE",null,`?id=eq.${w.id}`).then(()=>{whSel.clear();loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
-              </div></td>
-              <td>{w.location}</td><td>{w.manager}</td><td style={{color:"#888"}}>{w.note}</td>
-              <td><button className="btn-sm" onClick={()=>{setSelectedWH(w);setShowWhStock(true);}}>재고확인</button></td>
-            </tr>)}</tbody></table></div>;
-          })()}
+          {(()=>{const filtered=warehouses.filter(w=>!whSearch||w.name.includes(whSearch)||w.code.includes(whSearch));
+          return<div className="section"><table><thead><tr>
+            <th style={{width:"40px"}}><input type="checkbox" checked={whSel.isAllSelected(filtered)} onChange={()=>whSel.toggleAll(filtered)}/></th>
+            <th>창고코드</th><th>창고명</th><th>위치</th><th>담당자</th><th>비고</th><th>재고</th>
+          </tr></thead>
+          <tbody>{filtered.length===0?<tr><td colSpan="7" className="empty">검색 결과 없음</td></tr>:filtered.map(w=><tr key={w.id} className={whSel.isSelected(w.id)?"selected-row":""}>
+            <td><input type="checkbox" checked={whSel.isSelected(w.id)} onChange={()=>whSel.toggle(w.id)}/></td>
+            <td className="mono">{w.code}</td>
+            <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontWeight:600}}>{w.name}</span>
+              <button className="btn-sm" onClick={()=>{setEditWH(w);setWHForm({code:w.code,name:w.name,location:w.location||"",manager:w.manager||"",note:w.note||""});setShowWH(true);}}>수정</button>
+              <button className="btn-danger-sm" onClick={()=>{if(window.confirm(`${w.name} 삭제?`))api("warehouses","DELETE",null,`?id=eq.${w.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
+            </div></td>
+            <td>{w.location}</td><td>{w.manager}</td><td style={{color:"#888"}}>{w.note}</td>
+            <td><button className="btn-sm" onClick={()=>{setSelectedWH(w);setShowWhStock(true);}}>재고확인</button></td>
+          </tr>)}</tbody></table></div>;})()}
           {showWhStock&&selectedWH&&<div className="modal-bg"><div className="modal modal-lg">
             <div className="modal-title">🏭 {selectedWH.name} 재고 현황</div>
-            <div style={{fontSize:"12px",color:"#888",marginBottom:"14px"}}>{selectedWH.location} · 담당자: {selectedWH.manager}</div>
-            {(()=>{const wh=history.filter(h=>h.warehouse_id===selectedWH.id);const sm={};wh.forEach(h=>{if(!sm[h.code])sm[h.code]={code:h.code,name:h.name,qty:0};sm[h.code].qty+=h.type==="입고"?h.qty:-h.qty;});const sl=Object.values(sm).filter(s=>s.qty>0);return<><div style={{fontWeight:600,fontSize:"13px",marginBottom:"8px"}}>📦 현재 재고</div><table style={{marginBottom:"16px"}}><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>규격</th><th>단위</th><th>현재고</th></tr></thead><tbody>{sl.length===0?<tr><td colSpan="6" className="empty">재고 없음</td></tr>:sl.map(s=>{const it=items.find(i=>i.code===s.code);return<tr key={s.code}><td className="mono">{s.code}</td><td>{s.name}</td><td><CatBadge c={it?.category}/></td><td style={{color:"#888",fontSize:"12px"}}>{it?.spec||"-"}</td><td>{it?.unit||"-"}</td><td style={{fontWeight:700,color:"#185fa5"}}>{s.qty?.toLocaleString()}</td></tr>;})}</tbody></table><div style={{fontWeight:600,fontSize:"13px",marginBottom:"8px"}}>📋 입출고 이력</div><table><thead><tr><th>날짜</th><th>구분</th><th>품목코드</th><th>품목명</th><th>수량</th><th>LOT</th></tr></thead><tbody>{wh.length===0?<tr><td colSpan="6" className="empty">이력 없음</td></tr>:wh.map(h=><tr key={h.id}><td>{h.date}</td><td><span className="badge" style={{background:h.type==="입고"?"#e6f1fb":"#faeeda",color:h.type==="입고"?"#185fa5":"#854f0b"}}>{h.type}</span></td><td className="mono">{h.code}</td><td>{h.name}</td><td style={{fontWeight:600}}>{h.qty?.toLocaleString()}</td><td className="mono">{h.lot_no||"-"}</td></tr>)}</tbody></table></>;})()}
+            {(()=>{const wh=history.filter(h=>h.warehouse_id===selectedWH.id);const sm={};wh.forEach(h=>{if(!sm[h.code])sm[h.code]={code:h.code,name:h.name,qty:0};sm[h.code].qty+=h.type==="입고"?h.qty:-h.qty;});const sl=Object.values(sm).filter(s=>s.qty>0);
+            return<><div style={{fontWeight:600,fontSize:"13px",marginBottom:"8px"}}>📦 현재 재고</div>
+            <table style={{marginBottom:"16px"}}><thead><tr><th>품목코드</th><th>품목명</th><th>분류</th><th>단위</th><th>현재고</th></tr></thead>
+            <tbody>{sl.length===0?<tr><td colSpan="5" className="empty">재고 없음</td></tr>:sl.map(s=>{const it=items.find(i=>i.code===s.code);return<tr key={s.code}><td className="mono">{s.code}</td><td>{s.name}</td><td><CatBadge c={it?.category}/></td><td>{it?.unit||"-"}</td><td style={{fontWeight:700,color:"#185fa5"}}>{s.qty?.toLocaleString()}</td></tr>;})}</tbody></table>
+            <div style={{fontWeight:600,fontSize:"13px",marginBottom:"8px"}}>📋 입출고 이력</div>
+            <table><thead><tr><th>날짜</th><th>구분</th><th>품목코드</th><th>품목명</th><th>수량</th><th>LOT</th></tr></thead>
+            <tbody>{wh.length===0?<tr><td colSpan="6" className="empty">이력 없음</td></tr>:wh.map(h=><tr key={h.id}><td>{h.date}</td><td><span className="badge" style={{background:h.type==="입고"?"#e6f1fb":"#faeeda",color:h.type==="입고"?"#185fa5":"#854f0b"}}>{h.type}</span></td><td className="mono">{h.code}</td><td>{h.name}</td><td style={{fontWeight:600}}>{h.qty?.toLocaleString()}</td><td className="mono">{h.lot_no||"-"}</td></tr>)}</tbody></table></>;})()}
             <div style={{display:"flex",justifyContent:"flex-end",marginTop:"16px"}}><button className="btn" onClick={()=>setShowWhStock(false)}>닫기</button></div>
           </div></div>}
         </>}
 
         {/* 공정 관리 */}
-        {menu==="process" && <>
-          <div className="row-between">
-            <div className="page-title">공정 관리</div>
-            <button className="btn-primary" onClick={()=>{setEditPR(null);setPRForm({code:"",name:"",order_no:"",machine:"",manager:"",note:""});setShowPR(true);}}>+ 공정 등록</button>
-          </div>
-          <Toolbar sel={prSel} onDelete={()=>bulkDelete("processes",prSel.selected,undefined,prSel.clear)}/>
+        {menu==="process"&&<>
+          <div className="row-between"><div className="page-title">공정 관리</div><button className="btn-primary" onClick={()=>{setEditPR(null);setPRForm({code:"",name:"",order_no:"",machine:"",manager:"",note:""});setShowPR(true);}}>+ 공정 등록</button></div>
+          <Toolbar sel={prSel} onDelete={()=>bulkDelete("processes",prSel.selected,prSel.clear)}/>
           <div className="section"><table><thead><tr>
             <th style={{width:"40px"}}><input type="checkbox" checked={prSel.isAllSelected(processes)} onChange={()=>prSel.toggleAll(processes)}/></th>
             <th>순서</th><th>공정코드</th><th>공정명</th><th>설비</th><th>담당자</th><th>비고</th>
           </tr></thead>
           <tbody>{processes.length===0?<tr><td colSpan="7" className="empty">등록된 공정이 없습니다</td></tr>:processes.map(p=><tr key={p.id} className={prSel.isSelected(p.id)?"selected-row":""}>
             <td><input type="checkbox" checked={prSel.isSelected(p.id)} onChange={()=>prSel.toggle(p.id)}/></td>
-            <td style={{fontWeight:700,color:"#185fa5"}}>{p.order_no}</td>
-            <td className="mono">{p.code}</td>
-            <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}>
-              <span style={{fontWeight:600}}>{p.name}</span>
+            <td style={{fontWeight:700,color:"#185fa5"}}>{p.order_no}</td><td className="mono">{p.code}</td>
+            <td><div style={{display:"flex",alignItems:"center",gap:"6px"}}><span style={{fontWeight:600}}>{p.name}</span>
               <button className="btn-sm" onClick={()=>{setEditPR(p);setPRForm({code:p.code,name:p.name,order_no:p.order_no,machine:p.machine||"",manager:p.manager||"",note:p.note||""});setShowPR(true);}}>수정</button>
-              <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제하시겠습니까?"))api("processes","DELETE",null,`?id=eq.${p.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
+              <button className="btn-danger-sm" onClick={()=>{if(window.confirm("삭제?"))api("processes","DELETE",null,`?id=eq.${p.id}`).then(()=>{loadAll();showToast("✓ 삭제 완료");});}}>삭제</button>
             </div></td>
             <td>{p.machine}</td><td>{p.manager}</td><td style={{color:"#888"}}>{p.note}</td>
           </tr>)}</tbody></table></div>
@@ -751,70 +712,44 @@ function App() {
       </div>
 
       {/* BOM 등록/수정 모달 */}
-      {showBom&&<div className="modal-bg"><div className="modal" style={{width:"680px"}}>
+      {showBom&&<div className="modal-bg"><div className="modal modal-xl">
         <div className="modal-title">{editBom?"BOM 수정":"BOM 등록"}</div>
-        <div style={{background:"#f0f5ff",borderRadius:"8px",padding:"10px 14px",marginBottom:"16px",fontSize:"12px",color:"#555"}}>
-          💡 완제품/반제품 1개를 만드는 데 필요한 자재를 모두 입력하세요.
+        <div style={{background:"#f0f5ff",borderRadius:"8px",padding:"10px 14px",marginBottom:"14px",fontSize:"12px",color:"#555"}}>
+          💡 완제품/반제품 1개를 만드는 데 필요한 자재를 입력하세요.
         </div>
         <div style={{fontWeight:600,fontSize:"13px",color:"#185fa5",marginBottom:"8px"}}>📦 제품 정보</div>
-        <div className="form-grid2">
+        <div className="form-grid2" style={{marginBottom:"16px"}}>
           <div className="form-row"><label className="form-label">제품코드 *</label>
-            <input placeholder="예: FG-001" value={bomForm.product_code} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setBomForm({...bomForm,product_code:e.target.value,product_name:it?.name||bomForm.product_name});}} list="bom-product-list"/>
-            <datalist id="bom-product-list">{items.filter(i=>i.category==="완제품"||i.category==="반제품").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
-            {bomForm.product_code&&items.find(i=>i.code===bomForm.product_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===bomForm.product_code).name} ({items.find(i=>i.code===bomForm.product_code).category})</div>}
+            <input placeholder="예: FG-001" value={bomProdForm.product_code} list="bom-prod-list" onChange={e=>{const it=items.find(i=>i.code===e.target.value);setBomProdForm({product_code:e.target.value,product_name:it?.name||bomProdForm.product_name});}}/>
+            <datalist id="bom-prod-list">{items.filter(i=>i.category==="완제품"||i.category==="반제품").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            {bomProdForm.product_code&&items.find(i=>i.code===bomProdForm.product_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===bomProdForm.product_code).name}</div>}
           </div>
           <div className="form-row"><label className="form-label">제품명 *</label>
-            <input placeholder="자동입력 또는 직접입력" value={bomForm.product_name} onChange={e=>setBomForm({...bomForm,product_name:e.target.value})}/>
+            <input placeholder="자동입력 또는 직접입력" value={bomProdForm.product_name} onChange={e=>setBomProdForm({...bomProdForm,product_name:e.target.value})}/>
           </div>
         </div>
-
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px",marginTop:"4px"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"8px"}}>
           <span style={{fontWeight:600,fontSize:"13px",color:"#3b6d11"}}>🔩 자재 목록</span>
-          {!editBom&&<button className="btn-sm" onClick={()=>setBomForm({...bomForm,materials:[...(bomForm.materials||defaultMaterials),{material_code:"",material_name:"",qty:"",unit:"",note:""}]})}>+ 자재 추가</button>}
+          {!editBom&&<button className="btn-sm" onClick={()=>setBomMaterials([...bomMaterials,{...EMPTY_MAT}])}>+ 자재 추가</button>}
         </div>
-
-        {!editBom ? <>
-          <div style={{background:"#fafafa",borderRadius:"8px",padding:"8px",marginBottom:"8px"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:"12px"}}>
-              <thead><tr>
-                <th style={{padding:"6px 8px",background:"#f0f0f0",borderRadius:"4px",textAlign:"left",color:"#666"}}>자재코드</th>
-                <th style={{padding:"6px 8px",textAlign:"left",color:"#666"}}>자재명</th>
-                <th style={{padding:"6px 8px",textAlign:"left",color:"#666",width:"80px"}}>소요량</th>
-                <th style={{padding:"6px 8px",textAlign:"left",color:"#666",width:"60px"}}>단위</th>
-                <th style={{padding:"6px 8px",textAlign:"left",color:"#666"}}>비고</th>
-                <th style={{width:"30px"}}></th>
-              </tr></thead>
-              <tbody>{(bomForm.materials||defaultMaterials).map((m,idx)=>(
-                <tr key={idx}>
-                  <td style={{padding:"4px"}}>
-                    <input style={{fontSize:"12px",padding:"5px 8px"}} placeholder="예: RM-001" value={m.material_code} list={`mat-list-${idx}`}
-                      onChange={e=>{const it=items.find(i=>i.code===e.target.value);const mats=[...bomForm.materials];mats[idx]={...mats[idx],material_code:e.target.value,material_name:it?.name||mats[idx].material_name,unit:it?.unit||mats[idx].unit};setBomForm({...bomForm,materials:mats});}}/>
-                    <datalist id={`mat-list-${idx}`}>{items.filter(i=>i.category==="원자재"||i.category==="부자재").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
-                  </td>
-                  <td style={{padding:"4px"}}><input style={{fontSize:"12px",padding:"5px 8px"}} placeholder="자동입력" value={m.material_name} onChange={e=>{const mats=[...bomForm.materials];mats[idx]={...mats[idx],material_name:e.target.value};setBomForm({...bomForm,materials:mats});}}/></td>
-                  <td style={{padding:"4px"}}><input style={{fontSize:"12px",padding:"5px 8px"}} type="number" step="0.01" placeholder="0" value={m.qty} onChange={e=>{const mats=[...bomForm.materials];mats[idx]={...mats[idx],qty:e.target.value};setBomForm({...bomForm,materials:mats});}}/></td>
-                  <td style={{padding:"4px"}}><input style={{fontSize:"12px",padding:"5px 8px"}} placeholder="kg" value={m.unit} onChange={e=>{const mats=[...bomForm.materials];mats[idx]={...mats[idx],unit:e.target.value};setBomForm({...bomForm,materials:mats});}}/></td>
-                  <td style={{padding:"4px"}}><input style={{fontSize:"12px",padding:"5px 8px"}} placeholder="비고" value={m.note} onChange={e=>{const mats=[...bomForm.materials];mats[idx]={...mats[idx],note:e.target.value};setBomForm({...bomForm,materials:mats});}}/></td>
-                  <td style={{padding:"4px",textAlign:"center"}}>{bomForm.materials.length>1&&<button style={{background:"none",border:"none",color:"#e24b4a",cursor:"pointer",fontSize:"16px"}} onClick={()=>{const mats=bomForm.materials.filter((_,i)=>i!==idx);setBomForm({...bomForm,materials:mats});}}>×</button>}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-          </div>
-        </> : <>
-          <div className="form-grid2">
-            <div className="form-row"><label className="form-label">자재코드</label>
-              <input placeholder="예: RM-001" value={bomForm.materials[0]?.material_code||""} onChange={e=>{const it=items.find(i=>i.code===e.target.value);const mats=[{...bomForm.materials[0],material_code:e.target.value,material_name:it?.name||bomForm.materials[0]?.material_name,unit:it?.unit||bomForm.materials[0]?.unit}];setBomForm({...bomForm,materials:mats});}} list="bom-mat-edit"/>
-              <datalist id="bom-mat-edit">{items.filter(i=>i.category==="원자재"||i.category==="부자재").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
-            </div>
-            <div className="form-row"><label className="form-label">자재명</label><input value={bomForm.materials[0]?.material_name||""} onChange={e=>{const mats=[{...bomForm.materials[0],material_name:e.target.value}];setBomForm({...bomForm,materials:mats});}}/></div>
-          </div>
-          <div className="form-grid2">
-            <div className="form-row"><label className="form-label">소요량</label><input type="number" step="0.01" value={bomForm.materials[0]?.qty||""} onChange={e=>{const mats=[{...bomForm.materials[0],qty:e.target.value}];setBomForm({...bomForm,materials:mats});}}/></div>
-            <div className="form-row"><label className="form-label">단위</label><input value={bomForm.materials[0]?.unit||""} onChange={e=>{const mats=[{...bomForm.materials[0],unit:e.target.value}];setBomForm({...bomForm,materials:mats});}}/></div>
-          </div>
-        </>}
-
-        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end",marginTop:"8px"}}><button className="btn" onClick={()=>{setShowBom(false);setEditBom(null);}}>취소</button><button className="btn-primary" onClick={handleBom}>{editBom?"수정":"등록"}</button></div>
+        <table className="bom-mat-table">
+          <thead><tr><th>자재코드</th><th>자재명</th><th style={{width:"80px"}}>소요량</th><th style={{width:"70px"}}>단위</th><th>비고</th>{!editBom&&<th style={{width:"30px"}}></th>}</tr></thead>
+          <tbody>{bomMaterials.map((m,idx)=><tr key={idx}>
+            <td><input placeholder="예: RM-001" value={m.material_code} list={`bom-mat-${idx}`} onChange={e=>updateMat(idx,"material_code",e.target.value)}/>
+              <datalist id={`bom-mat-${idx}`}>{items.filter(i=>i.category==="원자재"||i.category==="부자재").map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+              {m.material_code&&items.find(i=>i.code===m.material_code)&&<div style={{fontSize:"11px",color:"#3b6d11",marginTop:"2px"}}>✓ {items.find(i=>i.code===m.material_code).name}</div>}
+            </td>
+            <td><input placeholder="자동입력" value={m.material_name} onChange={e=>updateMat(idx,"material_name",e.target.value)}/></td>
+            <td><input type="number" step="0.01" placeholder="0" value={m.qty} onChange={e=>updateMat(idx,"qty",e.target.value)}/></td>
+            <td><input placeholder="kg" value={m.unit} onChange={e=>updateMat(idx,"unit",e.target.value)}/></td>
+            <td><input placeholder="비고" value={m.note} onChange={e=>updateMat(idx,"note",e.target.value)}/></td>
+            {!editBom&&<td style={{textAlign:"center"}}>{bomMaterials.length>1&&<button style={{background:"none",border:"none",color:"#e24b4a",cursor:"pointer",fontSize:"18px",lineHeight:1}} onClick={()=>setBomMaterials(bomMaterials.filter((_,i)=>i!==idx))}>×</button>}</td>}
+          </tr>)}</tbody>
+        </table>
+        <div style={{display:"flex",gap:"8px",justifyContent:"flex-end",marginTop:"16px"}}>
+          <button className="btn" onClick={()=>{setShowBom(false);setEditBom(null);}}>취소</button>
+          <button className="btn-primary" onClick={handleBom}>{editBom?"수정":"등록"}</button>
+        </div>
       </div></div>}
 
       {/* 작업지시 모달 */}
@@ -830,7 +765,7 @@ function App() {
           <div className="form-row"><label className="form-label">창고</label><select value={woForm.warehouse_id} onChange={e=>setWOForm({...woForm,warehouse_id:e.target.value})}><option value="">창고 선택</option>{warehouses.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
         </div>
         {!editWO&&<div className="form-row">
-          <label className="form-label">공정 순서 설정 * (순서대로 클릭)</label>
+          <label className="form-label">공정 순서 * (순서대로 클릭)</label>
           <div style={{display:"flex",gap:"8px",flexWrap:"wrap",marginBottom:"8px"}}>
             {processes.map(p=><button key={p.id} type="button" style={{padding:"6px 12px",borderRadius:"20px",border:"1px solid",borderColor:woForm.selectedProcesses.includes(String(p.id))?"#185fa5":"#ddd",background:woForm.selectedProcesses.includes(String(p.id))?"#185fa5":"#fff",color:woForm.selectedProcesses.includes(String(p.id))?"#fff":"#333",cursor:"pointer",fontSize:"12px"}}
               onClick={()=>{const id=String(p.id);const arr=woForm.selectedProcesses.includes(id)?woForm.selectedProcesses.filter(x=>x!==id):[...woForm.selectedProcesses,id];setWOForm({...woForm,selectedProcesses:arr});}}>
@@ -878,8 +813,8 @@ function App() {
         <div className="form-row"><label className="form-label">구분</label><select value={ioForm.type} onChange={e=>setIOForm({...ioForm,type:e.target.value})}><option>입고</option><option>출고</option></select></div>
         <div className="form-grid2">
           <div className="form-row"><label className="form-label">품목코드</label>
-            <input placeholder="코드 입력" value={ioForm.code} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setIOForm({...ioForm,code:e.target.value,name:it?.name||""}); }} list="item-list"/>
-            <datalist id="item-list">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            <input placeholder="코드 입력" value={ioForm.code} list="io-item-list" onChange={e=>{setIOForm({...ioForm,code:e.target.value});}}/>
+            <datalist id="io-item-list">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
             {ioForm.code&&items.find(i=>i.code===ioForm.code)&&<div style={{marginTop:"6px",background:"#eef3fb",borderRadius:"6px",padding:"8px 10px"}}>
               <div style={{fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===ioForm.code).name} ({items.find(i=>i.code===ioForm.code).category})</div>
               <div style={{display:"flex",gap:"16px",marginTop:"4px",fontSize:"12px",color:"#555"}}>
@@ -937,8 +872,8 @@ function App() {
         <div className="form-grid2">
           <div className="form-row"><label className="form-label">LOT 번호</label><input placeholder="예: LOT-20250101-001" value={lotForm.lot_no} onChange={e=>setLotForm({...lotForm,lot_no:e.target.value})}/></div>
           <div className="form-row"><label className="form-label">품목코드</label>
-            <input placeholder="코드 입력" value={lotForm.item_code} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setLotForm({...lotForm,item_code:e.target.value,item_name:it?.name||""});}} list="item-list-lot"/>
-            <datalist id="item-list-lot">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            <input placeholder="코드 입력" value={lotForm.item_code} list="lot-item-list" onChange={e=>{const it=items.find(i=>i.code===e.target.value);setLotForm({...lotForm,item_code:e.target.value,item_name:it?.name||""});}}/>
+            <datalist id="lot-item-list">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
             {lotForm.item_code&&items.find(i=>i.code===lotForm.item_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===lotForm.item_code).name}</div>}
           </div>
         </div>
@@ -959,8 +894,8 @@ function App() {
         <div className="modal-title">{editIncoming?"입고 예정 수정":"입고 예정 등록"}</div>
         <div className="form-grid2">
           <div className="form-row"><label className="form-label">품목코드</label>
-            <input placeholder="코드 입력" value={incomingForm.item_code} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setIncomingForm({...incomingForm,item_code:e.target.value,item_name:it?.name||""}); }} list="item-list-in"/>
-            <datalist id="item-list-in">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
+            <input placeholder="코드 입력" value={incomingForm.item_code} list="in-item-list" onChange={e=>{const it=items.find(i=>i.code===e.target.value);setIncomingForm({...incomingForm,item_code:e.target.value,item_name:it?.name||""}); }}/>
+            <datalist id="in-item-list">{items.map(i=><option key={i.id} value={i.code}>{i.name}</option>)}</datalist>
             {incomingForm.item_code&&items.find(i=>i.code===incomingForm.item_code)&&<div style={{marginTop:"4px",fontSize:"12px",color:"#185fa5",fontWeight:600}}>✓ {items.find(i=>i.code===incomingForm.item_code).name}</div>}
           </div>
           <div className="form-row"><label className="form-label">수량</label><input type="number" value={incomingForm.qty} onChange={e=>setIncomingForm({...incomingForm,qty:e.target.value})}/></div>
