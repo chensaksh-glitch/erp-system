@@ -148,7 +148,7 @@ function App() {
   const [dbMB,setDbMB] = React.useState(0);
   const [expWO,setExpWO] = React.useState(null);
   const [expBom,setExpBom] = React.useState(null);
-  const [costDetail,setCostDetail] = React.useState(null);
+  const [selFactory,setSelFactory] = React.useState("광주공장");
   const [selWOCost,setSelWOCost] = React.useState(null);
 
   const iSel=useSel(),woSel=useSel(),whSel=useSel(),prSel=useSel(),lotSel=useSel(),inSel=useSel(),bomSel=useSel();
@@ -261,10 +261,11 @@ function App() {
   };
 
   // 원가계산
-  const calcCost = async (wo) => {
+  const calcCost = async (wo, factory) => {
     const steps = getWOP(wo.id);
     const batchSize = wo.qty;
-    const getMV = name => parseFloat(costMaster.find(c=>c.name===name)?.value||0);
+    const factoryMaster = costMaster.filter(c=>c.factory===factory);
+    const getMV = name => parseFloat(factoryMaster.find(c=>c.name===name)?.value||0);
 
     const prodMin = steps.filter(s=>procs.find(p=>p.id===s.process_id)?.proc_type!=="포장").reduce((a,s)=>a+(s.work_minutes||0),0);
     const packMin = steps.filter(s=>procs.find(p=>p.id===s.process_id)?.proc_type==="포장").reduce((a,s)=>a+(s.work_minutes||0),0);
@@ -296,10 +297,10 @@ function App() {
 
     const totalCost=matCost+mfgCost;
     const unitCost=batchSize>0?Math.round(totalCost/batchSize):0;
-    const detail={matDetail,prodMin,packMin,totalH:Math.round(totalH*100)/100,prodH:Math.round(prodH*100)/100,packH:Math.round(packH*100)/100,rentCost,cleanCost,prodLabor,packLabor,depreciation,inspection,mfgCost,totalMatCost:matCost,totalCost,unitCost,batchSize,rentRate,cleanRate,prodRate,packRate};
+    const detail={matDetail,prodMin,packMin,totalH:Math.round(totalH*100)/100,prodH:Math.round(prodH*100)/100,packH:Math.round(packH*100)/100,rentCost,cleanCost,prodLabor,packLabor,depreciation,inspection,mfgCost,totalMatCost:matCost,totalCost,unitCost,batchSize,rentRate,cleanRate,prodRate,packRate,factory};
 
     try {
-      await api("cost_result","POST",{wo_id:wo.id,batch_size:batchSize,material_cost:matCost,production_minutes:prodMin,packing_minutes:packMin,rent_cost:rentCost,cleanroom_cost:cleanCost,production_labor:prodLabor,packing_labor:packLabor,depreciation,inspection,total_cost:totalCost,unit_cost:unitCost,detail});
+      await api("cost_result","POST",{wo_id:wo.id,batch_size:batchSize,material_cost:matCost,production_minutes:prodMin,packing_minutes:packMin,rent_cost:rentCost,cleanroom_cost:cleanCost,production_labor:prodLabor,packing_labor:packLabor,depreciation,inspection,total_cost:totalCost,unit_cost:unitCost,detail,factory});
       await loadAll();
       setCostDetail(detail); setSelWOCost(wo); setMenu("cost_calc");
       showToast("✓ 원가계산 완료");
@@ -743,17 +744,20 @@ function App() {
         {/* 원가 마스터 */}
         {menu==="cost_master"&&<>
           <div className="page-title">💰 원가 마스터 설정</div>
-          <div className="section">
-            <div className="section-head"><span className="section-title">시간당 단가 설정</span></div>
-            <table><thead><tr><th>항목</th><th>단가</th><th>단위</th><th>비고</th><th>저장</th></tr></thead>
-            <tbody>{costMaster.map(c=><tr key={c.id}>
-              <td style={{fontWeight:600}}>{c.name}</td>
-              <td><input type="number" style={{width:"140px",padding:"5px 8px"}} value={c.value} onChange={e=>setCostMaster(costMaster.map(x=>x.id===c.id?{...x,value:e.target.value}:x))}/></td>
-              <td style={{color:"#888"}}>{c.unit}</td>
-              <td style={{color:"#888",fontSize:"12px"}}>{c.note}</td>
-              <td><button className="btn-sm" onClick={async()=>{try{await api("cost_master","PATCH",{value:parseFloat(c.value)},`?id=eq.${c.id}`);await loadAll();showToast("✓ 저장됨");}catch(e){alert("오류: "+e.message);}}}>저장</button></td>
-            </tr>)}</tbody></table>
-          </div>
+          {["광주공장","동탄공장"].map(factory=>(
+            <div key={factory} className="section" style={{marginBottom:"16px"}}>
+              <div className="section-head">
+                <span className="section-title">🏭 {factory}</span>
+              </div>
+              <table><thead><tr><th>항목</th><th>단가</th><th>단위</th><th>저장</th></tr></thead>
+              <tbody>{costMaster.filter(c=>c.factory===factory).map(c=><tr key={c.id}>
+                <td style={{fontWeight:600}}>{c.name}</td>
+                <td><input type="number" style={{width:"160px",padding:"5px 8px"}} value={c.value} onChange={e=>setCostMaster(costMaster.map(x=>x.id===c.id?{...x,value:e.target.value}:x))}/></td>
+                <td style={{color:"#888"}}>{c.unit}</td>
+                <td><button className="btn-sm" onClick={async()=>{try{await api("cost_master","PATCH",{value:parseFloat(c.value)},`?id=eq.${c.id}`);await loadAll();showToast("✓ 저장됨");}catch(e){alert("오류: "+e.message);}}}>저장</button></td>
+              </tr>)}</tbody></table>
+            </div>
+          ))}
           <div className="section">
             <div className="section-head"><span className="section-title">공정 유형 설정</span><span style={{fontSize:"12px",color:"#888"}}>생산/포장 구분</span></div>
             <table><thead><tr><th>순서</th><th>공정코드</th><th>공정명</th><th>유형</th><th>저장</th></tr></thead>
@@ -774,12 +778,17 @@ function App() {
         {menu==="cost_calc"&&<>
           <div className="page-title">📊 원가 계산</div>
           {!costDetail&&<div className="section">
-            <div className="section-head"><span className="section-title">완료된 작업지시 선택</span></div>
+            <div className="section-head"><span className="section-title">완료된 작업지시 선택</span>
+              <div style={{display:"flex",alignItems:"center",gap:"8px"}}>
+                <span style={{fontSize:"13px",color:"#555"}}>공장 선택:</span>
+                {["광주공장","동탄공장"].map(f=><button key={f} className={selFactory===f?"btn-primary":"btn"} style={{fontSize:"12px",padding:"5px 12px"}} onClick={()=>setSelFactory(f)}>{f}</button>)}
+              </div>
+            </div>
             <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량(Batch)</th><th>완료기한</th><th>원가계산</th></tr></thead>
             <tbody>{workOrders.filter(w=>w.status==="완료").length===0?<tr><td colSpan="5" className="empty">완료된 작업지시가 없습니다</td></tr>:workOrders.filter(w=>w.status==="완료").map(w=><tr key={w.id}>
               <td className="mono">{w.id}</td><td style={{fontWeight:600}}>{w.product}</td>
               <td>{w.qty?.toLocaleString()} ea</td><td>{w.due}</td>
-              <td><button className="btn-primary" style={{fontSize:"12px",padding:"5px 12px"}} onClick={()=>calcCost(w)}>원가계산 실행</button></td>
+              <td><button className="btn-primary" style={{fontSize:"12px",padding:"5px 12px"}} onClick={()=>calcCost(w,selFactory)}>🏭 {selFactory} 원가계산</button></td>
             </tr>)}</tbody></table>
           </div>}
 
