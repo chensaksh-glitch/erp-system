@@ -1,1042 +1,784 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ERP 시스템</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #222; font-size: 14px; }
-.wrap { display: flex; min-height: 100vh; }
+import { useState, useEffect } from "react";
 
-/* NAV */
-.nav { width: 220px; background: #1a2236; padding: 0; display: flex; flex-direction: column; position: fixed; height: 100vh; overflow-y: auto; z-index: 100; }
-.nav-logo { padding: 18px 16px 14px; font-size: 15px; font-weight: 700; color: #fff; border-bottom: 1px solid #2d3a52; letter-spacing: 0.02em; }
-.nav-logo span { color: #4da3ff; }
-.nav-section { font-size: 10px; color: #5a6a85; padding: 14px 16px 4px; letter-spacing: 0.08em; font-weight: 700; text-transform: uppercase; }
-.nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 14px; cursor: pointer; margin: 1px 8px; border-radius: 6px; font-size: 13px; color: #9aabbf; transition: all 0.15s; }
-.nav-item:hover { background: #2d3a52; color: #fff; }
-.nav-item.active { background: #2563eb; color: #fff; }
-.nav-item .icon { font-size: 15px; width: 18px; text-align: center; }
+const STORAGE_KEYS = { items: "erp_items", workOrders: "erp_workorders", history: "erp_history", users: "erp_users" };
 
-/* MAIN */
-.main { flex: 1; margin-left: 220px; padding: 24px 28px; }
-.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-.page-title { font-size: 20px; font-weight: 700; color: #111; }
-.page-sub { font-size: 13px; color: #888; margin-top: 2px; }
-
-/* CARDS */
-.cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
-.card { background: #fff; border-radius: 10px; padding: 18px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); }
-.card-label { font-size: 12px; color: #888; margin-bottom: 6px; }
-.card-val { font-size: 24px; font-weight: 700; color: #111; }
-.card-sub { font-size: 12px; color: #aaa; margin-top: 3px; }
-.card.warn .card-val { color: #e74c3c; }
-.card.ok .card-val { color: #27ae60; }
-
-/* TABLE PANEL */
-.panel { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden; }
-.panel-top { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #f0f0f0; gap: 10px; }
-.panel-top input { border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 11px; font-size: 13px; width: 220px; outline: none; }
-.panel-top input:focus { border-color: #2563eb; }
-table { width: 100%; border-collapse: collapse; }
-th { background: #f8f9fb; font-size: 12px; font-weight: 600; color: #666; padding: 10px 14px; text-align: left; border-bottom: 1px solid #eee; }
-td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #f5f5f5; color: #333; vertical-align: middle; }
-tr:last-child td { border-bottom: none; }
-tr:hover td { background: #fafbff; }
-.badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.badge-blue { background: #ebf3ff; color: #2563eb; }
-.badge-green { background: #e8faf0; color: #27ae60; }
-.badge-red { background: #fdecea; color: #e74c3c; }
-.badge-gray { background: #f0f0f0; color: #888; }
-.badge-orange { background: #fff3e0; color: #e67e22; }
-.badge-yellow { background: #fffde7; color: #f39c12; }
-
-/* BUTTONS */
-.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.15s; }
-.btn-primary { background: #2563eb; color: #fff; }
-.btn-primary:hover { background: #1d4ed8; }
-.btn-outline { background: #fff; color: #555; border: 1px solid #ddd; }
-.btn-outline:hover { border-color: #2563eb; color: #2563eb; }
-.btn-danger { background: #fff; color: #e74c3c; border: 1px solid #fcc; }
-.btn-danger:hover { background: #fdecea; }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
-.btn-green { background: #27ae60; color: #fff; }
-.btn-green:hover { background: #219a52; }
-
-/* MODAL */
-.overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 200; display: flex; align-items: center; justify-content: center; }
-.modal { background: #fff; border-radius: 12px; width: 500px; max-width: 95vw; max-height: 85vh; overflow-y: auto; box-shadow: 0 8px 40px rgba(0,0,0,0.18); }
-.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 14px; border-bottom: 1px solid #f0f0f0; }
-.modal-title { font-size: 16px; font-weight: 700; }
-.modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #aaa; line-height: 1; }
-.modal-body { padding: 20px 22px; }
-.modal-foot { padding: 14px 22px; border-top: 1px solid #f0f0f0; display: flex; justify-content: flex-end; gap: 8px; }
-.field { margin-bottom: 15px; }
-.field label { display: block; font-size: 12px; font-weight: 600; color: #555; margin-bottom: 5px; }
-.field input, .field select, .field textarea { width: 100%; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 11px; font-size: 13px; outline: none; font-family: inherit; }
-.field input:focus, .field select:focus, .field textarea:focus { border-color: #2563eb; }
-.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-
-/* ALERT MODAL */
-.alert-modal { background: #fff; border-radius: 12px; width: 400px; padding: 28px 26px 22px; text-align: center; box-shadow: 0 8px 40px rgba(0,0,0,0.18); }
-.alert-icon { font-size: 36px; margin-bottom: 12px; }
-.alert-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; color: #111; }
-.alert-msg { font-size: 13px; color: #666; line-height: 1.6; margin-bottom: 18px; }
-.alert-order { background: #f8f9fb; border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; text-align: left; font-size: 12px; color: #555; }
-.alert-order li { margin: 3px 0; list-style: none; padding-left: 4px; }
-
-/* BOM */
-.bom-group { border: 1px solid #eee; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
-.bom-head { display: flex; align-items: center; justify-content: space-between; padding: 11px 16px; background: #f8f9fb; cursor: pointer; user-select: none; font-weight: 600; font-size: 13px; }
-.bom-head:hover { background: #f0f3ff; }
-.bom-body { padding: 0 16px 12px; }
-
-/* TOAST */
-.toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%); background: #1a2236; color: #fff; padding: 10px 22px; border-radius: 8px; font-size: 13px; font-weight: 600; z-index: 999; box-shadow: 0 4px 16px rgba(0,0,0,0.18); }
-
-/* TABS */
-.tabs { display: flex; gap: 4px; margin-bottom: 16px; }
-.tab { padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; color: #666; font-weight: 500; }
-.tab.active { background: #2563eb; color: #fff; font-weight: 600; }
-.tab:not(.active):hover { background: #f0f0f0; }
-
-/* LOT */
-.lot-row { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; padding: 8px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; align-items: center; }
-.lot-head { font-weight: 600; font-size: 12px; color: #666; background: #f8f9fb; padding: 8px 0; border-radius: 6px; margin-bottom: 4px; display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; }
-.lot-cell { padding: 0 8px; }
-
-/* EMPTY */
-.empty { text-align: center; padding: 40px 20px; color: #aaa; font-size: 13px; }
-</style>
-</head>
-<body>
-<div id="root"></div>
-
-<script type="text/babel">
-const { useState, useEffect } = React;
-
-// ===== 초기 데이터 =====
-const initItems = [
-  { code:"ITM001", name:"수액세트 A형", type:"완제품", unit:"EA", capacity:"500ml", stock:120, minStock:30, warehouse:"창고1" },
-  { code:"ITM002", name:"수액세트 B형", type:"완제품", unit:"EA", capacity:"1000ml", stock:8, minStock:20, warehouse:"창고1" },
-  { code:"ITM003", name:"PVC 튜브", type:"자재", unit:"M", capacity:"-", stock:500, minStock:100, warehouse:"창고2" },
-  { code:"ITM004", name:"Y-커넥터", type:"자재", unit:"EA", capacity:"-", stock:200, minStock:50, warehouse:"창고2" },
-  { code:"ITM005", name:"필터 어셈블리", type:"부품", unit:"EA", capacity:"-", stock:150, minStock:40, warehouse:"창고2" },
+const defaultItems = [
+  { id: 1, code: "RM-001", name: "철판 A", category: "원자재", unit: "kg", stock: 1200, min: 500, location: "A-1" },
+  { id: 2, code: "RM-002", name: "볼트 M10", category: "원자재", unit: "개", stock: 8500, min: 2000, location: "B-3" },
+  { id: 3, code: "RM-003", name: "알루미늄 판", category: "원자재", unit: "kg", stock: 340, min: 400, location: "A-2" },
+  { id: 4, code: "FG-001", name: "완제품 Alpha", category: "완제품", unit: "ea", stock: 85, min: 50, location: "C-1" },
+  { id: 5, code: "FG-002", name: "완제품 Beta", category: "완제품", unit: "ea", stock: 23, min: 30, location: "C-2" },
 ];
-const initWarehouses = [
-  { code:"WH001", name:"창고1", type:"완제품창고", location:"본관 1층", note:"온도/습도 관리구역" },
-  { code:"WH002", name:"창고2", type:"자재창고", location:"별관 지하", note:"일반 자재 보관" },
+const defaultWOs = [
+  { id: "WO-2024-001", product: "완제품 Alpha", qty: 50, planned: "2024-12-01", due: "2024-12-10", status: "완료", assignee: "김철수" },
+  { id: "WO-2024-002", product: "완제품 Beta", qty: 30, planned: "2024-12-05", due: "2024-12-15", status: "진행중", assignee: "이영희" },
+  { id: "WO-2024-003", product: "완제품 Alpha", qty: 100, planned: "2024-12-10", due: "2024-12-20", status: "대기", assignee: "박민준" },
 ];
-const initProcesses = [
-  { code:"PC001", name:"조립공정", desc:"부품 조립 단계", time:"2시간", note:"" },
-  { code:"PC002", name:"검사공정", desc:"품질 검사 단계", time:"1시간", note:"GMP 필수" },
-  { code:"PC003", name:"포장공정", desc:"완제품 포장 단계", time:"0.5시간", note:"" },
+const defaultHistory = [
+  { id: 1, date: "2024-12-01", type: "입고", code: "RM-001", name: "철판 A", qty: 500, note: "정기 입고" },
+  { id: 2, date: "2024-12-02", type: "출고", code: "RM-002", name: "볼트 M10", qty: 200, note: "WO-2024-001" },
+  { id: 3, date: "2024-12-03", type: "입고", code: "RM-003", name: "알루미늄 판", qty: 100, note: "긴급 발주" },
 ];
-const initBom = [
-  { code:"BOM001", product:"ITM001", productName:"수액세트 A형", materials:[
-    { code:"ITM003", name:"PVC 튜브", qty:2, unit:"M" },
-    { code:"ITM004", name:"Y-커넥터", qty:1, unit:"EA" },
-    { code:"ITM005", name:"필터 어셈블리", qty:1, unit:"EA" },
-  ]},
-  { code:"BOM002", product:"ITM002", productName:"수액세트 B형", materials:[
-    { code:"ITM003", name:"PVC 튜브", qty:3, unit:"M" },
-    { code:"ITM004", name:"Y-커넥터", qty:2, unit:"EA" },
-    { code:"ITM005", name:"필터 어셈블리", qty:1, unit:"EA" },
-  ]},
+const defaultUsers = [
+  { id: 1, username: "admin",   password: "admin123",   role: "admin",   name: "관리자" },
+  { id: 2, username: "manager", password: "manager123", role: "manager", name: "매니저" },
+  { id: 3, username: "viewer",  password: "viewer123",  role: "viewer",  name: "뷰어" },
 ];
-const initLots = [
-  { code:"LOT240001", item:"ITM001", itemName:"수액세트 A형", qty:50, mfg:"2024-01-10", exp:"2026-01-10", status:"정상", warehouse:"창고1" },
-  { code:"LOT240002", item:"ITM001", itemName:"수액세트 A형", qty:30, mfg:"2024-03-15", exp:"2026-03-15", status:"정상", warehouse:"창고1" },
-  { code:"LOT240003", item:"ITM002", itemName:"수액세트 B형", qty:8, mfg:"2023-11-01", exp:"2025-11-01", status:"만료임박", warehouse:"창고1" },
-];
-const initIncoming = [
-  { code:"INC001", item:"ITM003", itemName:"PVC 튜브", qty:200, unit:"M", supplier:"ABC공급사", eta:"2026-05-20", status:"대기" },
-  { code:"INC002", item:"ITM004", itemName:"Y-커넥터", qty:100, unit:"EA", supplier:"XYZ부품", eta:"2026-05-18", status:"대기" },
-];
-const initOrders = [
-  { code:"WO001", product:"ITM001", productName:"수액세트 A형", qty:30, process:"PC001", status:"대기", date:"2026-05-16" },
-  { code:"WO002", product:"ITM002", productName:"수액세트 B형", qty:10, process:"PC002", status:"진행중", date:"2026-05-15" },
-];
-const initIO = [
-  { date:"2026-05-14", type:"입고", item:"ITM003", itemName:"PVC 튜브", qty:100, lot:"LOT240001", note:"정기입고" },
-  { date:"2026-05-15", type:"출고", item:"ITM001", itemName:"수액세트 A형", qty:20, lot:"LOT240001", note:"영업팀 출고" },
+const boms = [
+  { id: 1, productCode: "FG-001", productName: "완제품 Alpha", materials: [{ code: "RM-001", name: "철판 A", qty: 5, unit: "kg" }, { code: "RM-002", name: "볼트 M10", qty: 20, unit: "개" }] },
+  { id: 2, productCode: "FG-002", productName: "완제품 Beta", materials: [{ code: "RM-001", name: "철판 A", qty: 3, unit: "kg" }, { code: "RM-003", name: "알루미늄 판", qty: 2, unit: "kg" }] },
 ];
 
-// ===== 삭제 순서 안내 =====
-const DELETE_ORDER = [
-  "① 작업지시서 (대기 상태만)",
-  "② BOM (자재명세서)",
-  "③ LOT",
-  "④ 입고 예정",
-  "⑤ 공정",
-  "⑥ 창고",
-  "⑦ 품목",
-];
+const PERMISSIONS = {
+  admin:   { canEdit: true,  canCreate: true,  canDelete: true,  canManageUsers: true  },
+  manager: { canEdit: true,  canCreate: true,  canDelete: false, canManageUsers: false },
+  viewer:  { canEdit: false, canCreate: false, canDelete: false, canManageUsers: false },
+};
 
-function App() {
-  const [page, setPage] = useState("dashboard");
-  const [items, setItems] = useState(initItems);
-  const [warehouses, setWarehouses] = useState(initWarehouses);
-  const [processes, setProcesses] = useState(initProcesses);
-  const [bom, setBom] = useState(initBom);
-  const [lots, setLots] = useState(initLots);
-  const [incoming, setIncoming] = useState(initIncoming);
-  const [orders, setOrders] = useState(initOrders);
-  const [io, setIo] = useState(initIO);
-  const [toast, setToast] = useState("");
-  const [alert, setAlert] = useState(null); // { title, msg, reason, showOrder }
+const ROLE_LABELS = { admin: "관리자", manager: "매니저", viewer: "뷰어" };
 
-  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
-  const showAlert = (title, msg, reason="", showOrder=false) => setAlert({title,msg,reason,showOrder});
+const load = (key, def) => { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; } };
+const save = async (key, val) => { try { if (window.storage) await window.storage.set(key, JSON.stringify(val)); else localStorage.setItem(key, JSON.stringify(val)); } catch {} };
 
-  // ===== 연계 체크 함수 =====
-  const checkItemLinks = (code) => {
-    const inBom = bom.some(b => b.product===code || b.materials.some(m=>m.code===code));
-    const inLot = lots.some(l=>l.item===code);
-    const inIo = io.some(r=>r.item===code);
-    const inInc = incoming.some(r=>r.item===code);
-    const inOrd = orders.some(o=>o.product===code);
-    const reasons = [];
-    if(inOrd) reasons.push("작업지시서");
-    if(inBom) reasons.push("BOM(자재명세서)");
-    if(inLot) reasons.push("LOT");
-    if(inIo) reasons.push("입출고 이력");
-    if(inInc) reasons.push("입고 예정");
-    return reasons;
-  };
-  const checkWarehouseLinks = (code) => {
-    const inItem = items.some(i=>i.warehouse===code);
-    const inLot = lots.some(l=>l.warehouse===code);
-    const reasons = [];
-    if(inItem) reasons.push("품목(창고 배정)");
-    if(inLot) reasons.push("LOT");
-    return reasons;
-  };
-  const checkProcessLinks = (code) => {
-    const inOrd = orders.some(o=>o.process===code);
-    const reasons = [];
-    if(inOrd) reasons.push("작업지시서");
-    return reasons;
-  };
-  const checkBomLinks = () => [];
-  const checkOrderLinks = (code) => {
-    const ord = orders.find(o=>o.code===code);
-    if(!ord) return [];
-    if(ord.status==="진행중"||ord.status==="완료") return [`작업지시서 상태가 '${ord.status}'`];
-    return [];
-  };
-
-  // ===== 삭제 공통 처리 =====
-  const tryDelete = (reasons, onConfirm, title="삭제 불가") => {
-    if(reasons.length>0) {
-      showAlert(title, `아래 데이터와 연계되어 있어 삭제할 수 없습니다.`, reasons.join(", "), true);
-    } else {
-      onConfirm();
-    }
-  };
-
-  // ===== CSV 다운로드 =====
-  const downloadCSV = (headers, rows, filename) => {
-    const csv = [headers.join(","), ...rows.map(r=>r.map(c=>`"${c}"`).join(","))].join("\n");
-    const blob = new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+const downloadCSV = (filename, rows) => {
+  const BOM = "﻿";
+  const csv = BOM + rows.map(row =>
+    row.map(cell => {
+      const str = String(cell ?? "");
+      return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+    }).join(",")
+  ).join("\r\n");
+  try {
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href=url; a.download=filename; a.click();
+    const a = document.createElement("a"); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch {
+    const a = document.createElement("a");
+    a.href = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
+    a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }
+};
+
+const parseCSV = (text) => {
+  const clean = text.replace(/^﻿/, "");
+  const lines = clean.split(/\r?\n/).filter(l => l.trim() !== "");
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const parseRow = (line) => {
+    const result = []; let cur = ""; let inQuote = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { if (inQuote && line[i + 1] === '"') { cur += '"'; i++; } else { inQuote = !inQuote; } }
+      else if (ch === "," && !inQuote) { result.push(cur.trim()); cur = ""; }
+      else { cur += ch; }
+    }
+    result.push(cur.trim());
+    return result;
+  };
+  return { headers: parseRow(lines[0]), rows: lines.slice(1).map(parseRow) };
+};
+
+const statusColor = { "대기": "#e6f1fb", "진행중": "#faeeda", "완료": "#eaf3de" };
+const statusTextColor = { "대기": "#185fa5", "진행중": "#854f0b", "완료": "#3b6d11" };
+
+export default function ERP() {
+  const [menu, setMenu] = useState("dashboard");
+  const [items, setItems] = useState(() => load(STORAGE_KEYS.items, defaultItems));
+  const [workOrders, setWorkOrders] = useState(() => load(STORAGE_KEYS.workOrders, defaultWOs));
+  const [history, setHistory] = useState(() => load(STORAGE_KEYS.history, defaultHistory));
+  const [users, setUsers] = useState(() => load(STORAGE_KEYS.users, defaultUsers));
+  const [loaded, setLoaded] = useState(false);
+  const [toast, setToast] = useState("");
+
+  // 인증
+  const [currentUser, setCurrentUser] = useState(null);
+  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  const [loginError, setLoginError] = useState("");
+
+  // 재고 필터
+  const [invSearch, setInvSearch] = useState("");
+  const [invCategoryFilter, setInvCategoryFilter] = useState("전체");
+  const [invStatusFilter, setInvStatusFilter] = useState("전체");
+
+  // 작업지시 필터
+  const [woSearch, setWOSearch] = useState("");
+  const [woStatusFilter, setWOStatusFilter] = useState("전체");
+
+  // 이력 필터
+  const [histDateFrom, setHistDateFrom] = useState("");
+  const [histDateTo, setHistDateTo] = useState("");
+  const [histTypeFilter, setHistTypeFilter] = useState("전체");
+
+  // 생산실적 필터
+  const [prodStatusFilter, setProdStatusFilter] = useState("전체");
+
+  // 모달
+  const [showIOModal, setShowIOModal] = useState(false);
+  const [showWOModal, setShowWOModal] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showCodeModal, setShowCodeModal] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showUserModal, setShowUserModal] = useState(false);
+
+  const [ioForm, setIOForm] = useState({ type: "입고", code: "", qty: "", note: "" });
+  const [woForm, setWOForm] = useState({ product: "", qty: "", planned: "", due: "", assignee: "" });
+  const [resultForm, setResultForm] = useState({ woId: "", actual: "", note: "" });
+  const [selectedWO, setSelectedWO] = useState(null);
+  const [uploadStep, setUploadStep] = useState(1);
+  const [uploadTarget, setUploadTarget] = useState("inventory");
+  const [uploadMode, setUploadMode] = useState("merge");
+  const [uploadPreview, setUploadPreview] = useState(null);
+  const [userForm, setUserForm] = useState({ username: "", password: "", role: "viewer", name: "" });
+
+  useEffect(() => {
+    // 세션 복구
+    try { const s = sessionStorage.getItem("erp_session"); if (s) setCurrentUser(JSON.parse(s)); } catch {}
+
+    if (!window.storage) { setLoaded(true); return; }
+    Promise.all([
+      window.storage.get(STORAGE_KEYS.items).then(r => r ? JSON.parse(r.value) : defaultItems).catch(() => defaultItems),
+      window.storage.get(STORAGE_KEYS.workOrders).then(r => r ? JSON.parse(r.value) : defaultWOs).catch(() => defaultWOs),
+      window.storage.get(STORAGE_KEYS.history).then(r => r ? JSON.parse(r.value) : defaultHistory).catch(() => defaultHistory),
+      window.storage.get(STORAGE_KEYS.users).then(r => r ? JSON.parse(r.value) : defaultUsers).catch(() => defaultUsers),
+    ]).then(([i, w, h, u]) => { setItems(i); setWorkOrders(w); setHistory(h); setUsers(u); setLoaded(true); });
+  }, []);
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(""), 2500); };
+  const updateItems = (v) => { setItems(v); save(STORAGE_KEYS.items, v); };
+  const updateWOs = (v) => { setWorkOrders(v); save(STORAGE_KEYS.workOrders, v); };
+  const updateHistory = (v) => { setHistory(v); save(STORAGE_KEYS.history, v); };
+  const updateUsers = (v) => { setUsers(v); save(STORAGE_KEYS.users, v); };
+
+  const perm = currentUser ? PERMISSIONS[currentUser.role] : PERMISSIONS.viewer;
+
+  const handleLogin = () => {
+    const user = users.find(u => u.username === loginForm.username && u.password === loginForm.password);
+    if (!user) { setLoginError("아이디 또는 비밀번호가 올바르지 않습니다."); return; }
+    setCurrentUser(user); setLoginError("");
+    try { sessionStorage.setItem("erp_session", JSON.stringify(user)); } catch {}
   };
 
-  const nav = [
-    { section:"대시보드" },
-    { key:"dashboard", icon:"📊", label:"대시보드" },
-    { section:"기준정보" },
-    { key:"items", icon:"📦", label:"품목 관리" },
-    { key:"warehouse", icon:"🏭", label:"창고 관리" },
-    { key:"process", icon:"⚙️", label:"공정 관리" },
-    { key:"bom", icon:"📋", label:"BOM (자재명세서)" },
-    { section:"재고·입출고" },
-    { key:"stock", icon:"🗄️", label:"재고 현황" },
-    { key:"lot", icon:"🔖", label:"LOT 관리" },
-    { key:"incoming", icon:"🚚", label:"입고 예정" },
-    { key:"io", icon:"↕️", label:"입출고 이력" },
-    { section:"생산" },
-    { key:"orders", icon:"🔧", label:"작업지시서" },
+  const handleLogout = () => {
+    setCurrentUser(null);
+    try { sessionStorage.removeItem("erp_session"); } catch {}
+  };
+
+  const handleIO = () => {
+    const item = items.find(i => i.code === ioForm.code);
+    if (!item) return alert("품목 코드를 확인해주세요.");
+    const qty = parseInt(ioForm.qty);
+    if (isNaN(qty) || qty <= 0) return alert("수량을 올바르게 입력해주세요.");
+    const newItems = items.map(i => i.code === ioForm.code ? { ...i, stock: ioForm.type === "입고" ? i.stock + qty : i.stock - qty } : i);
+    const newHistory = [{ id: history.length + 1, date: new Date().toISOString().slice(0, 10), type: ioForm.type, code: ioForm.code, name: item.name, qty, note: ioForm.note }, ...history];
+    updateItems(newItems); updateHistory(newHistory);
+    setShowIOModal(false); setIOForm({ type: "입고", code: "", qty: "", note: "" });
+    showToast("✓ 입출고 처리 완료 — 저장됨");
+  };
+
+  const handleWO = () => {
+    if (!woForm.product || !woForm.qty) return alert("제품명과 수량을 입력해주세요.");
+    const newWO = { id: `WO-2025-${String(workOrders.length + 1).padStart(3, "0")}`, ...woForm, qty: parseInt(woForm.qty), status: "대기" };
+    updateWOs([...workOrders, newWO]);
+    setShowWOModal(false); setWOForm({ product: "", qty: "", planned: "", due: "", assignee: "" });
+    showToast("✓ 작업지시서 생성 완료 — 저장됨");
+  };
+
+  const handleResult = () => {
+    updateWOs(workOrders.map(w => w.id === resultForm.woId ? { ...w, status: "완료" } : w));
+    setShowResultModal(false); setResultForm({ woId: "", actual: "", note: "" });
+    showToast("✓ 생산 완료 처리 — 저장됨");
+  };
+
+  const handleReset = () => {
+    updateItems(defaultItems); updateWOs(defaultWOs); updateHistory(defaultHistory);
+    setShowResetConfirm(false); showToast("✓ 데이터 초기화 완료");
+  };
+
+  const handleAddUser = () => {
+    if (!userForm.username || !userForm.password || !userForm.name) return alert("모든 항목을 입력해주세요.");
+    if (users.find(u => u.username === userForm.username)) return alert("이미 존재하는 아이디입니다.");
+    updateUsers([...users, { id: Date.now(), ...userForm }]);
+    setUserForm({ username: "", password: "", role: "viewer", name: "" });
+    showToast("✓ 사용자 추가 완료");
+  };
+
+  const handleDeleteUser = (id) => {
+    if (currentUser?.id === id) return alert("현재 로그인 중인 계정은 삭제할 수 없습니다.");
+    updateUsers(users.filter(u => u.id !== id));
+    showToast("✓ 사용자 삭제 완료");
+  };
+
+  // CSV 내보내기
+  const today = new Date().toISOString().slice(0, 10);
+  const exportInventory = () => downloadCSV(`재고현황_${today}.csv`, [["품목코드","품목명","분류","현재고","최소재고","단위","위치","상태"], ...items.map(i => [i.code, i.name, i.category, i.stock, i.min, i.unit, i.location, i.stock < i.min ? "부족" : "정상"])]);
+  const exportWorkOrders = () => downloadCSV(`작업지시서_${today}.csv`, [["지시번호","제품명","수량","계획일","완료기한","담당자","상태"], ...workOrders.map(w => [w.id, w.product, w.qty, w.planned, w.due, w.assignee, w.status])]);
+  const exportHistory = () => downloadCSV(`입출고이력_${today}.csv`, [["날짜","구분","품목코드","품목명","수량","비고"], ...history.map(h => [h.date, h.type, h.code, h.name, h.qty, h.note])]);
+  const exportBOM = () => downloadCSV(`BOM_${today}.csv`, [["제품코드","제품명","자재코드","자재명","소요량","단위"], ...boms.flatMap(b => b.materials.map(m => [b.productCode, b.productName, m.code, m.name, m.qty, m.unit]))]);
+  const downloadTemplate = (type) => {
+    if (type === "inventory") downloadCSV("재고_업로드_템플릿.csv", [["품목코드","품목명","분류","현재고","최소재고","단위","위치"], ["RM-001","예시품목","원자재","100","50","kg","A-1"]]);
+    else downloadCSV("작업지시_업로드_템플릿.csv", [["지시번호","제품명","수량","계획일","완료기한","담당자","상태"], ["WO-001","완제품 Alpha","50","2025-01-01","2025-01-10","홍길동","대기"]]);
+  };
+
+  // CSV 업로드
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => { setUploadPreview(parseCSV(ev.target.result)); setUploadStep(3); };
+    reader.readAsText(file, "UTF-8");
+  };
+
+  const applyUpload = () => {
+    const { headers, rows } = uploadPreview;
+    const idx = (name) => headers.indexOf(name);
+    if (uploadTarget === "inventory") {
+      const newItems = rows.map((row, i) => ({
+        id: Date.now() + i,
+        code: row[idx("품목코드")] || "", name: row[idx("품목명")] || "",
+        category: row[idx("분류")] || "원자재", stock: parseInt(row[idx("현재고")] || "0") || 0,
+        min: parseInt(row[idx("최소재고")] || "0") || 0, unit: row[idx("단위")] || "개",
+        location: row[idx("위치")] || "",
+      })).filter(it => it.code !== "");
+      if (uploadMode === "replace") { updateItems(newItems); }
+      else {
+        const merged = [...items];
+        newItems.forEach(ni => { const ei = merged.findIndex(i => i.code === ni.code); if (ei >= 0) merged[ei] = { ...merged[ei], ...ni, id: merged[ei].id }; else merged.push(ni); });
+        updateItems(merged);
+      }
+    } else {
+      const newWOs = rows.map(row => ({
+        id: row[idx("지시번호")] || `WO-${Date.now()}`, product: row[idx("제품명")] || "",
+        qty: parseInt(row[idx("수량")] || "0") || 0, planned: row[idx("계획일")] || "",
+        due: row[idx("완료기한")] || "", assignee: row[idx("담당자")] || "",
+        status: row[idx("상태")] || "대기",
+      })).filter(w => w.product !== "");
+      if (uploadMode === "replace") { updateWOs(newWOs); }
+      else {
+        const merged = [...workOrders];
+        newWOs.forEach(nw => { const ei = merged.findIndex(w => w.id === nw.id); if (ei >= 0) merged[ei] = nw; else merged.push(nw); });
+        updateWOs(merged);
+      }
+    }
+    setShowUploadModal(false); setUploadPreview(null); setUploadStep(1);
+    showToast("✓ CSV 업로드 완료 — 저장됨");
+  };
+
+  // 필터링
+  const categories = ["전체", ...Array.from(new Set(items.map(i => i.category)))];
+  const filteredItems = items
+    .filter(i => invSearch === "" || i.code.includes(invSearch) || i.name.includes(invSearch))
+    .filter(i => invCategoryFilter === "전체" || i.category === invCategoryFilter)
+    .filter(i => invStatusFilter === "전체" || (invStatusFilter === "부족" ? i.stock < i.min : i.stock >= i.min));
+  const filteredWOs = workOrders
+    .filter(w => woSearch === "" || w.id.includes(woSearch) || w.product.includes(woSearch) || w.assignee.includes(woSearch))
+    .filter(w => woStatusFilter === "전체" || w.status === woStatusFilter);
+  const filteredHistory = history
+    .filter(h => histTypeFilter === "전체" || h.type === histTypeFilter)
+    .filter(h => histDateFrom === "" || h.date >= histDateFrom)
+    .filter(h => histDateTo === "" || h.date <= histDateTo);
+  const filteredProd = workOrders.filter(w => prodStatusFilter === "전체" || w.status === prodStatusFilter);
+
+  const lowStockItems = items.filter(i => i.stock < i.min);
+  const activeWOs = workOrders.filter(w => w.status === "진행중").length;
+  const doneWOs = workOrders.filter(w => w.status === "완료").length;
+
+  const navItems = [
+    { key: "dashboard", icon: "ti-layout-dashboard", label: "대시보드" },
+    { key: "inventory", icon: "ti-package", label: "재고 관리" },
+    { key: "bom", icon: "ti-list-details", label: "BOM 관리" },
+    { key: "workorder", icon: "ti-clipboard-list", label: "작업지시서" },
+    { key: "production", icon: "ti-chart-bar", label: "생산 실적" },
+    ...(perm.canManageUsers ? [{ key: "users", icon: "ti-users", label: "사용자 관리" }] : []),
   ];
 
-  const pages = {
-    dashboard: <Dashboard items={items} lots={lots} orders={orders} incoming={incoming} />,
-    items: <ItemsPage items={items} setItems={setItems} warehouses={warehouses} showToast={showToast} tryDelete={tryDelete} checkItemLinks={checkItemLinks} downloadCSV={downloadCSV} />,
-    warehouse: <WarehousePage warehouses={warehouses} setWarehouses={setWarehouses} showToast={showToast} tryDelete={tryDelete} checkWarehouseLinks={checkWarehouseLinks} />,
-    process: <ProcessPage processes={processes} setProcesses={setProcesses} showToast={showToast} tryDelete={tryDelete} checkProcessLinks={checkProcessLinks} />,
-    bom: <BomPage bom={bom} setBom={setBom} items={items} showToast={showToast} tryDelete={tryDelete} />,
-    stock: <StockPage items={items} lots={lots} warehouses={warehouses} downloadCSV={downloadCSV} />,
-    lot: <LotPage lots={lots} setLots={setLots} items={items} warehouses={warehouses} showToast={showToast} tryDelete={tryDelete} downloadCSV={downloadCSV} />,
-    incoming: <IncomingPage incoming={incoming} setIncoming={setIncoming} items={items} showToast={showToast} tryDelete={tryDelete} />,
-    io: <IOPage io={io} setIo={setIo} items={items} lots={lots} showToast={showToast} downloadCSV={downloadCSV} />,
-    orders: <OrdersPage orders={orders} setOrders={setOrders} items={items} processes={processes} showToast={showToast} tryDelete={tryDelete} checkOrderLinks={checkOrderLinks} />,
+  const s = {
+    wrap: { display: "flex", minHeight: "600px", fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-primary)" },
+    nav: { width: "200px", borderRight: "0.5px solid var(--color-border-tertiary)", padding: "16px 0", flexShrink: 0, display: "flex", flexDirection: "column" },
+    navTop: { flex: 1 },
+    navTitle: { fontSize: "13px", fontWeight: 500, color: "var(--color-text-secondary)", padding: "0 16px 12px", letterSpacing: "0.05em" },
+    navItem: (active) => ({ display: "flex", alignItems: "center", gap: "10px", padding: "8px 16px", cursor: "pointer", borderRadius: "6px", margin: "0 8px", background: active ? "var(--color-background-secondary)" : "transparent", color: active ? "var(--color-text-primary)" : "var(--color-text-secondary)", fontSize: "13px", fontWeight: active ? 500 : 400 }),
+    main: { flex: 1, padding: "20px 24px", overflow: "auto" },
+    pageTitle: { fontSize: "18px", fontWeight: 500, marginBottom: "20px" },
+    grid4: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" },
+    card: { background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", padding: "14px 16px" },
+    cardLabel: { fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "6px" },
+    cardVal: { fontSize: "22px", fontWeight: 500 },
+    table: { width: "100%", borderCollapse: "collapse", fontSize: "13px" },
+    th: { textAlign: "left", padding: "8px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)", color: "var(--color-text-secondary)", fontWeight: 500, fontSize: "12px" },
+    td: { padding: "9px 12px", borderBottom: "0.5px solid var(--color-border-tertiary)" },
+    badge: (st) => ({ display: "inline-block", padding: "2px 10px", borderRadius: "20px", fontSize: "12px", background: statusColor[st] || "#f1efe8", color: statusTextColor[st] || "#5f5e5a", fontWeight: 500 }),
+    btn: { padding: "7px 14px", borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-secondary)", background: "transparent", cursor: "pointer", fontSize: "13px", color: "var(--color-text-primary)" },
+    btnPrimary: { padding: "7px 16px", borderRadius: "var(--border-radius-md)", border: "none", background: "#185fa5", color: "#fff", cursor: "pointer", fontSize: "13px", fontWeight: 500 },
+    btnDanger: { padding: "7px 14px", borderRadius: "var(--border-radius-md)", border: "0.5px solid #e24b4a", background: "transparent", cursor: "pointer", fontSize: "13px", color: "#a32d2d" },
+    btnSm: { padding: "4px 10px", borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-secondary)", background: "transparent", cursor: "pointer", fontSize: "12px", color: "var(--color-text-primary)" },
+    modal: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.35)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
+    modalBox: { background: "var(--color-background-primary)", borderRadius: "var(--border-radius-lg)", padding: "24px", width: "420px", border: "0.5px solid var(--color-border-tertiary)" },
+    input: { width: "100%", padding: "8px 10px", borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-secondary)", fontSize: "13px", background: "var(--color-background-primary)", color: "var(--color-text-primary)", boxSizing: "border-box" },
+    select: { padding: "8px 10px", borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-secondary)", fontSize: "13px", background: "var(--color-background-primary)", color: "var(--color-text-primary)", boxSizing: "border-box" },
+    formRow: { marginBottom: "14px" },
+    formLabel: { fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "5px", display: "block" },
+    section: { background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "var(--border-radius-lg)", marginBottom: "16px", overflow: "hidden" },
+    sectionHead: { padding: "12px 16px", borderBottom: "0.5px solid var(--color-border-tertiary)", display: "flex", alignItems: "center", justifyContent: "space-between" },
+    sectionTitle: { fontSize: "14px", fontWeight: 500 },
+    toast: { position: "fixed", bottom: "24px", left: "50%", transform: "translateX(-50%)", background: "#185fa5", color: "#fff", padding: "10px 20px", borderRadius: "20px", fontSize: "13px", zIndex: 9999, pointerEvents: "none", opacity: toast ? 1 : 0, transition: "opacity 0.3s" },
+    saveBadge: { display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "11px", color: "#3b6d11", background: "#eaf3de", padding: "3px 8px", borderRadius: "12px" },
+    filterBar: { display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" },
+    filterInput: { padding: "6px 10px", borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-secondary)", fontSize: "13px", background: "var(--color-background-primary)", color: "var(--color-text-primary)", width: "180px" },
+    filterSelect: { padding: "6px 10px", borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-secondary)", fontSize: "13px", background: "var(--color-background-primary)", color: "var(--color-text-primary)" },
+    filterDate: { padding: "6px 10px", borderRadius: "var(--border-radius-md)", border: "0.5px solid var(--color-border-secondary)", fontSize: "13px", background: "var(--color-background-primary)", color: "var(--color-text-primary)", width: "130px" },
+    btnGroup: { display: "flex", gap: "6px" },
   };
 
-  return (
-    <div className="wrap">
-      <nav className="nav">
-        <div className="nav-logo">🏥 <span>Med</span>ERP</div>
-        {nav.map((n,i)=> n.section
-          ? <div key={i} className="nav-section">{n.section}</div>
-          : <div key={n.key} className={`nav-item${page===n.key?" active":""}`} onClick={()=>setPage(n.key)}>
-              <span className="icon">{n.icon}</span>{n.label}
-            </div>
-        )}
-      </nav>
-      <main className="main">{pages[page]||null}</main>
+  if (!loaded) return <div style={{ padding: "40px", textAlign: "center", color: "var(--color-text-secondary)" }}>불러오는 중...</div>;
 
-      {/* 연계 삭제 방지 팝업 */}
-      {alert && (
-        <div className="overlay" onClick={()=>setAlert(null)}>
-          <div className="alert-modal" onClick={e=>e.stopPropagation()}>
-            <div className="alert-icon">🔒</div>
-            <div className="alert-title">{alert.title}</div>
-            <div className="alert-msg">{alert.msg}<br/><b style={{color:"#e74c3c"}}>{alert.reason}</b></div>
-            {alert.showOrder && (
-              <div className="alert-order">
-                <div style={{fontWeight:700,marginBottom:6,color:"#333"}}>✅ 삭제 가능한 순서</div>
-                {DELETE_ORDER.map((d,i)=><li key={i}>{d}</li>)}
+  // 로그인 화면
+  if (!currentUser) return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "500px", fontFamily: "var(--font-sans)" }}>
+      <div style={{ background: "var(--color-background-primary)", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "var(--border-radius-lg)", padding: "32px", width: "340px" }}>
+        <div style={{ fontSize: "18px", fontWeight: 500, marginBottom: "6px" }}>ERP 시스템</div>
+        <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "24px" }}>계정으로 로그인하세요</div>
+        <div style={s.formRow}>
+          <label style={s.formLabel}>아이디</label>
+          <input style={{ ...s.input }} placeholder="username" value={loginForm.username}
+            onChange={e => setLoginForm({ ...loginForm, username: e.target.value })}
+            onKeyDown={e => e.key === "Enter" && handleLogin()} />
+        </div>
+        <div style={s.formRow}>
+          <label style={s.formLabel}>비밀번호</label>
+          <input style={{ ...s.input }} type="password" placeholder="password" value={loginForm.password}
+            onChange={e => setLoginForm({ ...loginForm, password: e.target.value })}
+            onKeyDown={e => e.key === "Enter" && handleLogin()} />
+        </div>
+        {loginError && <div style={{ fontSize: "12px", color: "#a32d2d", marginBottom: "12px" }}>{loginError}</div>}
+        <button style={{ ...s.btnPrimary, width: "100%" }} onClick={handleLogin}>로그인</button>
+        <div style={{ marginTop: "20px", padding: "12px", background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", fontSize: "12px", color: "var(--color-text-secondary)", lineHeight: "1.8" }}>
+          <div style={{ fontWeight: 500, marginBottom: "4px" }}>기본 계정</div>
+          <div>admin / admin123 (관리자)</div>
+          <div>manager / manager123 (매니저)</div>
+          <div>viewer / viewer123 (뷰어)</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={s.wrap}>
+      <div style={s.nav}>
+        <div style={s.navTop}>
+          <div style={s.navTitle}>ERP 시스템</div>
+          {navItems.map(n => (
+            <div key={n.key} style={s.navItem(menu === n.key)} onClick={() => setMenu(n.key)}>
+              <i className={`ti ${n.icon}`} style={{ fontSize: "16px" }} aria-hidden="true" />
+              {n.label}
+            </div>
+          ))}
+        </div>
+        <div style={{ padding: "12px 16px", borderTop: "0.5px solid var(--color-border-tertiary)" }}>
+          <div style={{ fontSize: "12px", fontWeight: 500, marginBottom: "2px" }}>{currentUser.name}</div>
+          <div style={{ fontSize: "11px", color: "var(--color-text-secondary)", marginBottom: "8px" }}>{ROLE_LABELS[currentUser.role]}</div>
+          <span style={s.saveBadge}><i className="ti ti-device-floppy" style={{ fontSize: 13 }} aria-hidden="true" />자동 저장 중</span>
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
+            <button style={{ ...s.btn, fontSize: "12px", padding: "5px 10px", width: "100%", textAlign: "left" }} onClick={() => setShowCodeModal(true)}>
+              <i className="ti ti-code" style={{ marginRight: 5, fontSize: 13 }} aria-hidden="true" />웹 서비스로 내보내기
+            </button>
+            {perm.canDelete && (
+              <button style={{ ...s.btnDanger, fontSize: "12px", padding: "5px 10px", width: "100%", textAlign: "left" }} onClick={() => setShowResetConfirm(true)}>
+                <i className="ti ti-refresh" style={{ marginRight: 5, fontSize: 13 }} aria-hidden="true" />데이터 초기화
+              </button>
+            )}
+            <button style={{ ...s.btn, fontSize: "12px", padding: "5px 10px", width: "100%", textAlign: "left" }} onClick={handleLogout}>
+              <i className="ti ti-logout" style={{ marginRight: 5, fontSize: 13 }} aria-hidden="true" />로그아웃
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div style={s.main}>
+
+        {/* 대시보드 */}
+        {menu === "dashboard" && (
+          <>
+            <div style={s.pageTitle}>대시보드</div>
+            <div style={s.grid4}>
+              {[
+                { label: "전체 품목", val: items.length + " 종" },
+                { label: "재고 부족 품목", val: lowStockItems.length + " 건", warn: lowStockItems.length > 0 },
+                { label: "진행중 작업지시", val: activeWOs + " 건" },
+                { label: "이번달 완료", val: doneWOs + " 건" },
+              ].map((m, i) => (
+                <div key={i} style={{ ...s.card, borderLeft: m.warn ? "3px solid #e24b4a" : "3px solid transparent" }}>
+                  <div style={s.cardLabel}>{m.label}</div>
+                  <div style={{ ...s.cardVal, color: m.warn ? "#a32d2d" : "var(--color-text-primary)" }}>{m.val}</div>
+                </div>
+              ))}
+            </div>
+            {lowStockItems.length > 0 && (
+              <div style={s.section}>
+                <div style={s.sectionHead}><span style={{ ...s.sectionTitle, color: "#a32d2d" }}><i className="ti ti-alert-triangle" style={{ marginRight: 6, fontSize: 15 }} aria-hidden="true" />재고 부족 알림</span></div>
+                <table style={s.table}>
+                  <thead><tr>{["품목코드","품목명","현재고","최소재고","단위"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                  <tbody>{lowStockItems.map(i => <tr key={i.id}><td style={s.td}>{i.code}</td><td style={s.td}>{i.name}</td><td style={{ ...s.td, color: "#a32d2d", fontWeight: 500 }}>{i.stock.toLocaleString()}</td><td style={s.td}>{i.min.toLocaleString()}</td><td style={s.td}>{i.unit}</td></tr>)}</tbody>
+                </table>
               </div>
             )}
-            <button className="btn btn-primary" style={{width:"100%"}} onClick={()=>setAlert(null)}>확인</button>
-          </div>
-        </div>
-      )}
+            <div style={s.section}>
+              <div style={s.sectionHead}><span style={s.sectionTitle}>진행중 작업지시</span><button style={s.btn} onClick={() => setMenu("workorder")}>전체 보기</button></div>
+              <table style={s.table}>
+                <thead><tr>{["지시번호","제품명","수량","완료기한","담당자","상태"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <tbody>{workOrders.filter(w => w.status !== "완료").map(w => <tr key={w.id}><td style={{ ...s.td, fontFamily: "var(--font-mono)", fontSize: "12px" }}>{w.id}</td><td style={s.td}>{w.product}</td><td style={s.td}>{w.qty.toLocaleString()}</td><td style={s.td}>{w.due}</td><td style={s.td}>{w.assignee}</td><td style={s.td}><span style={s.badge(w.status)}>{w.status}</span></td></tr>)}</tbody>
+              </table>
+            </div>
+          </>
+        )}
 
-      {toast && <div className="toast">{toast}</div>}
-    </div>
-  );
-}
-
-// ===== 대시보드 =====
-function Dashboard({items,lots,orders,incoming}) {
-  const lowStock = items.filter(i=>i.stock<i.minStock).length;
-  const expSoon = lots.filter(l=>l.status==="만료임박").length;
-  const pending = orders.filter(o=>o.status==="대기").length;
-  const incomingCount = incoming.filter(i=>i.status==="대기").length;
-  return (
-    <div>
-      <div className="page-header"><div><div className="page-title">대시보드</div><div className="page-sub">의료기기 생산관리 현황</div></div></div>
-      <div className="cards">
-        <div className={`card${lowStock>0?" warn":""}`}>
-          <div className="card-label">재고 부족 품목</div>
-          <div className="card-val">{lowStock}</div>
-          <div className="card-sub">최소재고 미만</div>
-        </div>
-        <div className={`card${expSoon>0?" warn":""}`}>
-          <div className="card-label">만료임박 LOT</div>
-          <div className="card-val">{expSoon}</div>
-          <div className="card-sub">유효기간 확인 필요</div>
-        </div>
-        <div className="card">
-          <div className="card-label">작업지시 대기</div>
-          <div className="card-val">{pending}</div>
-          <div className="card-sub">생산 예정</div>
-        </div>
-        <div className="card ok">
-          <div className="card-label">입고 예정</div>
-          <div className="card-val">{incomingCount}</div>
-          <div className="card-sub">자재 입고 대기</div>
-        </div>
-      </div>
-      <div className="panel">
-        <div className="panel-top"><b>재고 부족 품목 목록</b></div>
-        <table>
-          <thead><tr><th>품목코드</th><th>품목명</th><th>현재재고</th><th>최소재고</th><th>상태</th></tr></thead>
-          <tbody>
-            {items.filter(i=>i.stock<i.minStock).map(i=>(
-              <tr key={i.code}>
-                <td>{i.code}</td><td>{i.name}</td>
-                <td style={{color:"#e74c3c",fontWeight:700}}>{i.stock} {i.unit}</td>
-                <td>{i.minStock} {i.unit}</td>
-                <td><span className="badge badge-red">부족</span></td>
-              </tr>
-            ))}
-            {items.filter(i=>i.stock<i.minStock).length===0&&<tr><td colSpan={5} className="empty">재고 부족 품목 없음</td></tr>}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ===== 품목 관리 =====
-function ItemsPage({items,setItems,warehouses,showToast,tryDelete,checkItemLinks,downloadCSV}) {
-  const [q,setQ]=useState(""); const [modal,setModal]=useState(null);
-  const [form,setForm]=useState({code:"",name:"",type:"완제품",unit:"EA",capacity:"",stock:0,minStock:0,warehouse:""});
-  const filtered=items.filter(i=>i.name.includes(q)||i.code.includes(q));
-  const openAdd=()=>{setForm({code:"",name:"",type:"완제품",unit:"EA",capacity:"",stock:0,minStock:0,warehouse:""});setModal("add");};
-  const openEdit=(i)=>{setForm({...i});setModal("edit");};
-  const save=()=>{
-    if(!form.code||!form.name){showToast("코드와 품목명은 필수입니다.");return;}
-    if(modal==="add"){
-      if(items.find(i=>i.code===form.code)){showToast("이미 존재하는 코드입니다.");return;}
-      setItems([...items,form]);
-    } else {
-      setItems(items.map(i=>i.code===form.code?form:i));
-    }
-    showToast("저장되었습니다."); setModal(null);
-  };
-  const del=(code)=>{
-    const reasons=checkItemLinks(code);
-    tryDelete(reasons,()=>{setItems(items.filter(i=>i.code!==code));showToast("삭제되었습니다.");},"품목 삭제 불가");
-  };
-  return (
-    <div>
-      <div className="page-header">
-        <div><div className="page-title">품목 관리</div><div className="page-sub">완제품·자재·부품 등록 및 관리</div></div>
-        <div style={{display:"flex",gap:8}}>
-          <button className="btn btn-outline" onClick={()=>downloadCSV(["코드","품목명","유형","단위","용량","재고","최소재고","창고"],items.map(i=>[i.code,i.name,i.type,i.unit,i.capacity,i.stock,i.minStock,i.warehouse]),"품목목록.csv")}>📥 엑셀 다운로드</button>
-          <button className="btn btn-primary" onClick={openAdd}>+ 품목 등록</button>
-        </div>
-      </div>
-      <div className="panel">
-        <div className="panel-top"><input placeholder="품목명/코드 검색" value={q} onChange={e=>setQ(e.target.value)}/><span style={{fontSize:12,color:"#aaa"}}>총 {filtered.length}건</span></div>
-        <table>
-          <thead><tr><th>품목코드</th><th>품목명</th><th>유형</th><th>용량</th><th>단위</th><th>현재재고</th><th>최소재고</th><th>창고</th><th>상태</th><th>관리</th></tr></thead>
-          <tbody>
-            {filtered.map(i=>(
-              <tr key={i.code}>
-                <td>{i.code}</td><td><b>{i.name}</b></td>
-                <td><span className={`badge ${i.type==="완제품"?"badge-blue":i.type==="자재"?"badge-green":"badge-orange"}`}>{i.type}</span></td>
-                <td>{i.capacity||"-"}</td><td>{i.unit}</td>
-                <td style={{color:i.stock<i.minStock?"#e74c3c":"inherit",fontWeight:i.stock<i.minStock?700:400}}>{i.stock}</td>
-                <td>{i.minStock}</td><td>{i.warehouse||"-"}</td>
-                <td><span className={`badge ${i.stock<i.minStock?"badge-red":"badge-green"}`}>{i.stock<i.minStock?"부족":"정상"}</span></td>
-                <td style={{display:"flex",gap:4}}>
-                  <button className="btn btn-outline btn-sm" onClick={()=>openEdit(i)}>수정</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>del(i.code)}>삭제</button>
-                </td>
-              </tr>
-            ))}
-            {!filtered.length&&<tr><td colSpan={10} className="empty">검색 결과 없음</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      {modal&&(
-        <div className="overlay" onClick={()=>setModal(null)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-head"><span className="modal-title">{modal==="add"?"품목 등록":"품목 수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
-            <div className="modal-body">
-              <div className="field-row">
-                <div className="field"><label>품목코드 *</label><input value={form.code} onChange={e=>setForm({...form,code:e.target.value})} disabled={modal==="edit"}/></div>
-                <div className="field"><label>품목명 *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>유형</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}><option>완제품</option><option>자재</option><option>부품</option></select></div>
-                <div className="field"><label>단위</label><select value={form.unit} onChange={e=>setForm({...form,unit:e.target.value})}><option>EA</option><option>M</option><option>KG</option><option>L</option><option>BOX</option></select></div>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>용량</label><input value={form.capacity} onChange={e=>setForm({...form,capacity:e.target.value})} placeholder="예) 500ml"/></div>
-                <div className="field"><label>창고</label><select value={form.warehouse} onChange={e=>setForm({...form,warehouse:e.target.value})}><option value="">선택</option>{warehouses.map(w=><option key={w.code} value={w.name}>{w.name}</option>)}</select></div>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>현재 재고</label><input type="number" value={form.stock} onChange={e=>setForm({...form,stock:+e.target.value})}/></div>
-                <div className="field"><label>최소 재고 (안전재고)</label><input type="number" value={form.minStock} onChange={e=>setForm({...form,minStock:+e.target.value})}/></div>
+        {/* 재고 관리 */}
+        {menu === "inventory" && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+              <div style={s.pageTitle}>재고 관리</div>
+              <div style={s.btnGroup}>
+                {perm.canCreate && (
+                  <button style={s.btn} onClick={() => { setUploadTarget("inventory"); setUploadStep(1); setUploadPreview(null); setShowUploadModal(true); }}>
+                    <i className="ti ti-upload" style={{ marginRight: 5, fontSize: 13 }} aria-hidden="true" />CSV 업로드
+                  </button>
+                )}
+                {perm.canCreate && <button style={s.btnPrimary} onClick={() => setShowIOModal(true)}><i className="ti ti-plus" aria-hidden="true" style={{ marginRight: 5 }} />입출고 처리</button>}
               </div>
             </div>
-            <div className="modal-foot">
-              <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
-              <button className="btn btn-primary" onClick={save}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== 창고 관리 =====
-function WarehousePage({warehouses,setWarehouses,showToast,tryDelete,checkWarehouseLinks}) {
-  const [modal,setModal]=useState(null);
-  const [form,setForm]=useState({code:"",name:"",type:"완제품창고",location:"",note:""});
-  const openAdd=()=>{setForm({code:"",name:"",type:"완제품창고",location:"",note:""});setModal("add");};
-  const openEdit=(w)=>{setForm({...w});setModal("edit");};
-  const save=()=>{
-    if(!form.code||!form.name){showToast("코드와 창고명 필수");return;}
-    if(modal==="add"){
-      if(warehouses.find(w=>w.code===form.code)){showToast("이미 존재하는 코드");return;}
-      setWarehouses([...warehouses,form]);
-    } else { setWarehouses(warehouses.map(w=>w.code===form.code?form:w)); }
-    showToast("저장되었습니다."); setModal(null);
-  };
-  const del=(code,name)=>{
-    const reasons=checkWarehouseLinks(name);
-    tryDelete(reasons,()=>{setWarehouses(warehouses.filter(w=>w.code!==code));showToast("삭제되었습니다.");},"창고 삭제 불가");
-  };
-  return (
-    <div>
-      <div className="page-header">
-        <div><div className="page-title">창고 관리</div><div className="page-sub">창고 등록 및 관리</div></div>
-        <button className="btn btn-primary" onClick={openAdd}>+ 창고 등록</button>
-      </div>
-      <div className="panel">
-        <table>
-          <thead><tr><th>창고코드</th><th>창고명</th><th>유형</th><th>위치</th><th>비고</th><th>관리</th></tr></thead>
-          <tbody>
-            {warehouses.map(w=>(
-              <tr key={w.code}>
-                <td>{w.code}</td><td><b>{w.name}</b></td>
-                <td><span className={`badge ${w.type==="완제품창고"?"badge-blue":"badge-green"}`}>{w.type}</span></td>
-                <td>{w.location}</td><td>{w.note||"-"}</td>
-                <td style={{display:"flex",gap:4}}>
-                  <button className="btn btn-outline btn-sm" onClick={()=>openEdit(w)}>수정</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>del(w.code,w.name)}>삭제</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {modal&&(
-        <div className="overlay" onClick={()=>setModal(null)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-head"><span className="modal-title">{modal==="add"?"창고 등록":"창고 수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
-            <div className="modal-body">
-              <div className="field-row">
-                <div className="field"><label>창고코드 *</label><input value={form.code} onChange={e=>setForm({...form,code:e.target.value})} disabled={modal==="edit"}/></div>
-                <div className="field"><label>창고명 *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div>
+            <div style={s.section}>
+              <div style={s.sectionHead}>
+                <span style={s.sectionTitle}>품목 현황 <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: "12px" }}>({filteredItems.length}/{items.length})</span></span>
+                <button style={s.btnSm} onClick={exportInventory}><i className="ti ti-download" style={{ marginRight: 4, fontSize: 12 }} aria-hidden="true" />CSV</button>
               </div>
-              <div className="field-row">
-                <div className="field"><label>유형</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}><option>완제품창고</option><option>자재창고</option><option>불량품창고</option></select></div>
-                <div className="field"><label>위치</label><input value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/></div>
+              <div style={{ padding: "10px 16px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                <div style={s.filterBar}>
+                  <input style={s.filterInput} placeholder="코드/이름 검색" value={invSearch} onChange={e => setInvSearch(e.target.value)} />
+                  <select style={s.filterSelect} value={invCategoryFilter} onChange={e => setInvCategoryFilter(e.target.value)}>
+                    {categories.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                  <select style={s.filterSelect} value={invStatusFilter} onChange={e => setInvStatusFilter(e.target.value)}>
+                    {["전체","정상","부족"].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                  {(invSearch || invCategoryFilter !== "전체" || invStatusFilter !== "전체") && (
+                    <button style={s.btnSm} onClick={() => { setInvSearch(""); setInvCategoryFilter("전체"); setInvStatusFilter("전체"); }}>초기화</button>
+                  )}
+                </div>
               </div>
-              <div className="field"><label>비고</label><input value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/></div>
-            </div>
-            <div className="modal-foot">
-              <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
-              <button className="btn btn-primary" onClick={save}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== 공정 관리 =====
-function ProcessPage({processes,setProcesses,showToast,tryDelete,checkProcessLinks}) {
-  const [modal,setModal]=useState(null);
-  const [form,setForm]=useState({code:"",name:"",desc:"",time:"",note:""});
-  const openAdd=()=>{setForm({code:"",name:"",desc:"",time:"",note:""});setModal("add");};
-  const openEdit=(p)=>{setForm({...p});setModal("edit");};
-  const save=()=>{
-    if(!form.code||!form.name){showToast("코드와 공정명 필수");return;}
-    if(modal==="add"){
-      if(processes.find(p=>p.code===form.code)){showToast("이미 존재하는 코드");return;}
-      setProcesses([...processes,form]);
-    } else { setProcesses(processes.map(p=>p.code===form.code?form:p)); }
-    showToast("저장되었습니다."); setModal(null);
-  };
-  const del=(code)=>{
-    const reasons=checkProcessLinks(code);
-    tryDelete(reasons,()=>{setProcesses(processes.filter(p=>p.code!==code));showToast("삭제되었습니다.");},"공정 삭제 불가");
-  };
-  return (
-    <div>
-      <div className="page-header">
-        <div><div className="page-title">공정 관리</div><div className="page-sub">생산 공정 단계 관리</div></div>
-        <button className="btn btn-primary" onClick={openAdd}>+ 공정 등록</button>
-      </div>
-      <div className="panel">
-        <table>
-          <thead><tr><th>공정코드</th><th>공정명</th><th>설명</th><th>소요시간</th><th>비고</th><th>관리</th></tr></thead>
-          <tbody>
-            {processes.map(p=>(
-              <tr key={p.code}>
-                <td>{p.code}</td><td><b>{p.name}</b></td><td>{p.desc}</td><td>{p.time}</td>
-                <td>{p.note?<span className="badge badge-orange">{p.note}</span>:"-"}</td>
-                <td style={{display:"flex",gap:4}}>
-                  <button className="btn btn-outline btn-sm" onClick={()=>openEdit(p)}>수정</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>del(p.code)}>삭제</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {modal&&(
-        <div className="overlay" onClick={()=>setModal(null)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-head"><span className="modal-title">{modal==="add"?"공정 등록":"공정 수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
-            <div className="modal-body">
-              <div className="field-row">
-                <div className="field"><label>공정코드 *</label><input value={form.code} onChange={e=>setForm({...form,code:e.target.value})} disabled={modal==="edit"}/></div>
-                <div className="field"><label>공정명 *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div>
-              </div>
-              <div className="field"><label>공정 설명</label><input value={form.desc} onChange={e=>setForm({...form,desc:e.target.value})}/></div>
-              <div className="field-row">
-                <div className="field"><label>소요시간</label><input value={form.time} onChange={e=>setForm({...form,time:e.target.value})} placeholder="예) 2시간"/></div>
-                <div className="field"><label>비고</label><input value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/></div>
-              </div>
-            </div>
-            <div className="modal-foot">
-              <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
-              <button className="btn btn-primary" onClick={save}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== BOM =====
-function BomPage({bom,setBom,items,showToast,tryDelete}) {
-  const [exp,setExp]=useState(null);
-  const [modal,setModal]=useState(null);
-  const [form,setForm]=useState({code:"",product:"",materials:[]});
-  const [matQty,setMatQty]=useState({});
-  const products=items.filter(i=>i.type==="완제품");
-  const materials=items.filter(i=>i.type!=="완제품");
-
-  const openAdd=()=>{setForm({code:"BOM"+Date.now(),product:"",materials:[]});setModal("add");};
-  const addMat=()=>setForm({...form,materials:[...form.materials,{code:"",name:"",qty:1,unit:"EA"}]});
-  const setMat=(idx,field,val)=>{
-    const mats=[...form.materials];
-    mats[idx]={...mats[idx],[field]:val};
-    if(field==="code"){const it=items.find(i=>i.code===val);if(it){mats[idx].name=it.name;mats[idx].unit=it.unit;}}
-    setForm({...form,materials:mats});
-  };
-  const delMat=(idx)=>setForm({...form,materials:form.materials.filter((_,i)=>i!==idx)});
-  const save=()=>{
-    if(!form.product){showToast("완제품을 선택해주세요");return;}
-    const prd=products.find(p=>p.code===form.product);
-    const entry={...form,productName:prd?prd.name:""};
-    if(modal==="add"){setBom([...bom,entry]);}
-    else{setBom(bom.map(b=>b.code===form.code?entry:b));}
-    showToast("저장되었습니다."); setModal(null);
-  };
-  const del=(code)=>{
-    tryDelete([],()=>{setBom(bom.filter(b=>b.code!==code));showToast("삭제되었습니다.");},"BOM 삭제 불가");
-  };
-  const calc=(b)=>{
-    const q=matQty[b.code]||1;
-    return b.materials.map(m=>({...m,totalQty:m.qty*q}));
-  };
-
-  return (
-    <div>
-      <div className="page-header">
-        <div><div className="page-title">BOM (자재명세서)</div><div className="page-sub">완제품 1개 생산에 필요한 자재 목록</div></div>
-        <button className="btn btn-primary" onClick={openAdd}>+ BOM 등록</button>
-      </div>
-      {bom.map(b=>(
-        <div key={b.code} className="bom-group">
-          <div className="bom-head" onClick={()=>setExp(exp===b.code?null:b.code)}>
-            <span>{exp===b.code?"▼":"▶"} 📦 {b.productName} <span style={{fontSize:11,color:"#aaa",fontWeight:400,marginLeft:6}}>{b.code}</span></span>
-            <div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
-              <button className="btn btn-outline btn-sm" onClick={()=>{setForm({...b});setModal("edit");}}>수정</button>
-              <button className="btn btn-danger btn-sm" onClick={()=>del(b.code)}>삭제</button>
-            </div>
-          </div>
-          {exp===b.code&&(
-            <div className="bom-body">
-              <div style={{display:"flex",alignItems:"center",gap:8,margin:"10px 0 8px"}}>
-                <label style={{fontSize:12,color:"#666"}}>생산 수량:</label>
-                <input type="number" min={1} style={{width:70,border:"1px solid #ddd",borderRadius:5,padding:"4px 8px",fontSize:13}} value={matQty[b.code]||1} onChange={e=>setMatQty({...matQty,[b.code]:+e.target.value})}/>
-                <span style={{fontSize:12,color:"#aaa"}}>EA 기준 자재 소요량</span>
-              </div>
-              <table>
-                <thead><tr><th>자재코드</th><th>자재명</th><th>단위 소요량</th><th>단위</th><th>총 소요량</th></tr></thead>
+              <table style={s.table}>
+                <thead><tr>{["품목코드","품목명","분류","현재고","최소재고","단위","위치","상태"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
                 <tbody>
-                  {calc(b).map((m,i)=>(
-                    <tr key={i}>
-                      <td>{m.code}</td><td>{m.name}</td>
-                      <td>{m.qty}</td><td>{m.unit}</td>
-                      <td style={{fontWeight:700,color:"#2563eb"}}>{m.totalQty}</td>
+                  {filteredItems.length === 0
+                    ? <tr><td colSpan={8} style={{ ...s.td, textAlign: "center", color: "var(--color-text-secondary)", padding: "24px" }}>검색 결과 없음</td></tr>
+                    : filteredItems.map(i => <tr key={i.id}><td style={{ ...s.td, fontFamily: "var(--font-mono)", fontSize: "12px" }}>{i.code}</td><td style={s.td}>{i.name}</td><td style={s.td}>{i.category}</td><td style={{ ...s.td, fontWeight: 500, color: i.stock < i.min ? "#a32d2d" : "var(--color-text-primary)" }}>{i.stock.toLocaleString()}</td><td style={s.td}>{i.min.toLocaleString()}</td><td style={s.td}>{i.unit}</td><td style={s.td}>{i.location}</td><td style={s.td}><span style={{ ...s.badge("완료"), background: i.stock < i.min ? "#fcebeb" : "#eaf3de", color: i.stock < i.min ? "#a32d2d" : "#3b6d11" }}>{i.stock < i.min ? "부족" : "정상"}</span></td></tr>)
+                  }
+                </tbody>
+              </table>
+            </div>
+            <div style={s.section}>
+              <div style={s.sectionHead}>
+                <span style={s.sectionTitle}>입출고 이력 <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: "12px" }}>({filteredHistory.length}/{history.length})</span></span>
+                <button style={s.btnSm} onClick={exportHistory}><i className="ti ti-download" style={{ marginRight: 4, fontSize: 12 }} aria-hidden="true" />CSV</button>
+              </div>
+              <div style={{ padding: "10px 16px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                <div style={s.filterBar}>
+                  <select style={s.filterSelect} value={histTypeFilter} onChange={e => setHistTypeFilter(e.target.value)}>
+                    {["전체","입고","출고"].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                  <input type="date" style={s.filterDate} value={histDateFrom} onChange={e => setHistDateFrom(e.target.value)} />
+                  <span style={{ alignSelf: "center", fontSize: "12px", color: "var(--color-text-secondary)" }}>~</span>
+                  <input type="date" style={s.filterDate} value={histDateTo} onChange={e => setHistDateTo(e.target.value)} />
+                  {(histTypeFilter !== "전체" || histDateFrom || histDateTo) && (
+                    <button style={s.btnSm} onClick={() => { setHistTypeFilter("전체"); setHistDateFrom(""); setHistDateTo(""); }}>초기화</button>
+                  )}
+                </div>
+              </div>
+              <table style={s.table}>
+                <thead><tr>{["날짜","구분","품목코드","품목명","수량","비고"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {filteredHistory.length === 0
+                    ? <tr><td colSpan={6} style={{ ...s.td, textAlign: "center", color: "var(--color-text-secondary)", padding: "24px" }}>검색 결과 없음</td></tr>
+                    : filteredHistory.map(h => <tr key={h.id}><td style={s.td}>{h.date}</td><td style={s.td}><span style={{ ...s.badge("완료"), background: h.type === "입고" ? "#e6f1fb" : "#faeeda", color: h.type === "입고" ? "#185fa5" : "#854f0b" }}>{h.type}</span></td><td style={{ ...s.td, fontFamily: "var(--font-mono)", fontSize: "12px" }}>{h.code}</td><td style={s.td}>{h.name}</td><td style={s.td}>{h.qty.toLocaleString()}</td><td style={{ ...s.td, color: "var(--color-text-secondary)" }}>{h.note}</td></tr>)
+                  }
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* BOM 관리 */}
+        {menu === "bom" && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+              <div style={s.pageTitle}>BOM 관리</div>
+              <button style={s.btnSm} onClick={exportBOM}><i className="ti ti-download" style={{ marginRight: 4, fontSize: 12 }} aria-hidden="true" />CSV 내보내기</button>
+            </div>
+            {boms.map(b => <div key={b.id} style={s.section}><div style={s.sectionHead}><span style={s.sectionTitle}>{b.productName} <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: "12px", marginLeft: 6 }}>{b.productCode}</span></span></div><table style={s.table}><thead><tr>{["자재코드","자재명","소요량","단위"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead><tbody>{b.materials.map((m, i) => <tr key={i}><td style={{ ...s.td, fontFamily: "var(--font-mono)", fontSize: "12px" }}>{m.code}</td><td style={s.td}>{m.name}</td><td style={s.td}>{m.qty}</td><td style={s.td}>{m.unit}</td></tr>)}</tbody></table></div>)}
+          </>
+        )}
+
+        {/* 작업지시서 */}
+        {menu === "workorder" && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+              <div style={s.pageTitle}>작업지시서</div>
+              <div style={s.btnGroup}>
+                {perm.canCreate && (
+                  <button style={s.btn} onClick={() => { setUploadTarget("workorder"); setUploadStep(1); setUploadPreview(null); setShowUploadModal(true); }}>
+                    <i className="ti ti-upload" style={{ marginRight: 5, fontSize: 13 }} aria-hidden="true" />CSV 업로드
+                  </button>
+                )}
+                {perm.canCreate && <button style={s.btnPrimary} onClick={() => setShowWOModal(true)}><i className="ti ti-plus" aria-hidden="true" style={{ marginRight: 5 }} />작업지시 생성</button>}
+              </div>
+            </div>
+            <div style={s.section}>
+              <div style={s.sectionHead}>
+                <span style={s.sectionTitle}>작업지시 목록 <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: "12px" }}>({filteredWOs.length}/{workOrders.length})</span></span>
+                <button style={s.btnSm} onClick={exportWorkOrders}><i className="ti ti-download" style={{ marginRight: 4, fontSize: 12 }} aria-hidden="true" />CSV</button>
+              </div>
+              <div style={{ padding: "10px 16px", borderBottom: "0.5px solid var(--color-border-tertiary)" }}>
+                <div style={s.filterBar}>
+                  <input style={s.filterInput} placeholder="번호/제품명/담당자 검색" value={woSearch} onChange={e => setWOSearch(e.target.value)} />
+                  <select style={s.filterSelect} value={woStatusFilter} onChange={e => setWOStatusFilter(e.target.value)}>
+                    {["전체","대기","진행중","완료"].map(c => <option key={c}>{c}</option>)}
+                  </select>
+                  {(woSearch || woStatusFilter !== "전체") && (
+                    <button style={s.btnSm} onClick={() => { setWOSearch(""); setWOStatusFilter("전체"); }}>초기화</button>
+                  )}
+                </div>
+              </div>
+              <table style={s.table}>
+                <thead><tr>{["지시번호","제품명","수량","계획일","완료기한","담당자","상태","액션"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {filteredWOs.length === 0
+                    ? <tr><td colSpan={8} style={{ ...s.td, textAlign: "center", color: "var(--color-text-secondary)", padding: "24px" }}>검색 결과 없음</td></tr>
+                    : filteredWOs.map(w => <tr key={w.id}><td style={{ ...s.td, fontFamily: "var(--font-mono)", fontSize: "12px" }}>{w.id}</td><td style={s.td}>{w.product}</td><td style={s.td}>{w.qty.toLocaleString()}</td><td style={s.td}>{w.planned}</td><td style={s.td}>{w.due}</td><td style={s.td}>{w.assignee}</td><td style={s.td}><span style={s.badge(w.status)}>{w.status}</span></td><td style={s.td}>{perm.canEdit && w.status === "대기" && <button style={s.btnSm} onClick={() => { updateWOs(workOrders.map(x => x.id === w.id ? { ...x, status: "진행중" } : x)); showToast("✓ 상태 변경 저장됨"); }}>시작</button>}{perm.canEdit && w.status === "진행중" && <button style={s.btnSm} onClick={() => { setSelectedWO(w); setResultForm({ woId: w.id, actual: "", note: "" }); setShowResultModal(true); }}>완료처리</button>}</td></tr>)
+                  }
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* 생산 실적 */}
+        {menu === "production" && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+              <div style={s.pageTitle}>생산 실적</div>
+              <button style={s.btnSm} onClick={exportWorkOrders}><i className="ti ti-download" style={{ marginRight: 4, fontSize: 12 }} aria-hidden="true" />CSV 내보내기</button>
+            </div>
+            <div style={s.grid4}>
+              {[{ label: "총 작업지시", val: workOrders.length + " 건" }, { label: "대기", val: workOrders.filter(w=>w.status==="대기").length + " 건" }, { label: "진행중", val: workOrders.filter(w=>w.status==="진행중").length + " 건" }, { label: "완료", val: workOrders.filter(w=>w.status==="완료").length + " 건" }].map((m, i) => <div key={i} style={s.card}><div style={s.cardLabel}>{m.label}</div><div style={s.cardVal}>{m.val}</div></div>)}
+            </div>
+            <div style={s.section}>
+              <div style={s.sectionHead}>
+                <span style={s.sectionTitle}>작업 내역 <span style={{ color: "var(--color-text-secondary)", fontWeight: 400, fontSize: "12px" }}>({filteredProd.length}/{workOrders.length})</span></span>
+                <select style={{ ...s.filterSelect, fontSize: "12px" }} value={prodStatusFilter} onChange={e => setProdStatusFilter(e.target.value)}>
+                  {["전체","대기","진행중","완료"].map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <table style={s.table}>
+                <thead><tr>{["지시번호","제품명","지시수량","담당자","계획일","완료기한","상태"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {filteredProd.length === 0
+                    ? <tr><td colSpan={7} style={{ ...s.td, textAlign: "center", color: "var(--color-text-secondary)", padding: "24px" }}>검색 결과 없음</td></tr>
+                    : filteredProd.map(w => <tr key={w.id}><td style={{ ...s.td, fontFamily: "var(--font-mono)", fontSize: "12px" }}>{w.id}</td><td style={s.td}>{w.product}</td><td style={s.td}>{w.qty.toLocaleString()}</td><td style={s.td}>{w.assignee}</td><td style={s.td}>{w.planned}</td><td style={s.td}>{w.due}</td><td style={s.td}><span style={s.badge(w.status)}>{w.status}</span></td></tr>)
+                  }
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* 사용자 관리 (admin 전용) */}
+        {menu === "users" && perm.canManageUsers && (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+              <div style={s.pageTitle}>사용자 관리</div>
+              <button style={s.btnPrimary} onClick={() => setShowUserModal(true)}><i className="ti ti-plus" aria-hidden="true" style={{ marginRight: 5 }} />사용자 추가</button>
+            </div>
+            <div style={s.section}>
+              <div style={s.sectionHead}><span style={s.sectionTitle}>계정 목록</span></div>
+              <table style={s.table}>
+                <thead><tr>{["이름","아이디","권한","액션"].map(h => <th key={h} style={s.th}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {users.map(u => (
+                    <tr key={u.id}>
+                      <td style={s.td}>{u.name}</td>
+                      <td style={{ ...s.td, fontFamily: "var(--font-mono)", fontSize: "12px" }}>{u.username}</td>
+                      <td style={s.td}><span style={{ ...s.badge(u.role === "admin" ? "완료" : u.role === "manager" ? "진행중" : "대기") }}>{ROLE_LABELS[u.role]}</span></td>
+                      <td style={s.td}>
+                        {u.id !== currentUser.id && (
+                          <button style={{ ...s.btnSm, color: "#a32d2d", borderColor: "#e24b4a" }} onClick={() => handleDeleteUser(u.id)}>삭제</button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+          </>
+        )}
+      </div>
+
+      {toast && <div style={s.toast}>{toast}</div>}
+
+      {/* 입출고 모달 */}
+      {showIOModal && (
+        <div style={s.modal}><div style={s.modalBox}>
+          <div style={{ fontSize: "16px", fontWeight: 500, marginBottom: "18px" }}>입출고 처리</div>
+          {[{ label: "구분", el: <select style={{ ...s.select, width: "100%" }} value={ioForm.type} onChange={e => setIOForm({ ...ioForm, type: e.target.value })}><option>입고</option><option>출고</option></select> }, { label: "품목코드", el: <input style={s.input} placeholder="예: RM-001" value={ioForm.code} onChange={e => setIOForm({ ...ioForm, code: e.target.value })} /> }, { label: "수량", el: <input style={s.input} type="number" placeholder="수량 입력" value={ioForm.qty} onChange={e => setIOForm({ ...ioForm, qty: e.target.value })} /> }, { label: "비고", el: <input style={s.input} placeholder="비고 (선택)" value={ioForm.note} onChange={e => setIOForm({ ...ioForm, note: e.target.value })} /> }].map(f => <div key={f.label} style={s.formRow}><label style={s.formLabel}>{f.label}</label>{f.el}</div>)}
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "6px" }}><button style={s.btn} onClick={() => setShowIOModal(false)}>취소</button><button style={s.btnPrimary} onClick={handleIO}>처리</button></div>
+        </div></div>
+      )}
+
+      {/* 작업지시 생성 모달 */}
+      {showWOModal && (
+        <div style={s.modal}><div style={s.modalBox}>
+          <div style={{ fontSize: "16px", fontWeight: 500, marginBottom: "18px" }}>작업지시 생성</div>
+          {[{ label: "제품명", el: <input style={s.input} placeholder="예: 완제품 Alpha" value={woForm.product} onChange={e => setWOForm({ ...woForm, product: e.target.value })} /> }, { label: "수량", el: <input style={s.input} type="number" placeholder="생산 수량" value={woForm.qty} onChange={e => setWOForm({ ...woForm, qty: e.target.value })} /> }, { label: "계획일", el: <input style={s.input} type="date" value={woForm.planned} onChange={e => setWOForm({ ...woForm, planned: e.target.value })} /> }, { label: "완료기한", el: <input style={s.input} type="date" value={woForm.due} onChange={e => setWOForm({ ...woForm, due: e.target.value })} /> }, { label: "담당자", el: <input style={s.input} placeholder="담당자명" value={woForm.assignee} onChange={e => setWOForm({ ...woForm, assignee: e.target.value })} /> }].map(f => <div key={f.label} style={s.formRow}><label style={s.formLabel}>{f.label}</label>{f.el}</div>)}
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "6px" }}><button style={s.btn} onClick={() => setShowWOModal(false)}>취소</button><button style={s.btnPrimary} onClick={handleWO}>생성</button></div>
+        </div></div>
+      )}
+
+      {/* 생산 완료 모달 */}
+      {showResultModal && (
+        <div style={s.modal}><div style={s.modalBox}>
+          <div style={{ fontSize: "16px", fontWeight: 500, marginBottom: "4px" }}>생산 완료 처리</div>
+          <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "18px" }}>{selectedWO?.id} · {selectedWO?.product}</div>
+          {[{ label: "실제 생산수량", el: <input style={s.input} type="number" placeholder="실적 수량" value={resultForm.actual} onChange={e => setResultForm({ ...resultForm, actual: e.target.value })} /> }, { label: "비고", el: <input style={s.input} placeholder="특이사항 (선택)" value={resultForm.note} onChange={e => setResultForm({ ...resultForm, note: e.target.value })} /> }].map(f => <div key={f.label} style={s.formRow}><label style={s.formLabel}>{f.label}</label>{f.el}</div>)}
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "6px" }}><button style={s.btn} onClick={() => setShowResultModal(false)}>취소</button><button style={s.btnPrimary} onClick={handleResult}>완료 처리</button></div>
+        </div></div>
+      )}
+
+      {/* 초기화 확인 모달 */}
+      {showResetConfirm && (
+        <div style={s.modal}><div style={{ ...s.modalBox, width: "320px" }}>
+          <div style={{ fontSize: "16px", fontWeight: 500, marginBottom: "10px" }}>데이터 초기화</div>
+          <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "20px" }}>저장된 모든 데이터가 샘플 데이터로 초기화됩니다. 계속하시겠습니까?</div>
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}><button style={s.btn} onClick={() => setShowResetConfirm(false)}>취소</button><button style={{ ...s.btnPrimary, background: "#a32d2d" }} onClick={handleReset}>초기화</button></div>
+        </div></div>
+      )}
+
+      {/* CSV 업로드 모달 */}
+      {showUploadModal && (
+        <div style={s.modal}><div style={{ ...s.modalBox, width: "500px" }}>
+          <div style={{ fontSize: "16px", fontWeight: 500, marginBottom: "4px" }}>CSV 업로드</div>
+          <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", marginBottom: "20px" }}>
+            {uploadStep === 1 ? "① 대상 및 방식 선택" : uploadStep === 2 ? "② 파일 선택" : "③ 미리보기 확인"}
+          </div>
+
+          {uploadStep === 1 && (
+            <>
+              <div style={s.formRow}>
+                <label style={s.formLabel}>업로드 대상</label>
+                <select style={{ ...s.select, width: "100%" }} value={uploadTarget} onChange={e => setUploadTarget(e.target.value)}>
+                  <option value="inventory">재고 데이터</option>
+                  <option value="workorder">작업지시서</option>
+                </select>
+              </div>
+              <div style={s.formRow}>
+                <label style={s.formLabel}>가져오기 방식</label>
+                <select style={{ ...s.select, width: "100%" }} value={uploadMode} onChange={e => setUploadMode(e.target.value)}>
+                  <option value="merge">병합 (기존 데이터 유지, 코드 일치 시 덮어쓰기)</option>
+                  <option value="replace">교체 (기존 데이터 전체 삭제 후 교체)</option>
+                </select>
+              </div>
+              <div style={{ marginBottom: "16px", padding: "10px 12px", background: "var(--color-background-secondary)", borderRadius: "var(--border-radius-md)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+                템플릿 다운로드: <button style={{ ...s.btnSm, fontSize: "11px", padding: "2px 8px", marginLeft: "6px" }} onClick={() => downloadTemplate(uploadTarget)}>
+                  {uploadTarget === "inventory" ? "재고 템플릿" : "작업지시 템플릿"}
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <button style={s.btn} onClick={() => setShowUploadModal(false)}>취소</button>
+                <button style={s.btnPrimary} onClick={() => setUploadStep(2)}>다음</button>
+              </div>
+            </>
           )}
-        </div>
-      ))}
-      {!bom.length&&<div className="empty">등록된 BOM이 없습니다.</div>}
 
-      {modal&&(
-        <div className="overlay" onClick={()=>setModal(null)}>
-          <div className="modal" style={{width:600}} onClick={e=>e.stopPropagation()}>
-            <div className="modal-head"><span className="modal-title">BOM {modal==="add"?"등록":"수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
-            <div className="modal-body">
-              <div className="field">
-                <label>완제품 선택 *</label>
-                <select value={form.product} onChange={e=>setForm({...form,product:e.target.value})}>
-                  <option value="">선택</option>
-                  {products.map(p=><option key={p.code} value={p.code}>{p.name}</option>)}
-                </select>
+          {uploadStep === 2 && (
+            <>
+              <div style={{ border: "2px dashed var(--color-border-secondary)", borderRadius: "var(--border-radius-md)", padding: "32px", textAlign: "center", marginBottom: "16px" }}>
+                <i className="ti ti-file-text" style={{ fontSize: "32px", color: "var(--color-text-secondary)", marginBottom: "12px", display: "block" }} aria-hidden="true" />
+                <div style={{ fontSize: "13px", marginBottom: "12px", color: "var(--color-text-secondary)" }}>CSV 파일을 선택하세요</div>
+                <label style={{ ...s.btnPrimary, display: "inline-block", cursor: "pointer" }}>
+                  파일 선택
+                  <input type="file" accept=".csv" style={{ display: "none" }} onChange={handleFileSelect} />
+                </label>
               </div>
-              <div style={{marginBottom:8,fontWeight:600,fontSize:13}}>자재 목록</div>
-              {form.materials.map((m,i)=>(
-                <div key={i} style={{display:"flex",gap:6,marginBottom:6,alignItems:"center"}}>
-                  <select style={{flex:2,border:"1px solid #ddd",borderRadius:5,padding:"6px 8px",fontSize:12}} value={m.code} onChange={e=>setMat(i,"code",e.target.value)}>
-                    <option value="">자재 선택</option>
-                    {materials.map(mat=><option key={mat.code} value={mat.code}>{mat.name}</option>)}
-                  </select>
-                  <input type="number" min={1} style={{width:60,border:"1px solid #ddd",borderRadius:5,padding:"6px 8px",fontSize:12}} value={m.qty} onChange={e=>setMat(i,"qty",+e.target.value)} placeholder="수량"/>
-                  <span style={{fontSize:12,color:"#aaa"}}>{m.unit}</span>
-                  <button className="btn btn-danger btn-sm" onClick={()=>delMat(i)}>✕</button>
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <button style={s.btn} onClick={() => setUploadStep(1)}>이전</button>
+                <button style={s.btn} onClick={() => setShowUploadModal(false)}>취소</button>
+              </div>
+            </>
+          )}
+
+          {uploadStep === 3 && uploadPreview && (
+            <>
+              <div style={{ marginBottom: "12px" }}>
+                <div style={{ fontSize: "13px", fontWeight: 500, marginBottom: "8px" }}>
+                  파싱 결과: {uploadPreview.rows.length}행 · 헤더: {uploadPreview.headers.join(", ")}
                 </div>
-              ))}
-              <button className="btn btn-outline btn-sm" style={{marginTop:4}} onClick={addMat}>+ 자재 추가</button>
-            </div>
-            <div className="modal-foot">
-              <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
-              <button className="btn btn-primary" onClick={save}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== 재고 현황 =====
-function StockPage({items,lots,warehouses,downloadCSV}) {
-  const [wh,setWh]=useState("전체");
-  const filtered=wh==="전체"?items:items.filter(i=>i.warehouse===wh);
-  return (
-    <div>
-      <div className="page-header">
-        <div><div className="page-title">재고 현황</div><div className="page-sub">창고별 품목 재고 현황</div></div>
-        <button className="btn btn-outline" onClick={()=>downloadCSV(["코드","품목명","유형","재고","단위","창고","상태"],filtered.map(i=>[i.code,i.name,i.type,i.stock,i.unit,i.warehouse,i.stock<i.minStock?"부족":"정상"]),"재고현황.csv")}>📥 엑셀 다운로드</button>
-      </div>
-      <div style={{marginBottom:12}}>
-        <div className="tabs">
-          {["전체",...warehouses.map(w=>w.name)].map(w=><div key={w} className={`tab${wh===w?" active":""}`} onClick={()=>setWh(w)}>{w}</div>)}
-        </div>
-      </div>
-      <div className="panel">
-        <table>
-          <thead><tr><th>품목코드</th><th>품목명</th><th>유형</th><th>현재재고</th><th>단위</th><th>최소재고</th><th>창고</th><th>상태</th></tr></thead>
-          <tbody>
-            {filtered.map(i=>(
-              <tr key={i.code}>
-                <td>{i.code}</td><td><b>{i.name}</b></td>
-                <td><span className={`badge ${i.type==="완제품"?"badge-blue":i.type==="자재"?"badge-green":"badge-orange"}`}>{i.type}</span></td>
-                <td style={{color:i.stock<i.minStock?"#e74c3c":"inherit",fontWeight:i.stock<i.minStock?700:400}}>{i.stock}</td>
-                <td>{i.unit}</td><td>{i.minStock}</td><td>{i.warehouse||"-"}</td>
-                <td><span className={`badge ${i.stock<i.minStock?"badge-red":"badge-green"}`}>{i.stock<i.minStock?"부족":"정상"}</span></td>
-              </tr>
-            ))}
-            {!filtered.length&&<tr><td colSpan={8} className="empty">해당 창고에 품목 없음</td></tr>}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ===== LOT 관리 =====
-function LotPage({lots,setLots,items,warehouses,showToast,tryDelete,downloadCSV}) {
-  const [q,setQ]=useState(""); const [modal,setModal]=useState(null);
-  const [form,setForm]=useState({code:"",item:"",itemName:"",qty:0,mfg:"",exp:"",status:"정상",warehouse:""});
-  const filtered=lots.filter(l=>l.code.includes(q)||l.itemName.includes(q));
-  const openAdd=()=>{setForm({code:"LOT"+Date.now(),item:"",itemName:"",qty:0,mfg:"",exp:"",status:"정상",warehouse:""});setModal("add");};
-  const save=()=>{
-    if(!form.item){showToast("품목을 선택해주세요");return;}
-    if(modal==="add"){setLots([...lots,form]);}
-    else{setLots(lots.map(l=>l.code===form.code?form:l));}
-    showToast("저장되었습니다."); setModal(null);
-  };
-  const del=(code)=>{
-    tryDelete([],()=>{setLots(lots.filter(l=>l.code!==code));showToast("삭제되었습니다.");},"LOT 삭제 불가");
-  };
-  return (
-    <div>
-      <div className="page-header">
-        <div><div className="page-title">LOT 관리</div><div className="page-sub">LOT번호(제품 추적을 위한 고유 묶음 번호) 관리</div></div>
-        <div style={{display:"flex",gap:8}}>
-          <button className="btn btn-outline" onClick={()=>downloadCSV(["LOT번호","품목","수량","제조일","유효기간","상태","창고"],lots.map(l=>[l.code,l.itemName,l.qty,l.mfg,l.exp,l.status,l.warehouse]),"LOT목록.csv")}>📥 엑셀</button>
-          <button className="btn btn-primary" onClick={openAdd}>+ LOT 등록</button>
-        </div>
-      </div>
-      <div className="panel">
-        <div className="panel-top"><input placeholder="LOT번호/품목명 검색" value={q} onChange={e=>setQ(e.target.value)}/><span style={{fontSize:12,color:"#aaa"}}>총 {filtered.length}건</span></div>
-        <table>
-          <thead><tr><th>LOT번호</th><th>품목명</th><th>수량</th><th>제조일</th><th>유효기간</th><th>창고</th><th>상태</th><th>관리</th></tr></thead>
-          <tbody>
-            {filtered.map(l=>(
-              <tr key={l.code}>
-                <td><b>{l.code}</b></td><td>{l.itemName}</td><td>{l.qty}</td>
-                <td>{l.mfg}</td><td>{l.exp}</td><td>{l.warehouse}</td>
-                <td><span className={`badge ${l.status==="정상"?"badge-green":l.status==="만료임박"?"badge-orange":"badge-red"}`}>{l.status}</span></td>
-                <td style={{display:"flex",gap:4}}>
-                  <button className="btn btn-outline btn-sm" onClick={()=>{setForm({...l});setModal("edit");}}>수정</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>del(l.code)}>삭제</button>
-                </td>
-              </tr>
-            ))}
-            {!filtered.length&&<tr><td colSpan={8} className="empty">검색 결과 없음</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      {modal&&(
-        <div className="overlay" onClick={()=>setModal(null)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-head"><span className="modal-title">LOT {modal==="add"?"등록":"수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
-            <div className="modal-body">
-              <div className="field"><label>LOT번호</label><input value={form.code} disabled/></div>
-              <div className="field"><label>품목 *</label>
-                <select value={form.item} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setForm({...form,item:e.target.value,itemName:it?it.name:""});}}>
-                  <option value="">선택</option>
-                  {items.map(i=><option key={i.code} value={i.code}>{i.name}</option>)}
-                </select>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>수량</label><input type="number" value={form.qty} onChange={e=>setForm({...form,qty:+e.target.value})}/></div>
-                <div className="field"><label>창고</label><select value={form.warehouse} onChange={e=>setForm({...form,warehouse:e.target.value})}><option value="">선택</option>{warehouses.map(w=><option key={w.code}>{w.name}</option>)}</select></div>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>제조일</label><input type="date" value={form.mfg} onChange={e=>setForm({...form,mfg:e.target.value})}/></div>
-                <div className="field"><label>유효기간</label><input type="date" value={form.exp} onChange={e=>setForm({...form,exp:e.target.value})}/></div>
-              </div>
-              <div className="field"><label>상태</label><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option>정상</option><option>만료임박</option><option>만료</option><option>불량</option></select></div>
-            </div>
-            <div className="modal-foot">
-              <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
-              <button className="btn btn-primary" onClick={save}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== 입고 예정 =====
-function IncomingPage({incoming,setIncoming,items,showToast,tryDelete}) {
-  const [modal,setModal]=useState(null);
-  const [form,setForm]=useState({code:"",item:"",itemName:"",qty:0,unit:"EA",supplier:"",eta:"",status:"대기"});
-  const openAdd=()=>{setForm({code:"INC"+Date.now(),item:"",itemName:"",qty:0,unit:"EA",supplier:"",eta:"",status:"대기"});setModal("add");};
-  const save=()=>{
-    if(!form.item){showToast("품목을 선택해주세요");return;}
-    if(modal==="add"){setIncoming([...incoming,form]);}
-    else{setIncoming(incoming.map(i=>i.code===form.code?form:i));}
-    showToast("저장되었습니다."); setModal(null);
-  };
-  const del=(code)=>{
-    tryDelete([],()=>{setIncoming(incoming.filter(i=>i.code!==code));showToast("삭제되었습니다.");},"입고 예정 삭제 불가");
-  };
-  return (
-    <div>
-      <div className="page-header">
-        <div><div className="page-title">입고 예정</div><div className="page-sub">자재·부품 입고 예정 목록</div></div>
-        <button className="btn btn-primary" onClick={openAdd}>+ 입고 예정 등록</button>
-      </div>
-      <div className="panel">
-        <table>
-          <thead><tr><th>코드</th><th>품목명</th><th>수량</th><th>공급업체</th><th>예정일</th><th>상태</th><th>관리</th></tr></thead>
-          <tbody>
-            {incoming.map(i=>(
-              <tr key={i.code}>
-                <td>{i.code}</td><td><b>{i.itemName}</b></td>
-                <td>{i.qty} {i.unit}</td><td>{i.supplier}</td><td>{i.eta}</td>
-                <td><span className={`badge ${i.status==="완료"?"badge-green":i.status==="대기"?"badge-blue":"badge-orange"}`}>{i.status}</span></td>
-                <td style={{display:"flex",gap:4}}>
-                  <button className="btn btn-outline btn-sm" onClick={()=>{setForm({...i});setModal("edit");}}>수정</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>del(i.code)}>삭제</button>
-                </td>
-              </tr>
-            ))}
-            {!incoming.length&&<tr><td colSpan={7} className="empty">입고 예정 없음</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      {modal&&(
-        <div className="overlay" onClick={()=>setModal(null)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-head"><span className="modal-title">입고 예정 {modal==="add"?"등록":"수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
-            <div className="modal-body">
-              <div className="field"><label>품목 *</label>
-                <select value={form.item} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setForm({...form,item:e.target.value,itemName:it?it.name:"",unit:it?it.unit:"EA"});}}>
-                  <option value="">선택</option>
-                  {items.map(i=><option key={i.code} value={i.code}>{i.name}</option>)}
-                </select>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>수량</label><input type="number" value={form.qty} onChange={e=>setForm({...form,qty:+e.target.value})}/></div>
-                <div className="field"><label>공급업체</label><input value={form.supplier} onChange={e=>setForm({...form,supplier:e.target.value})}/></div>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>예정일</label><input type="date" value={form.eta} onChange={e=>setForm({...form,eta:e.target.value})}/></div>
-                <div className="field"><label>상태</label><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option>대기</option><option>진행중</option><option>완료</option></select></div>
-              </div>
-            </div>
-            <div className="modal-foot">
-              <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
-              <button className="btn btn-primary" onClick={save}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ===== 입출고 이력 =====
-function IOPage({io,setIo,items,lots,showToast,downloadCSV}) {
-  const [modal,setModal]=useState(false);
-  const [form,setForm]=useState({date:"",type:"입고",item:"",itemName:"",qty:0,lot:"",note:""});
-  const save=()=>{
-    if(!form.item){showToast("품목을 선택해주세요");return;}
-    setIo([{...form},  ...io]);
-    showToast("저장되었습니다."); setModal(false);
-  };
-  return (
-    <div>
-      <div className="page-header">
-        <div><div className="page-title">입출고 이력</div><div className="page-sub">자재 입고 / 제품 출고 이력</div></div>
-        <div style={{display:"flex",gap:8}}>
-          <button className="btn btn-outline" onClick={()=>downloadCSV(["일자","유형","품목명","수량","LOT","비고"],io.map(r=>[r.date,r.type,r.itemName,r.qty,r.lot,r.note]),"입출고이력.csv")}>📥 엑셀</button>
-          <button className="btn btn-primary" onClick={()=>{setForm({date:new Date().toISOString().slice(0,10),type:"입고",item:"",itemName:"",qty:0,lot:"",note:""});setModal(true);}}>+ 이력 등록</button>
-        </div>
-      </div>
-      <div className="panel">
-        <table>
-          <thead><tr><th>일자</th><th>유형</th><th>품목명</th><th>수량</th><th>LOT번호</th><th>비고</th></tr></thead>
-          <tbody>
-            {io.map((r,i)=>(
-              <tr key={i}>
-                <td>{r.date}</td>
-                <td><span className={`badge ${r.type==="입고"?"badge-blue":"badge-orange"}`}>{r.type}</span></td>
-                <td>{r.itemName}</td><td>{r.qty}</td><td>{r.lot||"-"}</td><td>{r.note||"-"}</td>
-              </tr>
-            ))}
-            {!io.length&&<tr><td colSpan={6} className="empty">이력 없음</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      {modal&&(
-        <div className="overlay" onClick={()=>setModal(false)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-head"><span className="modal-title">입출고 이력 등록</span><button className="modal-close" onClick={()=>setModal(false)}>✕</button></div>
-            <div className="modal-body">
-              <div className="field-row">
-                <div className="field"><label>일자</label><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></div>
-                <div className="field"><label>유형</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}><option>입고</option><option>출고</option></select></div>
-              </div>
-              <div className="field"><label>품목 *</label>
-                <select value={form.item} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setForm({...form,item:e.target.value,itemName:it?it.name:""});}}>
-                  <option value="">선택</option>
-                  {items.map(i=><option key={i.code} value={i.code}>{i.name}</option>)}
-                </select>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>수량</label><input type="number" value={form.qty} onChange={e=>setForm({...form,qty:+e.target.value})}/></div>
-                <div className="field"><label>LOT번호</label>
-                  <select value={form.lot} onChange={e=>setForm({...form,lot:e.target.value})}>
-                    <option value="">선택(선택사항)</option>
-                    {lots.filter(l=>l.item===form.item).map(l=><option key={l.code}>{l.code}</option>)}
-                  </select>
+                <div style={{ overflowX: "auto", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "var(--border-radius-md)" }}>
+                  <table style={{ ...s.table, fontSize: "12px" }}>
+                    <thead><tr>{uploadPreview.headers.map((h, i) => <th key={i} style={s.th}>{h}</th>)}</tr></thead>
+                    <tbody>{uploadPreview.rows.slice(0, 5).map((row, ri) => <tr key={ri}>{row.map((cell, ci) => <td key={ci} style={s.td}>{cell}</td>)}</tr>)}</tbody>
+                  </table>
                 </div>
+                {uploadPreview.rows.length > 5 && <div style={{ fontSize: "11px", color: "var(--color-text-secondary)", marginTop: "4px", textAlign: "right" }}>외 {uploadPreview.rows.length - 5}행...</div>}
               </div>
-              <div className="field"><label>비고</label><input value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/></div>
-            </div>
-            <div className="modal-foot">
-              <button className="btn btn-outline" onClick={()=>setModal(false)}>취소</button>
-              <button className="btn btn-primary" onClick={save}>저장</button>
-            </div>
+              <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                <button style={s.btn} onClick={() => { setUploadStep(2); setUploadPreview(null); }}>이전</button>
+                <button style={s.btn} onClick={() => setShowUploadModal(false)}>취소</button>
+                <button style={s.btnPrimary} onClick={applyUpload}>가져오기</button>
+              </div>
+            </>
+          )}
+        </div></div>
+      )}
+
+      {/* 사용자 추가 모달 */}
+      {showUserModal && (
+        <div style={s.modal}><div style={s.modalBox}>
+          <div style={{ fontSize: "16px", fontWeight: 500, marginBottom: "18px" }}>사용자 추가</div>
+          {[
+            { label: "이름", el: <input style={s.input} placeholder="표시 이름" value={userForm.name} onChange={e => setUserForm({ ...userForm, name: e.target.value })} /> },
+            { label: "아이디", el: <input style={s.input} placeholder="로그인 아이디" value={userForm.username} onChange={e => setUserForm({ ...userForm, username: e.target.value })} /> },
+            { label: "비밀번호", el: <input style={s.input} type="password" placeholder="비밀번호" value={userForm.password} onChange={e => setUserForm({ ...userForm, password: e.target.value })} /> },
+            { label: "권한", el: <select style={{ ...s.select, width: "100%" }} value={userForm.role} onChange={e => setUserForm({ ...userForm, role: e.target.value })}><option value="viewer">뷰어 (조회만)</option><option value="manager">매니저 (조회+수정)</option><option value="admin">관리자 (전체)</option></select> },
+          ].map(f => <div key={f.label} style={s.formRow}><label style={s.formLabel}>{f.label}</label>{f.el}</div>)}
+          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end", marginTop: "6px" }}>
+            <button style={s.btn} onClick={() => { setShowUserModal(false); setUserForm({ username: "", password: "", role: "viewer", name: "" }); }}>취소</button>
+            <button style={s.btnPrimary} onClick={() => { handleAddUser(); setShowUserModal(false); }}>추가</button>
           </div>
-        </div>
+        </div></div>
+      )}
+
+      {/* 웹 서비스 내보내기 안내 모달 */}
+      {showCodeModal && (
+        <div style={s.modal}><div style={{ ...s.modalBox, width: "480px" }}>
+          <div style={{ fontSize: "16px", fontWeight: 500, marginBottom: "8px" }}>웹 서비스로 내보내기</div>
+          <div style={{ fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "16px" }}>아래 방법 중 하나를 선택해 실제 웹 서비스로 운영하세요.</div>
+          {[
+            { step: "1", title: "Vercel (무료, 가장 빠름)", desc: "Claude에게 'Next.js 프로젝트 코드 전체를 생성해줘'라고 요청 → GitHub에 업로드 → vercel.com에서 배포. 약 10분 소요.", icon: "ti-rocket" },
+            { step: "2", title: "Supabase + DB 연동", desc: "Claude에게 'Supabase 백엔드와 연동된 ERP 코드 만들어줘'라고 요청 → 실제 DB로 여러 사용자가 동시에 사용 가능.", icon: "ti-database" },
+            { step: "3", title: "로컬 개발 환경", desc: "Claude에게 'React + Vite로 이 ERP를 로컬에서 실행할 수 있게 패키징해줘'라고 요청 → npm install && npm run dev", icon: "ti-terminal" },
+          ].map(o => (
+            <div key={o.step} style={{ display: "flex", gap: "12px", padding: "12px", border: "0.5px solid var(--color-border-tertiary)", borderRadius: "var(--border-radius-md)", marginBottom: "10px" }}>
+              <i className={`ti ${o.icon}`} style={{ fontSize: "20px", color: "#185fa5", flexShrink: 0, marginTop: "2px" }} aria-hidden="true" />
+              <div>
+                <div style={{ fontWeight: 500, fontSize: "13px", marginBottom: "4px" }}>{o.title}</div>
+                <div style={{ fontSize: "12px", color: "var(--color-text-secondary)", lineHeight: "1.6" }}>{o.desc}</div>
+              </div>
+            </div>
+          ))}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
+            <button style={s.btn} onClick={() => setShowCodeModal(false)}>닫기</button>
+          </div>
+        </div></div>
       )}
     </div>
   );
 }
-
-// ===== 작업지시서 =====
-function OrdersPage({orders,setOrders,items,processes,showToast,tryDelete,checkOrderLinks}) {
-  const [modal,setModal]=useState(null);
-  const [form,setForm]=useState({code:"",product:"",productName:"",qty:0,process:"",status:"대기",date:""});
-  const products=items.filter(i=>i.type==="완제품");
-  const openAdd=()=>{setForm({code:"WO"+Date.now(),product:"",productName:"",qty:0,process:"",status:"대기",date:new Date().toISOString().slice(0,10)});setModal("add");};
-  const save=()=>{
-    if(!form.product){showToast("완제품을 선택해주세요");return;}
-    const prd=products.find(p=>p.code===form.product);
-    const entry={...form,productName:prd?prd.name:""};
-    if(modal==="add"){setOrders([...orders,entry]);}
-    else{setOrders(orders.map(o=>o.code===form.code?entry:o));}
-    showToast("저장되었습니다."); setModal(null);
-  };
-  const del=(code)=>{
-    const reasons=checkOrderLinks(code);
-    tryDelete(reasons,()=>{setOrders(orders.filter(o=>o.code!==code));showToast("삭제되었습니다.");},"작업지시서 삭제 불가");
-  };
-  return (
-    <div>
-      <div className="page-header">
-        <div><div className="page-title">작업지시서</div><div className="page-sub">생산 작업 지시 관리</div></div>
-        <button className="btn btn-primary" onClick={openAdd}>+ 작업지시 등록</button>
-      </div>
-      <div className="panel">
-        <table>
-          <thead><tr><th>지시번호</th><th>완제품</th><th>생산수량</th><th>공정</th><th>지시일</th><th>상태</th><th>관리</th></tr></thead>
-          <tbody>
-            {orders.map(o=>(
-              <tr key={o.code}>
-                <td><b>{o.code}</b></td><td>{o.productName}</td>
-                <td>{o.qty} EA</td>
-                <td>{processes.find(p=>p.code===o.process)?.name||o.process}</td>
-                <td>{o.date}</td>
-                <td><span className={`badge ${o.status==="완료"?"badge-green":o.status==="진행중"?"badge-blue":o.status==="대기"?"badge-gray":"badge-red"}`}>{o.status}</span></td>
-                <td style={{display:"flex",gap:4}}>
-                  <button className="btn btn-outline btn-sm" onClick={()=>{setForm({...o});setModal("edit");}}>수정</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>del(o.code)}>삭제</button>
-                </td>
-              </tr>
-            ))}
-            {!orders.length&&<tr><td colSpan={7} className="empty">작업지시 없음</td></tr>}
-          </tbody>
-        </table>
-      </div>
-      {modal&&(
-        <div className="overlay" onClick={()=>setModal(null)}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="modal-head"><span className="modal-title">작업지시서 {modal==="add"?"등록":"수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
-            <div className="modal-body">
-              <div className="field-row">
-                <div className="field"><label>지시번호</label><input value={form.code} disabled/></div>
-                <div className="field"><label>지시일</label><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></div>
-              </div>
-              <div className="field"><label>완제품 *</label>
-                <select value={form.product} onChange={e=>setForm({...form,product:e.target.value})}>
-                  <option value="">선택</option>
-                  {products.map(p=><option key={p.code} value={p.code}>{p.name}</option>)}
-                </select>
-              </div>
-              <div className="field-row">
-                <div className="field"><label>생산수량</label><input type="number" value={form.qty} onChange={e=>setForm({...form,qty:+e.target.value})}/></div>
-                <div className="field"><label>공정</label>
-                  <select value={form.process} onChange={e=>setForm({...form,process:e.target.value})}>
-                    <option value="">선택</option>
-                    {processes.map(p=><option key={p.code} value={p.code}>{p.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="field"><label>상태</label>
-                <select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>
-                  <option>대기</option><option>진행중</option><option>완료</option><option>취소</option>
-                </select>
-              </div>
-            </div>
-            <div className="modal-foot">
-              <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
-              <button className="btn btn-primary" onClick={save}>저장</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-ReactDOM.render(<App/>, document.getElementById("root"));
-</script>
-</body>
-</html>
