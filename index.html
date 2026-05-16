@@ -142,7 +142,10 @@ function App() {
   const [loading,setLoading] = React.useState(true);
   const [toast,setToast] = React.useState("");
   const [dbMB,setDbMB] = React.useState(0);
-  const [expWO,setExpWO] = React.useState(null);
+  const [costMaster,setCostMaster] = React.useState([]);
+  const [costResults,setCostResults] = React.useState([]);
+  const [selWO,setSelWO] = React.useState(null);
+  const [costDetail,setCostDetail] = React.useState(null);
   const [expBom,setExpBom] = React.useState(null);
 
   const iSel=useSel(),woSel=useSel(),whSel=useSel(),prSel=useSel(),lotSel=useSel(),inSel=useSel(),bomSel=useSel();
@@ -200,7 +203,7 @@ function App() {
 
   const loadAll = async () => {
     try {
-      const [i,w,wp,h,wh,pr,lt,ip,bm] = await Promise.all([
+      const [i,w,wp,h,wh,pr,lt,ip,bm,cm,cr] = await Promise.all([
         api("items","GET",null,"?order=code"),
         api("work_orders","GET",null,"?order=created_at.desc"),
         api("work_order_processes","GET",null,"?order=wo_id,step_no"),
@@ -210,9 +213,12 @@ function App() {
         api("lots","GET",null,"?order=id.desc"),
         api("incoming_plan","GET",null,"?order=planned_date"),
         api("bom","GET",null,"?order=product_code"),
+        api("cost_master","GET",null,"?order=id"),
+        api("cost_result","GET",null,"?order=created_at.desc"),
       ]);
       setItems(i||[]); setWorkOrders(w||[]); setWop(wp||[]); setHist(h||[]);
       setWhs(wh||[]); setProcs(pr||[]); setLots(lt||[]); setInPlan(ip||[]); setBoms(bm||[]);
+      setCostMaster(cm||[]); setCostResults(cr||[]);
       const t=(i||[]).length*0.5+(w||[]).length*0.5+(h||[]).length*0.3+(lt||[]).length*0.4+(ip||[]).length*0.3+(wh||[]).length*0.2+(pr||[]).length*0.2+(wp||[]).length*0.3+(bm||[]).length*0.3;
       setDbMB(Math.max(0.01,t/1024).toFixed(3));
     } catch(e){ alert("DB 연결 오류: "+e.message); }
@@ -439,7 +445,102 @@ function App() {
     } catch(e){ alert("오류: "+e.message); }
   };
 
-  const updMat = (idx,field,val) => {
+  const calcCost = async (wo) => {
+    const steps = getWOP(wo.id);
+    const batchSize = wo.qty;
+
+    // 공정별 시간 계산 (분→시간)
+    const prodMin = steps.filter(s=>procs.find(p=>p.id===s.process_id)?.proc_type!=="포장").reduce((a,s)=>a+(s.work_minutes||0),0);
+    const packMin = steps.filter(s=>procs.find(p=>p.id===s.process_id)?.proc_type==="포장").reduce((a,s)=>a+(s.work_minutes||0),0);
+    const prodH = prodMin/60;
+    const packH = packMin/60;
+    const totalH = prodH+packH;
+
+    // 원가 마스터에서 단가 가져오기
+    const getMV = name => parseFloat(costMaster.find(c=>c.name===name)?.value||0);
+    const rentRate = getMV("임차료");
+    const cleanRate = getMV("청정실 운영비");
+    const prodRate = getMV("생산 시급");
+    const packRate = getMV("포장 시급");
+    const depreciation = getMV("감가상각비");
+    const inspection = getMV("시험검사비");
+
+    // 제조비 계산
+    const rentCost = Math.round(totalH * rentRate);
+    const cleanCost = Math.round(totalH * cleanRate);
+    const prodLabor = Math.round(prodH * prodRate);
+    const packLabor = Math.round(packH * packRate);
+    const mfgCost = rentCost + cleanCost + prodLabor + packLabor + depreciation + inspection;
+
+    // 자재비 계산 (BOM × 단가)
+    const prodBoms = boms.filter(b=>b.product_code===wo.product);
+    const matDetail = [];
+    let matCost = 0;
+
+    // 제품코드로 BOM 못찾으면 제품명으로 시도
+    const bomList = prodBoms.length>0 ? prodBoms : boms.filter(b=>b.product_name===wo.product);
+
+    bomList.forEach(b=>{
+      const item = items.find(i=>i.code===b.material_code);
+      const unitPrice = parseFloat(item?.price||b.unit_price||0);
+      const qty = parseFloat(b.qty||0);
+      const totalQty = qty * batchSize;
+      const cost = Math.round(unitPrice * qty);
+      const totalCost = Math.round(unitPrice * totalQty);
+      matCost += cost;
+      matDetail.push({
+        category: item?.category||"-",
+        code: b.material_code,
+        name: b.material_name,
+        spec: item?.spec||"-",
+        unit_price: unitPrice,
+        qty_per: qty,
+        unit: b.unit||item?.unit||"-",
+        total_qty: totalQty,
+        cost_per: cost,
+        total_cost: totalCost,
+      });
+    });
+
+    const totalMatCost = matCost;
+    const totalCost = totalMatCost + mfgCost;
+    const unitCost = batchSize>0 ? Math.round(totalCost/batchSize) : 0;
+
+    const detail = {
+      matDetail,
+      prodMin, packMin, totalH: Math.round(totalH*100)/100,
+      prodH: Math.round(prodH*100)/100,
+      packH: Math.round(packH*100)/100,
+      rentCost, cleanCost, prodLabor, packLabor, depreciation, inspection,
+      mfgCost, totalMatCost, totalCost, unitCost, batchSize,
+      rentRate, cleanRate, prodRate, packRate,
+    };
+
+    try {
+      await api("cost_result","POST",{
+        wo_id: wo.id,
+        batch_size: batchSize,
+        material_cost: totalMatCost,
+        production_minutes: prodMin,
+        packing_minutes: packMin,
+        rent_cost: rentCost,
+        cleanroom_cost: cleanCost,
+        production_labor: prodLabor,
+        packing_labor: packLabor,
+        depreciation, inspection,
+        total_cost: totalCost,
+        unit_cost: unitCost,
+        detail: detail,
+      });
+      await loadAll();
+      setCostDetail(detail);
+      setSelWO(wo);
+      setMenu("cost_calc");
+      showToast("✓ 원가계산 완료");
+    } catch(e){ alert("오류: "+e.message); }
+  };
+
+  const fmt = n => Math.round(n||0).toLocaleString();
     const m=[...fBomMats]; m[idx]={...m[idx],[field]:val};
     if(field==="material_code"){const it=items.find(i=>i.code===val);if(it){m[idx].material_name=it.name;m[idx].unit=it.unit||"";}}
     setFBomMats(m);
@@ -450,6 +551,7 @@ function App() {
     {s:"기준정보"},{k:"itemmaster",l:"기초품목 등록",i:"📝"},{k:"bom",l:"BOM 관리",i:"🔧"},{k:"warehouse",l:"창고 관리",i:"🏭"},{k:"process",l:"공정 관리",i:"⚙️"},
     {s:"재고"},{k:"inventory",l:"재고 관리",i:"📦"},{k:"lot",l:"LOT 관리",i:"🔢"},{k:"incoming",l:"입고 예정",i:"📥"},
     {s:"생산"},{k:"workorder",l:"작업지시서",i:"📋"},{k:"production",l:"생산 실적",i:"📈"},
+    {s:"원가"},{k:"cost_master",l:"원가 마스터",i:"💰"},{k:"cost_calc",l:"원가 계산",i:"📊"},{k:"cost_list",l:"원가 대장",i:"📋"},
   ];
 
   const bomFiltered = boms.filter(b=>{
@@ -718,8 +820,10 @@ function App() {
         {menu==="production"&&<>
           <div className="row-between"><div className="page-title">생산 실적</div><button className="btn" onClick={()=>dlCSV("생산실적",["번호","제품명","수량","계획일","완료기한","상태"],workOrders.filter(w=>w.status==="완료").map(w=>[w.id,w.product,w.qty,w.planned,w.due,w.status]))}>📥 엑셀</button></div>
           <div className="grid4">{[{l:"총 작업지시",v:workOrders.length+" 건"},{l:"대기",v:workOrders.filter(w=>w.status==="대기").length+" 건"},{l:"진행중",v:workOrders.filter(w=>w.status==="진행중").length+" 건"},{l:"완료",v:workOrders.filter(w=>w.status==="완료").length+" 건"}].map((m,i)=><div key={i} className="card"><div className="card-label">{m.l}</div><div className="card-val">{m.v}</div></div>)}</div>
-          <div className="section"><table><thead><tr><th>지시번호</th><th>제품명</th><th>지시수량</th><th>총 작업시간</th><th>총 불량</th><th>불량률</th><th>계획일</th><th>완료기한</th></tr></thead>
-            <tbody>{workOrders.filter(w=>w.status==="완료").map(w=>{const steps=getWOP(w.id);const tm=steps.reduce((s,p)=>s+(p.work_minutes||0),0);const td=steps.reduce((s,p)=>s+(p.defect_qty||0),0);const tw=steps.reduce((s,p)=>s+(p.work_qty||0),0);return<tr key={w.id}><td className="mono">{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{tm?tm+"분":"-"}</td><td style={{color:"#a32d2d"}}>{td||"-"}</td><td>{tw>0?(td/tw*100).toFixed(1)+"%":"-"}</td><td>{w.planned}</td><td>{w.due}</td></tr>;})}</tbody>
+          <div className="section"><table><thead><tr><th>지시번호</th><th>제품명</th><th>지시수량</th><th>총 작업시간</th><th>총 불량</th><th>불량률</th><th>계획일</th><th>완료기한</th><th>원가</th></tr></thead>
+            <tbody>{workOrders.filter(w=>w.status==="완료").map(w=>{const steps=getWOP(w.id);const tm=steps.reduce((s,p)=>s+(p.work_minutes||0),0);const td=steps.reduce((s,p)=>s+(p.defect_qty||0),0);const tw=steps.reduce((s,p)=>s+(p.work_qty||0),0);const cr=costResults.find(c=>c.wo_id===w.id);return<tr key={w.id}><td className="mono">{w.id}</td><td>{w.product}</td><td>{w.qty?.toLocaleString()}</td><td>{tm?tm+"분":"-"}</td><td style={{color:"#a32d2d"}}>{td||"-"}</td><td>{tw>0?(td/tw*100).toFixed(1)+"%":"-"}</td><td>{w.planned}</td><td>{w.due}</td>
+              <td>{cr?<button className="btn-sm" onClick={()=>{setCostDetail(cr.detail);setSelWO(w);setMenu("cost_calc");}}>원가보기</button>:<button className="btn-primary" style={{fontSize:"12px",padding:"4px 10px"}} onClick={()=>calcCost(w)}>원가계산</button>}</td>
+            </tr>;})}</tbody>
           </table></div>
         </>}
 
@@ -757,7 +861,215 @@ function App() {
           </div></div>}
         </>}
 
-        {/* 공정 관리 */}
+        {/* 원가 마스터 */}
+        {menu==="cost_master"&&<>
+          <div className="page-title">💰 원가 마스터 설정</div>
+          <div className="section">
+            <div className="section-head"><span className="section-title">시간당 단가 설정</span></div>
+            <table><thead><tr><th>항목</th><th>단가</th><th>단위</th><th>비고</th><th>저장</th></tr></thead>
+            <tbody>{costMaster.map(c=>{
+              const [val,setVal] = [c.value, v=>setCostMaster(costMaster.map(x=>x.id===c.id?{...x,value:v}:x))];
+              return <tr key={c.id}>
+                <td style={{fontWeight:600}}>{c.name}</td>
+                <td><input type="number" style={{width:"140px",padding:"5px 8px"}} value={c.value} onChange={e=>setCostMaster(costMaster.map(x=>x.id===c.id?{...x,value:e.target.value}:x))}/></td>
+                <td style={{color:"#888"}}>{c.unit}</td>
+                <td style={{color:"#888",fontSize:"12px"}}>{c.note}</td>
+                <td><button className="btn-sm" onClick={async()=>{try{await api("cost_master","PATCH",{value:parseFloat(c.value)},`?id=eq.${c.id}`);await loadAll();showToast("✓ 저장됨");}catch(e){alert("오류: "+e.message);}}}>저장</button></td>
+              </tr>;
+            })}</tbody>
+            </table>
+          </div>
+          <div className="section">
+            <div className="section-head"><span className="section-title">공정 유형 설정</span><span style={{fontSize:"12px",color:"#888"}}>생산/포장 구분 설정</span></div>
+            <table><thead><tr><th>순서</th><th>공정명</th><th>유형</th><th>저장</th></tr></thead>
+            <tbody>{procs.map(p=><tr key={p.id}>
+              <td style={{fontWeight:700,color:"#185fa5"}}>{p.order_no}</td>
+              <td style={{fontWeight:600}}>{p.name}</td>
+              <td><select style={{width:"100px",padding:"5px 8px"}} value={p.proc_type||"생산"} onChange={e=>setProcs(procs.map(x=>x.id===p.id?{...x,proc_type:e.target.value}:x))}>
+                <option value="생산">생산</option>
+                <option value="포장">포장</option>
+              </select></td>
+              <td><button className="btn-sm" onClick={async()=>{try{await api("processes","PATCH",{proc_type:p.proc_type||"생산"},`?id=eq.${p.id}`);await loadAll();showToast("✓ 저장됨");}catch(e){alert("오류: "+e.message);}}}>저장</button></td>
+            </tr>)}</tbody>
+            </table>
+          </div>
+        </>}
+
+        {/* 원가 계산 */}
+        {menu==="cost_calc"&&<>
+          <div className="page-title">📊 원가 계산</div>
+          {!costDetail&&<>
+            <div className="section">
+              <div className="section-head"><span className="section-title">완료된 작업지시 선택</span></div>
+              <table><thead><tr><th>지시번호</th><th>제품명</th><th>수량(Batch)</th><th>완료일</th><th>원가계산</th></tr></thead>
+              <tbody>{workOrders.filter(w=>w.status==="완료").map(w=><tr key={w.id}>
+                <td className="mono">{w.id}</td>
+                <td style={{fontWeight:600}}>{w.product}</td>
+                <td>{w.qty?.toLocaleString()} ea</td>
+                <td>{w.due}</td>
+                <td><button className="btn-primary" style={{fontSize:"12px",padding:"5px 12px"}} onClick={()=>calcCost(w)}>원가계산 실행</button></td>
+              </tr>)}</tbody>
+              </table>
+            </div>
+          </>}
+
+          {costDetail&&selWO&&<>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}}>
+              <div>
+                <div style={{fontSize:"13px",color:"#888"}}>작업지시: <b>{selWO.id}</b> · 제품: <b>{selWO.product}</b> · Batch: <b>{selWO.qty?.toLocaleString()} ea</b></div>
+              </div>
+              <div style={{display:"flex",gap:"8px"}}>
+                <button className="btn" onClick={()=>{setCostDetail(null);setSelWO(null);}}>← 목록으로</button>
+                <button className="btn" onClick={()=>dlCSV(`원가계산_${selWO.id}`,
+                  ["구분","항목","코드","규격","단가","투입량","단위","비용(1Batch)","비용(총)"],
+                  [
+                    ...costDetail.matDetail.map(m=>[m.category,m.name,m.code,m.spec,fmt(m.unit_price),m.qty_per,m.unit,fmt(m.cost_per),fmt(m.total_cost)]),
+                    ["제조비","임차료","","",fmt(costDetail.rentRate)+"원/h",costDetail.totalH+"h","h",fmt(costDetail.rentCost),""],
+                    ["제조비","청정실 운영비","","",fmt(costDetail.cleanRate)+"원/h",costDetail.totalH+"h","h",fmt(costDetail.cleanCost),""],
+                    ["제조비","생산 인건비","","",fmt(costDetail.prodRate)+"원/h",costDetail.prodH+"h","h",fmt(costDetail.prodLabor),""],
+                    ["제조비","포장 인건비","","",fmt(costDetail.packRate)+"원/h",costDetail.packH+"h","h",fmt(costDetail.packLabor),""],
+                    ["제조비","감가상각비","","","","","",fmt(costDetail.depreciation),""],
+                    ["제조비","시험검사비","","","","","",fmt(costDetail.inspection),""],
+                    ["합계","총 원가","","","","","",fmt(costDetail.totalCost),""],
+                    ["합계","1개당 원가","","","","","",fmt(costDetail.unitCost),""],
+                  ]
+                )}>📥 엑셀</button>
+              </div>
+            </div>
+
+            {/* 요약 카드 */}
+            <div className="grid4" style={{marginBottom:"16px"}}>
+              {[
+                {l:"자재비 합계",v:fmt(costDetail.totalMatCost)+"원",c:"#185fa5"},
+                {l:"제조비 합계",v:fmt(costDetail.mfgCost)+"원",c:"#854f0b"},
+                {l:"총 원가",v:fmt(costDetail.totalCost)+"원",c:"#222"},
+                {l:"1개당 원가",v:fmt(costDetail.unitCost)+"원",c:"#a32d2d"},
+              ].map((m,i)=><div key={i} className="card" style={{borderLeft:`3px solid ${m.c}`}}>
+                <div className="card-label">{m.l}</div>
+                <div className="card-val" style={{fontSize:"18px",color:m.c}}>{m.v}</div>
+              </div>)}
+            </div>
+
+            {/* 자재비 상세 */}
+            <div className="section" style={{marginBottom:"16px"}}>
+              <div className="section-head">
+                <span className="section-title">📦 자재비 상세</span>
+                <span style={{fontSize:"13px",fontWeight:700,color:"#185fa5"}}>{fmt(costDetail.totalMatCost)}원 (1Batch 기준)</span>
+              </div>
+              <table>
+                <thead><tr><th>구분</th><th>항목</th><th>코드</th><th>규격</th><th style={{textAlign:"right"}}>단가(원)</th><th style={{textAlign:"right"}}>투입량</th><th>단위</th><th style={{textAlign:"right"}}>비용/Batch(원)</th><th style={{textAlign:"right"}}>총비용(원)</th></tr></thead>
+                <tbody>
+                  {costDetail.matDetail.length===0
+                    ? <tr><td colSpan="9" className="empty">BOM 자재 없음 - BOM을 먼저 등록해주세요</td></tr>
+                    : costDetail.matDetail.map((m,i)=><tr key={i} style={{background:i%2===0?"#fafafa":"#fff"}}>
+                        <td><CatBadge c={m.category}/></td>
+                        <td style={{fontWeight:500}}>{m.name}</td>
+                        <td className="mono">{m.code}</td>
+                        <td style={{color:"#888",fontSize:"12px"}}>{m.spec}</td>
+                        <td style={{textAlign:"right"}}>{fmt(m.unit_price)}</td>
+                        <td style={{textAlign:"right",fontWeight:600}}>{m.qty_per}</td>
+                        <td>{m.unit}</td>
+                        <td style={{textAlign:"right",fontWeight:600,color:"#185fa5"}}>{fmt(m.cost_per)}</td>
+                        <td style={{textAlign:"right",color:"#888"}}>{fmt(m.total_cost)}</td>
+                      </tr>)
+                  }
+                  <tr style={{background:"#eef3fb",fontWeight:700}}>
+                    <td colSpan="7">BOM 자재비 합계</td>
+                    <td style={{textAlign:"right",color:"#185fa5"}}>{fmt(costDetail.totalMatCost)}</td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* 제조비 상세 */}
+            <div className="section">
+              <div className="section-head">
+                <span className="section-title">⚙️ 제조비 상세</span>
+                <span style={{fontSize:"13px",fontWeight:700,color:"#854f0b"}}>{fmt(costDetail.mfgCost)}원</span>
+              </div>
+              <table>
+                <thead><tr><th>항목</th><th style={{textAlign:"right"}}>시간(h)</th><th style={{textAlign:"right"}}>시간당 단가(원)</th><th style={{textAlign:"right"}}>비용(원)</th><th>비고</th></tr></thead>
+                <tbody>
+                  {[
+                    {name:"임차료",h:costDetail.totalH,rate:costDetail.rentRate,cost:costDetail.rentCost,note:`총 작업시간 ${costDetail.totalH}h`},
+                    {name:"청정실 운영비",h:costDetail.totalH,rate:costDetail.cleanRate,cost:costDetail.cleanCost,note:`총 작업시간 ${costDetail.totalH}h`},
+                    {name:"생산 인건비",h:costDetail.prodH,rate:costDetail.prodRate,cost:costDetail.prodLabor,note:`생산공정 ${Math.round(costDetail.prodMin)}분`},
+                    {name:"포장 인건비",h:costDetail.packH,rate:costDetail.packRate,cost:costDetail.packLabor,note:`포장공정 ${Math.round(costDetail.packMin)}분`},
+                    {name:"감가상각비",h:"-",rate:"-",cost:costDetail.depreciation,note:"월 고정"},
+                    {name:"시험검사비",h:"-",rate:"-",cost:costDetail.inspection,note:"건당"},
+                  ].map((r,i)=><tr key={i}>
+                    <td style={{fontWeight:600}}>{r.name}</td>
+                    <td style={{textAlign:"right"}}>{r.h!=="-"?r.h:"-"}</td>
+                    <td style={{textAlign:"right"}}>{r.rate!=="-"?fmt(r.rate):"-"}</td>
+                    <td style={{textAlign:"right",fontWeight:600,color:"#854f0b"}}>{fmt(r.cost)}</td>
+                    <td style={{color:"#888",fontSize:"12px"}}>{r.note}</td>
+                  </tr>)}
+                  <tr style={{background:"#faeeda",fontWeight:700}}>
+                    <td colSpan="3">제조비 합계</td>
+                    <td style={{textAlign:"right",color:"#854f0b"}}>{fmt(costDetail.mfgCost)}</td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* 최종 원가 */}
+            <div className="section">
+              <div className="section-head"><span className="section-title">💰 최종 원가</span></div>
+              <table>
+                <thead><tr><th>항목</th><th style={{textAlign:"right"}}>금액(원)</th><th>비고</th></tr></thead>
+                <tbody>
+                  <tr><td>자재비 합계</td><td style={{textAlign:"right",fontWeight:600}}>{fmt(costDetail.totalMatCost)}</td><td style={{color:"#888"}}>BOM 기준</td></tr>
+                  <tr><td>제조비 합계</td><td style={{textAlign:"right",fontWeight:600}}>{fmt(costDetail.mfgCost)}</td><td style={{color:"#888"}}>임차료+청정실+인건비+기타</td></tr>
+                  <tr style={{background:"#eef3fb",fontWeight:700,fontSize:"14px"}}>
+                    <td>총 원가 (1 Batch)</td>
+                    <td style={{textAlign:"right",color:"#185fa5"}}>{fmt(costDetail.totalCost)}</td>
+                    <td style={{color:"#888"}}>Batch: {costDetail.batchSize?.toLocaleString()} ea</td>
+                  </tr>
+                  <tr style={{background:"#fcebeb",fontWeight:700,fontSize:"15px"}}>
+                    <td>제품 1개당 원가</td>
+                    <td style={{textAlign:"right",color:"#a32d2d"}}>{fmt(costDetail.unitCost)}</td>
+                    <td style={{color:"#888"}}>= 총원가 ÷ {costDetail.batchSize?.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </>}
+        </>}
+
+        {/* 원가 대장 */}
+        {menu==="cost_list"&&<>
+          <div className="row-between">
+            <div className="page-title">📋 원가 대장</div>
+            <button className="btn" onClick={()=>dlCSV("원가대장",["작업지시","제품명","Batch수량","자재비","제조비","총원가","1개당원가","계산일"],
+              costResults.map(c=>[c.wo_id,workOrders.find(w=>w.id===c.wo_id)?.product||"-",c.batch_size,c.material_cost,c.rent_cost+c.cleanroom_cost+c.production_labor+c.packing_labor+c.depreciation+c.inspection,c.total_cost,c.unit_cost,c.created_at?.slice(0,10)]))}>📥 엑셀</button>
+          </div>
+          <div className="section">
+            <table><thead><tr>
+              <th>작업지시</th><th>제품명</th><th style={{textAlign:"right"}}>Batch</th>
+              <th style={{textAlign:"right"}}>자재비</th><th style={{textAlign:"right"}}>제조비</th>
+              <th style={{textAlign:"right"}}>총 원가</th><th style={{textAlign:"right"}}>1개당 원가</th>
+              <th>계산일</th><th>상세</th>
+            </tr></thead>
+            <tbody>{costResults.length===0?<tr><td colSpan="9" className="empty">원가계산 결과가 없습니다</td></tr>:costResults.map(c=>{
+              const wo=workOrders.find(w=>w.id===c.wo_id);
+              const mfg=(c.rent_cost||0)+(c.cleanroom_cost||0)+(c.production_labor||0)+(c.packing_labor||0)+(c.depreciation||0)+(c.inspection||0);
+              return<tr key={c.id}>
+                <td className="mono">{c.wo_id}</td>
+                <td style={{fontWeight:600}}>{wo?.product||"-"}</td>
+                <td style={{textAlign:"right"}}>{c.batch_size?.toLocaleString()} ea</td>
+                <td style={{textAlign:"right",color:"#185fa5"}}>{fmt(c.material_cost)}</td>
+                <td style={{textAlign:"right",color:"#854f0b"}}>{fmt(mfg)}</td>
+                <td style={{textAlign:"right",fontWeight:700}}>{fmt(c.total_cost)}</td>
+                <td style={{textAlign:"right",fontWeight:700,color:"#a32d2d"}}>{fmt(c.unit_cost)}</td>
+                <td>{c.created_at?.slice(0,10)}</td>
+                <td><button className="btn-sm" onClick={()=>{setCostDetail(c.detail);setSelWO(wo);setMenu("cost_calc");}}>상세보기</button></td>
+              </tr>;
+            })}</tbody>
+            </table>
+          </div>
+        </>}
         {menu==="process"&&<>
           <div className="row-between"><div className="page-title">공정 관리</div><button className="btn-primary" onClick={()=>{setEPR(null);setFPR({code:"",name:"",order_no:"",machine:"",manager:"",note:""});setMPR(true);}}>+ 공정 등록</button></div>
           <Toolbar s={prSel} onDel={()=>checkAndBulkDelete("processes",prSel.sel,id=>procs.find(p=>p.id===id)?.name||id,id=>procChecks(id),prSel.clear)}/>
