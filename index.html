@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #222; font-size: 14px; }
@@ -131,6 +132,11 @@ tr:hover td { background: #fafbff; }
 <body>
 <div id="root"></div>
 
+<script>
+const SUPABASE_URL = 'https://bwxkeuizvhyggdkngraj.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_zBiSYJfZgt6Yrlafe1-YjA_Yt_Nv0P9';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+</script>
 <script type="text/babel">
 const { useState, useEffect } = React;
 
@@ -395,6 +401,52 @@ function App() {
   const [costMaster, setCostMaster] = useState(initCostMaster);
   const [ordersLedger, setOrdersLedger] = useState(initOrdersLedger);
   const [users, setUsers] = useState(initUsers);
+  const [dbLoaded, setDbLoaded] = useState(false);
+
+  // ── Supabase: 앱 시작 시 전체 데이터 로드 ──
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const {data,error}=await sb.from('erp_data').select('*');
+        if(error){console.error('DB 로드 오류:',error);setDbLoaded(true);return;}
+        const store={};
+        (data||[]).forEach(row=>{store[row.key]=row.value;});
+        if(store.items)    setItems(store.items);
+        if(store.warehouses) setWarehouses(store.warehouses);
+        if(store.processes)  setProcesses(store.processes);
+        if(store.bom)      setBom(store.bom);
+        if(store.lots)     setLots(store.lots);
+        if(store.incoming) setIncoming(store.incoming);
+        if(store.orders)   setOrders(store.orders);
+        if(store.io)       setIo(store.io);
+        if(store.costBom)  setCostBom(store.costBom);
+        if(store.factories) setFactories(store.factories);
+        if(store.costMaster) setCostMaster(store.costMaster);
+        if(store.ordersLedger) setOrdersLedger(store.ordersLedger);
+        if(store.users)    setUsers(store.users);
+      }catch(e){console.error('DB 연결 오류:',e);}
+      finally{setDbLoaded(true);}
+    })();
+  },[]);
+
+  // ── Supabase: 각 state 변경 시 자동 저장 ──
+  const syncDB = async(key,value)=>{
+    try{ await sb.from('erp_data').upsert({key,value,updated_at:new Date().toISOString()}); }
+    catch(e){ console.error('DB 저장 오류:',key,e); }
+  };
+  useEffect(()=>{if(dbLoaded) syncDB('items',items);},[items,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('warehouses',warehouses);},[warehouses,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('processes',processes);},[processes,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('bom',bom);},[bom,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('lots',lots);},[lots,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('incoming',incoming);},[incoming,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('orders',orders);},[orders,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('io',io);},[io,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('costBom',costBom);},[costBom,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('factories',factories);},[factories,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('costMaster',costMaster);},[costMaster,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('ordersLedger',ordersLedger);},[ordersLedger,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('users',users);},[users,dbLoaded]);
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({id:"",pw:""});
   const [loginError, setLoginError] = useState("");
@@ -500,6 +552,14 @@ function App() {
     factory: <FactoryPage factories={factories} setFactories={setFactories} perm={perm} showToast={showToast} />,
     users: <UserPage users={users} setUsers={setUsers} currentUser={currentUser} showToast={showToast} />,
   };
+
+  if(!dbLoaded) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",flexDirection:"column",gap:16,background:"#f0f2f5"}}>
+      <div style={{fontSize:36}}>⏳</div>
+      <div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>데이터 불러오는 중...</div>
+      <div style={{fontSize:13,color:"#888"}}>Supabase에서 데이터를 로드하고 있습니다</div>
+    </div>
+  );
 
   if(!currentUser) return (
     <div className="login-wrap">
