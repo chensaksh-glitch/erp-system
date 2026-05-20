@@ -3119,21 +3119,35 @@ function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,s
 
   const grandTotal=actualMatCost+packingTotal+laborTotal+facilityTotal+depreciation;
 
-  // ── 작업지시 원가 목록 ──
+  // ── 작업지시 원가 목록 (상세보기와 동일한 방식으로 계산) ──
   const woCostList=(orders||[]).map(o=>{
+    // 자재비
     const actualIo=(io||[]).filter(r=>r.type==="출고"&&r.note&&r.note.includes(o.code));
     let matCost=0;let matFromActual=false;
     if(actualIo.length>0){
-      matCost=actualIo.reduce((s,r)=>{const it=items.find(i=>i.code===r.item);return s+(it?.price||r.unitPrice||0)*r.qty;},0);
+      const ioMap={};
+      actualIo.forEach(r=>{if(!ioMap[r.item]){ioMap[r.item]={...r,qty:0};}ioMap[r.item].qty+=r.qty||0;});
+      matCost=Object.values(ioMap).reduce((s,r)=>{return s+calcItemUnitCost(r.item)*r.qty;},0);
       matFromActual=true;
     } else {
       const bomEntry=bom.find(b=>b.product===o.product);
-      matCost=(bomEntry?.materials||[]).reduce((s,m)=>{const it=items.find(i=>i.code===m.code);return s+(it?.price||0)*m.qty;},0);
+      matCost=(bomEntry?.materials||[]).reduce((s,m)=>{return s+calcItemUnitCost(m.code)*m.qty*o.orderQty;},0);
     }
-    const laborCost=(o.processTimes||[]).reduce((s,pt)=>{const master=costMaster.processRates.find(r=>r.processCode===pt.code);return s+Math.round((master?.ratePerHour||0)*(pt.hours||0));},0);
-    const total=matCost+laborCost;
+    // 노무비
+    const laborRows=(o.processTimes||[]).map(pt=>{const master=costMaster.processRates.find(r=>r.processCode===pt.code);const rate=master?.ratePerHour||0;return Math.round(rate*(pt.hours||0));});
+    const laborCost=laborRows.reduce((s,c)=>s+c,0);
+    // 시설비 (임차료·청정실 = 총 공정시간 × 시설 단가)
+    const totalHours=(o.processTimes||[]).reduce((s,pt)=>s+(pt.hours||0),0);
+    const facRates=(costMaster.facilityRates||[]).filter(f=>!o.factoryCode||f.factoryCode===o.factoryCode);
+    const facilityCost=Math.round(totalHours*facRates.reduce((s,f)=>s+(f.ratePerHour||0),0));
+    // 포장비 (costBom에서 해당 제품 연동)
+    const linkedCostBom=costBom.find(c=>c.linkedProduct===o.product);
+    const packCost=linkedCostBom?(linkedCostBom.packingGroups||[]).reduce((s,g)=>s+g.items.reduce((ss,it)=>ss+(it.price||0)*(it.qty||0),0),0):0;
+    // 감가상각
+    const depr=linkedCostBom?.mfgSection?.depreciation||0;
+    const total=matCost+laborCost+facilityCost+packCost+depr;
     const unitCost=o.orderQty>0?Math.round(total/o.orderQty):0;
-    return{...o,matCost,laborCost,total,unitCost,matFromActual};
+    return{...o,matCost,laborCost,facilityCost,packCost,depr,total,unitCost,matFromActual};
   });
   const batchSz=selWo?selWo.orderQty:(entry?.batchSize||1);
   const unitCost=batchSz>0?Math.round(grandTotal/batchSz):0;
@@ -3441,10 +3455,11 @@ function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,s
           <table>
             <thead>
               <tr>
-                <th>작업지시</th><th>제품명</th><th style={{textAlign:"right"}}>Batch</th>
-                <th style={{textAlign:"right"}}>자재비</th><th style={{textAlign:"right"}}>제조비</th>
+                <th>작업지시</th><th>제품명</th><th style={{textAlign:"right"}}>수량</th>
+                <th style={{textAlign:"right"}}>자재비</th><th style={{textAlign:"right"}}>노무비</th>
+                <th style={{textAlign:"right"}}>시설비</th><th style={{textAlign:"right"}}>포장비</th>
                 <th style={{textAlign:"right"}}>총 원가</th><th style={{textAlign:"right"}}>1개당 원가</th>
-                <th>계산일</th><th>상태</th><th></th>
+                <th>완료일</th><th>상태</th><th></th>
               </tr>
             </thead>
             <tbody>
@@ -3453,23 +3468,25 @@ function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,s
                   <td style={{fontSize:12,fontWeight:600,color:"#555",fontFamily:"monospace"}}>{o.code}</td>
                   <td><b>{o.productName||"-"}</b></td>
                   <td style={{textAlign:"right"}}>{o.orderQty} ea</td>
-                  <td style={{textAlign:"right",color:o.matCost>0?"#2563eb":"#e74c3c",fontWeight:600}}>
-                    {o.matCost.toLocaleString()}
+                  <td style={{textAlign:"right",color:o.matCost>0?"#2563eb":"#aaa",fontWeight:600}}>
+                    {Math.round(o.matCost).toLocaleString()}
                     {o.matFromActual&&<span style={{fontSize:10,marginLeft:4,background:"#dcfce7",color:"#16a34a",padding:"1px 4px",borderRadius:3}}>실적</span>}
                   </td>
-                  <td style={{textAlign:"right",color:o.laborCost>0?"#ea580c":"#e74c3c",fontWeight:600}}>{o.laborCost.toLocaleString()}</td>
-                  <td style={{textAlign:"right",fontWeight:700,fontSize:14}}>{o.total.toLocaleString()}</td>
-                  <td style={{textAlign:"right",color:o.unitCost>0?"#7c3aed":"#e74c3c",fontWeight:700}}>{o.unitCost.toLocaleString()}</td>
-                  <td style={{fontSize:12,color:"#888"}}>{o.date||"-"}</td>
+                  <td style={{textAlign:"right",color:o.laborCost>0?"#ea580c":"#aaa",fontWeight:600}}>{o.laborCost.toLocaleString()}</td>
+                  <td style={{textAlign:"right",color:o.facilityCost>0?"#7c3aed":"#aaa",fontWeight:600}}>{o.facilityCost.toLocaleString()}</td>
+                  <td style={{textAlign:"right",color:o.packCost>0?"#16a34a":"#aaa",fontWeight:600}}>{o.packCost.toLocaleString()}</td>
+                  <td style={{textAlign:"right",fontWeight:700,fontSize:14}}>{Math.round(o.total).toLocaleString()}</td>
+                  <td style={{textAlign:"right",color:o.unitCost>0?"#7c3aed":"#aaa",fontWeight:700,fontSize:14}}>{o.unitCost.toLocaleString()}</td>
+                  <td style={{fontSize:12,color:"#888"}}>{o.doneDate||o.date||"-"}</td>
                   <td><span className={`badge ${o.status==="완료"?"badge-green":o.status==="진행중"?"badge-blue":"badge-gray"}`}>{o.status}</span></td>
                   <td><button className="btn btn-outline btn-sm" onClick={()=>{setSelWoCode(o.code);setActiveTab("calc");}}>상세보기</button></td>
                 </tr>
               ))}
-              {!woCostList.length&&<tr><td colSpan={10} className="empty">등록된 작업지시가 없습니다</td></tr>}
+              {!woCostList.length&&<tr><td colSpan={12} className="empty">등록된 작업지시가 없습니다</td></tr>}
             </tbody>
           </table>
           <div style={{padding:"10px 18px",fontSize:12,color:"#aaa",borderTop:"1px solid #f0f0f0"}}>
-            * 자재비: BOM 등록된 자재 × 품목 단가 / 제조비: 공정 시간 × 시간당 단가 (원가 마스터 기준)
+            * 자재비(실제출고기준) + 노무비(공정시간×단가) + 시설비(임차료·청정실) + 포장비 = 총원가 → 1개당 원가
           </div>
         </div>
       )}
