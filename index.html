@@ -135,11 +135,68 @@ tr:hover td { background: #fafbff; }
 const { useState, useEffect } = React;
 
 const initItems = [
-  { code:"ITM001", name:"수액세트 A형", type:"완제품", unit:"EA", spec:"500ml / 1세트", capacity:"500ml", stock:120, minStock:30, warehouse:"창고1", price:15000 },
-  { code:"ITM002", name:"수액세트 B형", type:"완제품", unit:"EA", spec:"1000ml / 1세트", capacity:"1000ml", stock:8, minStock:20, warehouse:"창고1", price:22000 },
-  { code:"ITM003", name:"PVC 튜브", type:"원자재", unit:"M", spec:"Φ4mm", capacity:"-", stock:500, minStock:100, warehouse:"창고2", price:800 },
-  { code:"ITM004", name:"Y-커넥터", type:"원자재", unit:"EA", spec:"1mL COC", capacity:"-", stock:200, minStock:50, warehouse:"창고2", price:1200 },
-  { code:"ITM005", name:"필터 어셈블리", type:"부자재", unit:"EA", spec:"0.2μm", capacity:"-", stock:150, minStock:40, warehouse:"창고2", price:3500 },
+  {code:"P0001",name:"점착성투명창상피복재 I-jetheal (IMDF-001)",type:"완제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0002",name:"비멸균의료용겔 (IMG-001)",type:"완제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0003",name:"의료용봉합유지기 (i-Closure) IMSR-001",type:"완제품",unit:"EA",spec:"18mm",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0004",name:"의료용봉합유지기 (i-Closure) IMSR-002",type:"완제품",unit:"EA",spec:"71.8mm",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0005",name:"의료용봉합유지기 (i-Closure) IMSR-003",type:"완제품",unit:"EA",spec:"126mm",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0006",name:"의료용봉합유지기 (i-Closure) IMSR-004",type:"완제품",unit:"EA",spec:"180mm",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0007",name:"i-Silipick 실리콘밴드 IMSB-001",type:"완제품",unit:"EA",spec:"25x600mm",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0008",name:"i-Silipick 실리콘밴드 IMSB-002",type:"완제품",unit:"EA",spec:"25x50x30mm",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0009",name:"TIGERTRIEVER(완제품)",type:"완제품",unit:"EA",spec:'0.0021"',capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0010",name:"TIGERTRIEVER17(완제품)",type:"완제품",unit:"EA",spec:'0.0017"',capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0011",name:"CaHA (IMPC-001)",type:"완제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0012",name:"CaHA Beauty-i (IMPC-002)",type:"완제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0013",name:"CaHA Cavellia (IMPC-002)",type:"완제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0014",name:"CaHA ninaveli (IMPC-002)",type:"완제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0015",name:"CaHA (IMPC-003)",type:"완제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0016",name:"CaHA AMI CALX (IMPC-004)",type:"완제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"P0017",name:"HAlo-i IMPB-001 (1ml)",type:"완제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"S0001",name:"점착성투명창상피복재(반제품)",type:"반제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"S0002",name:"비멸균의료용겔(반제품)",type:"반제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"S0003",name:"i-Silipick 실리콘밴드 IMSB-001(반제품)",type:"반제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"S0004",name:"i-Silipick 실리콘밴드 IMSB-002(반제품)",type:"반제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"S0005",name:"조직수복용재료(IMPC-001)",type:"반제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"S0006",name:"조직수복용재료 CaHA(반제품)",type:"반제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"S0007",name:"조직수복용생체재료 HA Filler(반제품)",type:"반제품",unit:"EA",spec:"1ml",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0001",name:"Calcium phosphate tribasic (CaHA)(1kg)",type:"원자재",unit:"G",spec:"1kg",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0002",name:"Carboxymethy cellulose, sodium salt(Na cmc)(MW:700,000)(100g)",type:"원자재",unit:"G",spec:"MW:700,000",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0003",name:"Ehtyl Alcohol 99.9%(GR GRADE)(1L)",type:"원자재",unit:"ML",spec:"99.9%",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0004",name:"Sodium Hyaluronate(HA-EP-N 2.5)(100g)",type:"원자재",unit:"G",spec:"HA-EP-N 2.5",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0005",name:"L - menthol Crystal 95%(50g)",type:"원자재",unit:"G",spec:"95%",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0006",name:"[Sigma-Aldrich] Poly(Ethylene oxide) (PEO)mw.900,000",type:"원자재",unit:"G",spec:"mw.900,000",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0007",name:"pure water(20L)",type:"원자재",unit:"ML",spec:"20L",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0008",name:"[비앤피코리아, SANGI] CAHA(5g)",type:"원자재",unit:"G",spec:"5g",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0009",name:"[대정화금] glycerine(20kg)",type:"원자재",unit:"G",spec:"20kg",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0010",name:"Lidocaine hydrochloride monohydrate(100g)",type:"원자재",unit:"G",spec:"100g",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0011",name:"Sodium hydroxide solution 1M",type:"원자재",unit:"ML",spec:"100g",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0012",name:"dulbecco's Phosphate Buffered Saline(DPBS)(powder)",type:"원자재",unit:"L",spec:"50L",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0013",name:"1.4 Butanediol diglycidyl ether (BDDE)(250g)",type:"원자재",unit:"ML",spec:"250g",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0014",name:"[sigma aldrich] Lidocaine hydrochloride monohydrate",type:"원자재",unit:"G",spec:"15g",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0015",name:"sodium hydroxide solution 1M",type:"원자재",unit:"ML",spec:"1M",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0016",name:"plunger",type:"원자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0017",name:"finger grip",type:"원자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0018",name:"blister",type:"원자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0019",name:"syringe",type:"원자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0020",name:"gasket",type:"원자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0021",name:"눈금스티커",type:"원자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0022",name:"QUIVERMEDIC plunger",type:"원자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0023",name:"TIGERTRIEVER",type:"원자재",unit:"EA",spec:'0.0021"',capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"B0024",name:"TIGERTRIEVER17",type:"원자재",unit:"EA",spec:'0.0017"',capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0001",name:"coated tyvek",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0002",name:"알류미늄 파우치(13*20cm)",type:"부자재",unit:"EA",spec:"13*20cm",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0003",name:"beauty-I TYVEK",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0005",name:"blister",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0006",name:"coated tyvek",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0007",name:"beauty-I TYVEK",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0008",name:"AMICALX(QUIVERMEDIC)TYVEK",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0009",name:"AMICALX 단상자",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0010",name:"AMCALX 설명서",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0011",name:"Beauty-I 단상자",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0012",name:"Beauty-I 설명서",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0013",name:"cavellia 단상자",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0014",name:"cavellia 설명서",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
+  {code:"C0015",name:"tigertriever 라벨지",type:"부자재",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0},
 ];
 const initWarehouses = [
   { code:"WH001", name:"창고1", type:"완제품창고", location:"본관 1층", note:"온도/습도 관리구역" },
@@ -161,45 +218,52 @@ const initOrdersLedger = [
   { no:5, date:"2026-04-28", receiver:"김승현", client:"라파메디칼/대한민국", orderNo:"IO2604005", product:"Tigertriever", spec:"0.0021", desc:"TIGERTRIEVER 제품 납품", qty:2, dueDate:"2026-04-29", paymentTerms:"N/A", requirements:"N/A", customerReq:"이상없음", feasible:"O", deliveryDate:"", note:"제품", taxInvoice:"" },
 ];
 
-const initBom = [
-  { code:"BOM001", product:"ITM001", productName:"수액세트 A형", materials:[
-    { code:"ITM003", name:"PVC 튜브", qty:2, unit:"M" },
-    { code:"ITM004", name:"Y-커넥터", qty:1, unit:"EA" },
-    { code:"ITM005", name:"필터 어셈블리", qty:1, unit:"EA" },
-  ]},
-  { code:"BOM002", product:"ITM002", productName:"수액세트 B형", materials:[
-    { code:"ITM003", name:"PVC 튜브", qty:3, unit:"M" },
-    { code:"ITM004", name:"Y-커넥터", qty:2, unit:"EA" },
-    { code:"ITM005", name:"필터 어셈블리", qty:1, unit:"EA" },
-  ]},
-];
-const initLots = [
-  { code:"LOT240001", item:"ITM001", itemName:"수액세트 A형", qty:50, mfg:"2024-01-10", exp:"2026-01-10", status:"정상", warehouse:"창고1" },
-  { code:"LOT240002", item:"ITM001", itemName:"수액세트 A형", qty:30, mfg:"2024-03-15", exp:"2026-03-15", status:"정상", warehouse:"창고1" },
-  { code:"LOT240003", item:"ITM002", itemName:"수액세트 B형", qty:8, mfg:"2023-11-01", exp:"2025-11-01", status:"만료임박", warehouse:"창고1" },
-];
+const initBom = [];
+const initLots = [];
 const initIncoming = [
-  { code:"INC001", item:"ITM003", itemName:"PVC 튜브", qty:200, unit:"M", supplier:"ABC공급사", eta:"2026-05-20", status:"대기" },
-  { code:"INC002", item:"ITM004", itemName:"Y-커넥터", qty:100, unit:"EA", supplier:"XYZ부품", eta:"2026-05-18", status:"대기" },
+  {code:"INC001",item:"B0001",itemName:"Calcium phosphate tribasic (CaHA)(1kg)",lot:"IRMCA250911-01",qty:1007.795,unit:"G",unitPrice:10000,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC002",item:"B0002",itemName:"Carboxymethy cellulose, sodium salt(Na cmc)(MW:700,000)(100g)",lot:"IRMCAR260320-01",qty:282.4,unit:"G",unitPrice:800,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC003",item:"B0007",itemName:"pure water(20L)",lot:"IRMWA251013-01",qty:78231.483,unit:"ML",unitPrice:1,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC004",item:"B0011",itemName:"Sodium hydroxide solution 1M",lot:"IRMSO251216-01",qty:400,unit:"ML",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC005",item:"B0006",itemName:"[Sigma-Aldrich] Poly(Ethylene oxide) (PEO)mw.900,000",lot:"IRMPO251013-01",qty:44.1,unit:"G",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC006",item:"B0006",itemName:"[Sigma-Aldrich] Poly(Ethylene oxide) (PEO)mw.900,000",lot:"IRMPO251105-01",qty:500,unit:"G",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC007",item:"B0005",itemName:"L - menthol Crystal 95%(50g)",lot:"IRMLM251013-01",qty:40.56,unit:"G",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC008",item:"B0010",itemName:"Lidocaine hydrochloride monohydrate(100g)",lot:"IRMLI250901-01",qty:80,unit:"G",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC009",item:"B0010",itemName:"[sigma aldrich] Lidocaine hydrochloride monohydrate(15g*4)",lot:"IRMLI251216-01",qty:60,unit:"G",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC010",item:"B0012",itemName:"dulbecco's Phosphate Buffered Saline(DPBS)(powder)(50L)",lot:"IRMDUL250901-01",qty:250,unit:"L",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC011",item:"B0012",itemName:"dulbecco's Phosphate Buffered Saline(DPBS)(powder)(10L)",lot:"IRMDU250901-01",qty:19,unit:"L",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC012",item:"B0004",itemName:"Sodium Hyaluronate(HA-EP-N 2.5)(100g)",lot:"IRMHY260318-01",qty:199.971,unit:"G",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC013",item:"B0013",itemName:"1.4 Butanediol diglycidyl ether (BDDE)(250g)",lot:"IRMBU250901-01",qty:204.534,unit:"G",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC014",item:"B0003",itemName:"Ehtyl Alcohol 99.9%(GR GRADE)(1L)",lot:"IRMET251013-01",qty:197.04,unit:"ML",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC015",item:"B0008",itemName:"[비앤피코리아, SANGI] CAHA(5g)",lot:"IRMCA251104-01",qty:15,unit:"G",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC016",item:"B0009",itemName:"[대정화금] glycerine(20kg)",lot:"IRMGL251103-01",qty:14357.7,unit:"G",unitPrice:7,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC017",item:"B0019",itemName:"syringe",lot:"IRMSY251202-01",qty:1000,unit:"EA",unitPrice:1300,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC018",item:"B0020",itemName:"gasket",lot:"IRMGA251117-01",qty:200,unit:"EA",unitPrice:120,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC019",item:"B0020",itemName:"gasket",lot:"IRMGA251202-01",qty:2000,unit:"EA",unitPrice:120,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC020",item:"B0021",itemName:"눈금스티커",lot:"IRMGRA251117-01",qty:200,unit:"EA",unitPrice:23,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC021",item:"B0021",itemName:"눈금스티커",lot:"IRMGRA251202-01",qty:2000,unit:"EA",unitPrice:23,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC022",item:"B0016",itemName:"plunger",lot:"IRMPL250818-01",qty:2883,unit:"EA",unitPrice:200,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC023",item:"B0016",itemName:"plunger",lot:"IRMPL251117-01",qty:3000,unit:"EA",unitPrice:200,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC024",item:"B0016",itemName:"plunger",lot:"IRMPL251202-01",qty:2000,unit:"EA",unitPrice:200,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC025",item:"B0022",itemName:"QUIVERMEDIC plunger",lot:"IRMQPL260129-01",qty:3640,unit:"EA",unitPrice:200,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC026",item:"B0017",itemName:"finger grip",lot:"IRMFI250818-01",qty:1528,unit:"EA",unitPrice:230,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC027",item:"B0017",itemName:"finger grip",lot:"IRMFI251117-01",qty:3000,unit:"EA",unitPrice:230,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC028",item:"B0017",itemName:"finger grip",lot:"IRMFI251202-01",qty:2000,unit:"EA",unitPrice:230,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC029",item:"B0018",itemName:"blister",lot:"IRMBL250905-01",qty:1824,unit:"EA",unitPrice:300,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC030",item:"C0001",itemName:"coated tyvek",lot:"IRMCO250905-01",qty:3071,unit:"EA",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC031",item:"C0002",itemName:"알류미늄 파우치(13*20cm)",lot:"IRMAL251106-01",qty:1120,unit:"EA",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC032",item:"C0003",itemName:"beauty-I TYVEK",lot:"IRMTYB260116-01",qty:3000,unit:"EA",unitPrice:330,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC033",item:"C0008",itemName:"AMICALX(QUIVERMEDIC)TYVEK",lot:"IRMTYA260116-01",qty:5645,unit:"EA",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC034",item:"C0015",itemName:"tigertriever 라벨지",lot:"IRMTL260202-01",qty:8600,unit:"EA",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC035",item:"C0009",itemName:"AMICALX 단상자",lot:"IRMBOA260210-01",qty:4045,unit:"EA",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC036",item:"C0011",itemName:"Beauty-I 단상자",lot:"IRMBOB260210-01",qty:1300,unit:"EA",unitPrice:380,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC037",item:"C0010",itemName:"AMCALX 설명서",lot:"IRMINA260331-01",qty:4045,unit:"EA",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC038",item:"C0012",itemName:"Beauty-I 설명서",lot:"IRMINB260331-01",qty:1200,unit:"EA",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC039",item:"C0013",itemName:"cavellia 단상자",lot:"IRMCP260330-01",qty:200,unit:"EA",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
+  {code:"INC040",item:"C0014",itemName:"cavellia 설명서",lot:"IRMCU260330-01",qty:200,unit:"EA",unitPrice:0,supplier:"",incomingDate:"2026-05-20",warehouse:"",status:"대기"},
 ];
-const initOrders = [
-  { code:"WO001", product:"ITM001", productName:"수액세트 A형", orderQty:30, defectQty:0, lot:"", processes:[{code:"PC001",name:"조립공정",hours:2}], status:"대기", date:"2026-05-16", factoryCode:"F001", mfgCost:0 },
-  { code:"WO002", product:"ITM002", productName:"수액세트 B형", orderQty:10, defectQty:0, lot:"", processes:[{code:"PC002",name:"검사공정",hours:1}], status:"진행중", date:"2026-05-15", factoryCode:"F001", mfgCost:0 },
-];
-// ── initIO 백업 (구 데이터) ─────────────────────────────────────────────────
-// const initIO_backup = [
-//   { date:"2026-05-14", type:"입고", item:"ITM003", itemName:"PVC 튜브", qty:100, lot:"LOT240001", note:"정기입고" },
-//   { date:"2026-05-15", type:"출고", item:"ITM001", itemName:"수액세트 A형", qty:20, lot:"LOT240001", note:"영업팀 출고" },
-// ];
-// ── initIO (SOP-705-F08 기준 완제품 입출고 데이터) ──────────────────────────
-const initIO = [
-  { date:"2026-01-12", type:"입고", item:"ITM001", itemName:"수액세트 A형", qty:17, unit:"EA", unitPrice:15000, lot:"LOT240001", destination:"라파메디칼 대리점", manager:"이민식", approver:"김승현", note:"" },
-  { date:"2026-01-12", type:"입고", item:"ITM002", itemName:"수액세트 B형", qty:17, unit:"EA", unitPrice:22000, lot:"LOT240003", destination:"라파메디칼 대리점", manager:"이민식", approver:"김승현", note:"" },
-  { date:"2026-01-14", type:"입고", item:"ITM001", itemName:"수액세트 A형", qty:16, unit:"EA", unitPrice:15000, lot:"LOT240001", destination:"라파메디칼 대리점", manager:"이민식", approver:"김승현", note:"COA-TR1-260115-001" },
-  { date:"2026-01-14", type:"출고", item:"ITM001", itemName:"수액세트 A형", qty:2,  unit:"EA", unitPrice:0,     lot:"LOT240001", destination:"라파메디칼 대리점", manager:"이민식", approver:"김승현", note:"" },
-  { date:"2026-01-15", type:"출고", item:"ITM001", itemName:"수액세트 A형", qty:15, unit:"EA", unitPrice:0,     lot:"LOT240001", destination:"라파메디칼 대리점", manager:"이민식", approver:"김승현", note:"재고소진" },
-  { date:"2026-01-16", type:"출고", item:"ITM002", itemName:"수액세트 B형", qty:10, unit:"EA", unitPrice:0,     lot:"LOT240003", destination:"부산대병원 마동철",  manager:"이민식", approver:"김승현", note:"" },
-];
+const initOrders = [];
+const initIO = [];
 const initCostBom = [
   {
     id:"COST001", productName:"Beauty-I / Amicalx / Ninaveli CaHA", linkedProduct:"", batchSize:385, batchUnit:"ea",
@@ -920,8 +984,8 @@ function BomPage({bom,setBom,items,perm,showToast,tryDelete}) {
   const [prodQ,setProdQ]=useState("");
   const [matQs,setMatQs]=useState([]);
   const toggleSel=(code)=>setSel(prev=>{const s=new Set(prev);s.has(code)?s.delete(code):s.add(code);return s;});
-  const products=items.filter(i=>i.type==="완제품");
-  const allMats=items.filter(i=>i.type!=="완제품");
+  const products=items.filter(i=>i.type==="완제품"||i.type==="반제품");
+  const allMats=items.filter(i=>i.type==="원자재"||i.type==="부자재"||i.type==="반제품");
   const openAdd=()=>{setForm({code:"BOM"+Date.now(),product:"",materials:[]});setProdQ("");setMatQs([]);setModal("add");};
   const addMat=()=>{setForm({...form,materials:[...form.materials,{code:"",name:"",qty:1,unit:"EA"}]});setMatQs(q=>[...q,""]);};
   const setMat=(idx,field,val)=>{const mats=[...form.materials];mats[idx]={...mats[idx],[field]:val};if(field==="code"){const it=items.find(i=>i.code===val);if(it){mats[idx].name=it.name;mats[idx].unit=it.unit;}}setForm({...form,materials:mats});};
@@ -953,7 +1017,7 @@ function BomPage({bom,setBom,items,perm,showToast,tryDelete}) {
               <span onClick={()=>setExp(exp===b.code?null:b.code)}>{exp===b.code?"▼":"▶"} 📦 {b.productName} <span style={{fontSize:11,color:"#aaa",fontWeight:400,marginLeft:6}}>{b.code}</span></span>
             </span>
             <div style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
-              {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({...b});setProdQ("");setMatQs(b.materials.map(()=>""));setModal("edit");}}>수정</button>}
+              {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({...b,productName:b.productName||(products.find(p=>p.code===b.product)?.name||"")});setProdQ(b.product||"");setMatQs(b.materials.map(m=>m.code||""));setModal("edit");}}>수정</button>}
               {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(b.code)}>삭제</button>}
             </div>
           </div>
@@ -974,23 +1038,59 @@ function BomPage({bom,setBom,items,perm,showToast,tryDelete}) {
       {modal&&(<div className="overlay"><div className="modal" style={{width:600}} onClick={e=>e.stopPropagation()}>
         <div className="modal-head"><span className="modal-title">BOM {modal==="add"?"등록":"수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
         <div className="modal-body">
-          <div className="field">
-            <label>완제품 선택 *</label>
-            <input placeholder="코드 또는 제품명 검색..." value={prodQ} onChange={e=>setProdQ(e.target.value)} style={{width:"100%",border:"1px solid #e0e0e0",borderRadius:6,padding:"7px 11px",fontSize:13,outline:"none",marginBottom:4}}/>
-            <select value={form.product} onChange={e=>{setForm({...form,product:e.target.value});setProdQ("");}}>
-              <option value="">선택</option>
-              {products.filter(p=>!prodQ||p.code.toLowerCase().includes(prodQ.toLowerCase())||p.name.toLowerCase().includes(prodQ.toLowerCase())).map(p=><option key={p.code} value={p.code}>{p.code} — {p.name}</option>)}
-            </select>
+          <div className="field" style={{position:"relative"}}>
+            <label>완제품·반제품 선택 *</label>
+            <input placeholder="코드 또는 제품명 검색..." value={prodQ}
+              onChange={e=>{setProdQ(e.target.value);setForm(f=>({...f,product:"",productName:""}));}}
+              style={{width:"100%",border:"1px solid #e0e0e0",borderRadius:6,padding:"7px 11px",fontSize:13,outline:"none"}}
+              autoComplete="off"/>
+            {form.product&&<div style={{fontSize:12,color:"#16a34a",fontWeight:600,marginTop:4}}>✅ {form.productName}</div>}
+            {prodQ&&!form.product&&(()=>{
+              const _q=prodQ.toLowerCase();
+              const hits=products.filter(p=>p.code.toLowerCase().includes(_q)||p.name.toLowerCase().includes(_q));
+              return hits.length>0?(
+                <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #2563eb",borderRadius:6,boxShadow:"0 4px 12px rgba(0,0,0,0.12)",zIndex:300,maxHeight:200,overflowY:"auto"}}>
+                  {hits.map(p=>(
+                    <div key={p.code} onClick={()=>{setForm(f=>({...f,product:p.code,productName:p.name}));setProdQ(p.code);}}
+                      style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #f0f0f0",fontSize:13}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
+                      onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                      <span style={{fontFamily:"monospace",color:"#2563eb",fontWeight:600}}>{p.code}</span>
+                      <span style={{marginLeft:8}}>{p.name}</span>
+                      <span className={`badge ${p.type==="완제품"?"badge-blue":"badge-orange"}`} style={{marginLeft:6,fontSize:10}}>{p.type}</span>
+                    </div>
+                  ))}
+                </div>
+              ):null;
+            })()}
           </div>
           <div style={{marginBottom:8,fontWeight:600,fontSize:13}}>자재 목록</div>
           {form.materials.map((m,i)=>(
             <div key={i} style={{display:"flex",gap:6,marginBottom:8,alignItems:"flex-start"}}>
-              <div style={{flex:2}}>
-                <input placeholder="코드 또는 자재명 검색..." value={matQs[i]||""} onChange={e=>{setMatQs(q=>{const n=[...q];n[i]=e.target.value;return n;});}} style={{width:"100%",border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12,marginBottom:2}}/>
-                <select style={{width:"100%",border:"1px solid #ddd",borderRadius:5,padding:"6px 8px",fontSize:12}} value={m.code} onChange={e=>{setMat(i,"code",e.target.value);setMatQs(q=>{const n=[...q];n[i]="";return n;});}}>
-                  <option value="">자재 선택</option>
-                  {allMats.filter(mat=>!matQs[i]||mat.code.toLowerCase().includes((matQs[i]||"").toLowerCase())||mat.name.toLowerCase().includes((matQs[i]||"").toLowerCase())).map(mat=><option key={mat.code} value={mat.code}>{mat.code} — {mat.name}</option>)}
-                </select>
+              <div style={{flex:2,position:"relative"}}>
+                <input placeholder="코드 또는 자재명 검색..." value={matQs[i]||""}
+                  onChange={e=>{const v=e.target.value;setMatQs(q=>{const n=[...q];n[i]=v;return n;});setMat(i,"code","");setMat(i,"name","");}}
+                  style={{width:"100%",border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12}}
+                  autoComplete="off"/>
+                {m.code&&<div style={{fontSize:11,color:"#16a34a",fontWeight:600,marginTop:2}}>✅ {m.name}</div>}
+                {(matQs[i]||"")&&!m.code&&(()=>{
+                  const _q=(matQs[i]||"").toLowerCase();
+                  const hits=allMats.filter(mat=>mat.code.toLowerCase().includes(_q)||mat.name.toLowerCase().includes(_q));
+                  return hits.length>0?(
+                    <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #2563eb",borderRadius:6,boxShadow:"0 4px 12px rgba(0,0,0,0.12)",zIndex:300,maxHeight:180,overflowY:"auto"}}>
+                      {hits.map(mat=>(
+                        <div key={mat.code} onClick={()=>{setForm(f=>{const mats=[...f.materials];mats[i]={...mats[i],code:mat.code,name:mat.name,unit:mat.unit||"EA"};return{...f,materials:mats};});setMatQs(q=>{const n=[...q];n[i]=mat.code;return n;});}}
+                          style={{padding:"7px 12px",cursor:"pointer",borderBottom:"1px solid #f0f0f0",fontSize:12}}
+                          onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
+                          onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                          <span style={{fontFamily:"monospace",color:"#2563eb",fontWeight:600}}>{mat.code}</span>
+                          <span style={{marginLeft:8}}>{mat.name}</span>
+                          <span className={`badge ${mat.type==="원자재"?"badge-green":"badge-yellow"}`} style={{marginLeft:6,fontSize:10}}>{mat.type}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ):null;
+                })()}
               </div>
               <input type="number" min={1} style={{width:60,border:"1px solid #ddd",borderRadius:5,padding:"6px 8px",fontSize:12,marginTop:26}} value={m.qty} onChange={e=>setMat(i,"qty",+e.target.value)}/>
               <span style={{fontSize:12,color:"#aaa",marginTop:30}}>{m.unit}</span>
