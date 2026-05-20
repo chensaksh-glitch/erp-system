@@ -2373,8 +2373,13 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
       alert("취소된 작업지시서입니다.");
       return;
     }
-    const pts=(order.processes||[]).map(p=>({code:p.code,name:p.name,hours:0}));
-    setCompForm({doneDate:new Date().toISOString().slice(0,10),defectQty:order.defectQty||0,processTimes:pts});
+    // 작업실적에서 저장된 공정시간(processTimes)을 그대로 사용. 없으면 0
+    const existingTimes=order.processTimes||[];
+    const pts=(order.processes||[]).map(p=>{
+      const ex=existingTimes.find(t=>t.code===p.code);
+      return{code:p.code,name:p.name,hours:ex?ex.hours:0};
+    });
+    setCompForm({doneDate:order.doneDate||new Date().toISOString().slice(0,10),defectQty:order.defectQty||0,processTimes:pts});
     setCompleteModal(order);
   };
 
@@ -3066,7 +3071,7 @@ function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,s
   const packingTotal=(entry?.packingGroups||[]).reduce((s,g)=>s+calcGT(g),0);
 
   const mfg=entry?.mfgSection||{};
-  const woList=(orders||[]).filter(o=>(o.status==="완료"||o.status==="진행중")&&(o.processTimes||[]).length>0);
+  const woList=(orders||[]).filter(o=>o.status==="완료"||o.status==="진행중"||o.status==="대기");
   const selWo=(orders||[]).find(o=>o.code===selWoCode)||null;
 
   let laborRows=[],laborTotal=0;
@@ -3248,7 +3253,7 @@ function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,s
                 <option value="">-- 표준시간 사용 (수동입력) --</option>
                 {woList.map(o=><option key={o.code} value={o.code}>{o.code} | {o.productName} | {o.status}{o.doneDate?` | ${o.doneDate}`:""}</option>)}
               </select>
-              {selWo&&<span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✅ {selWo.processTimes.length}개 공정 실적 자동 적용</span>}
+              {selWo&&<span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✅ {(selWo.processTimes||[]).length}개 공정 실적 자동 적용 (작업실적 입력값 반영)</span>}
             </div>}
           </div>
 
