@@ -1285,10 +1285,11 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
                   if(exact) pickItem(exact.code);
                   else setForm(f=>({...f,item:"",itemName:""}));
                 }}
-                placeholder="예) ITM003 — 입력하면 자동완성"
+                placeholder="품목코드 또는 품목명 검색"
                 autoComplete="off"/>
               {codeInput&&!form.item&&(()=>{
-                const hits=materialItems.filter(i=>i.code.toLowerCase().includes(codeInput.toLowerCase())||i.name.includes(codeInput));
+                const _q=codeInput.toLowerCase();
+                const hits=materialItems.filter(i=>i.code.toLowerCase().includes(_q)||i.name.toLowerCase().includes(_q));
                 return hits.length>0?(
                   <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #2563eb",borderRadius:6,boxShadow:"0 4px 12px rgba(0,0,0,0.12)",zIndex:200,maxHeight:180,overflowY:"auto"}}>
                     {hits.map(i=>(
@@ -1347,6 +1348,9 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
   const [startDate,setStartDate]=useState("");
   const [endDate,setEndDate]=useState("");
   const [ioTab,setIoTab]=useState("완제품");
+  const _now=new Date();
+  const [ioYear,setIoYear]=useState(_now.getFullYear());
+  const [ioMonth,setIoMonth]=useState(_now.getMonth()+1);
   const today=new Date().toISOString().slice(0,10);
   const dateStyle={border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12,cursor:"pointer"};
   const getItemType=(code)=>items.find(i=>i.code===code)?.type||"";
@@ -1361,11 +1365,22 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
     return true;
   });
 
-  // 누적 재고량 계산 (품목별)
+  // 누적 재고량 계산 (품목별 초기재고 + 기간 이전 IO 포함)
   const calcRunStock=(rows)=>{
+    // 각 품목의 베이스라인(IO 이전 초기재고) = items.stock - 전체 IO 합산
+    const baseline={},preNetMap={};
+    items.forEach(it=>{
+      const allIn=io.filter(r=>r.item===it.code&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
+      const allOut=io.filter(r=>r.item===it.code&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
+      baseline[it.code]=(it.stock||0)-allIn+allOut;
+      // 필터 시작일 이전 기록 합산 → 기간 개시잔고
+      const preIn=io.filter(r=>r.item===it.code&&r.type==="입고"&&(!startDate||r.date<startDate)).reduce((s,r)=>s+(r.qty||0),0);
+      const preOut=io.filter(r=>r.item===it.code&&r.type==="출고"&&(!startDate||r.date<startDate)).reduce((s,r)=>s+(r.qty||0),0);
+      preNetMap[it.code]=preIn-preOut;
+    });
     const stock={};
     return rows.map(r=>{
-      if(!stock[r.item]) stock[r.item]=0;
+      if(stock[r.item]===undefined) stock[r.item]=(baseline[r.item]||0)+(preNetMap[r.item]||0);
       stock[r.item]+=(r.type==="입고"?r.qty:-(r.qty||0));
       return {...r,runStock:stock[r.item]};
     });
@@ -1513,10 +1528,10 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
       c.value=value; c.font=boldFont; c.fill=grayFill; c.alignment=centerM; c.border=border;
     });
 
-    // ── 데이터 행 Row 9~42 (원본과 동일: 34행 고정) ──
+    // ── 데이터 행 (데이터 수만큼 동적, 최소 34행) ──
     const toDate=s=>s?s.replace(/-/g,"."):"-";
-    const FIXED_DATA_ROWS=34; // rows 9~42
-    for(let i=0;i<FIXED_DATA_ROWS;i++){
+    const dataRowCount=Math.max(34, displayRows.length);
+    for(let i=0;i<dataRowCount;i++){
       const rowIdx=9+i;
       ws.getRow(rowIdx).height=22.25;
       const r=displayRows[i]||null;
@@ -1540,18 +1555,19 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
       });
     }
 
-    // ── Row 43: 재고 수량 합계 (A43:F43 병합 - 원본 고정) ──
-    ws.mergeCells("A43:F43");
-    ws.getRow(43).height=22.25;
-    const sc=ws.getCell("A43");
+    // ── 합계 행: 데이터 마지막 행 바로 아래 ──
+    const sumRow=9+dataRowCount;
+    ws.mergeCells(`A${sumRow}:F${sumRow}`);
+    ws.getRow(sumRow).height=22.25;
+    const sc=ws.getCell(`A${sumRow}`);
     sc.value="재고 수량"; sc.font=sumFont; sc.fill=grayFill;
     sc.alignment={horizontal:"center",vertical:"middle"}; sc.border=border;
     const lastStock=displayRows.length>0?displayRows[displayRows.length-1].runStock??0:0;
-    const gc=ws.getCell("G43");
+    const gc=ws.getCell(`G${sumRow}`);
     gc.value=lastStock; gc.font=sumFont; gc.fill=grayFill;
     gc.alignment={horizontal:"center",vertical:"middle"}; gc.border=border;
     for(let ci=8;ci<=11;ci++){
-      const c=ws.getCell(43,ci); c.fill=grayFill; c.border=border; c.font=sumFont;
+      const c=ws.getCell(sumRow,ci); c.fill=grayFill; c.border=border; c.font=sumFont;
     }
 
     // ── 헤더 행 고정 ──
@@ -1567,13 +1583,342 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
     showToast("엑셀 다운로드 완료");
   };
 
+  // ── 원부자재 엑셀 다운로드 (SOP-705-F01 월간 그리드 양식) ──
+  const downloadExcelMaterial=async()=>{
+    const EJ=window.ExcelJS;
+    if(!EJ){showToast("ExcelJS 로딩 중입니다. 잠시 후 다시 시도해주세요.");return;}
+    const wb=new EJ.Workbook(); wb.creator="MedERP"; wb.created=new Date();
+    const ws=wb.addWorksheet("원부자재입출고관리대장");
+
+    const year=ioYear; const month=ioMonth;
+    const daysInMonth=new Date(year,month,0).getDate();
+    const typeLabel=ioTab==="원자재"?"원자재":"부자재";
+    const monthStartStr=String(year)+"-"+String(month).padStart(2,"0")+"-01";
+    const monthEndStr=String(year)+"-"+String(month).padStart(2,"0")+"-"+String(daysInMonth).padStart(2,"0");
+
+    // ── 열 너비 ──
+    const cols=[{width:15.5},{width:17.4375},{width:10.375},{width:9.6875},{width:4.4375},{width:5.875}];
+    for(let i=0;i<31;i++) cols.push({width:8});
+    cols.push({width:8},{width:9});
+    ws.columns=cols;
+
+    // ── 페이지 설정 ──
+    ws.pageSetup={paperSize:9,orientation:"landscape",scale:40,margins:{left:0.5,right:0.5,top:0.75,bottom:0.75,header:0.3,footer:0.3}};
+    ws.headerFooter={oddFooter:`&L&"나눔고딕,보통"&10SOP-705-F01&C&"나눔고딕,보통"&10Ver2.0(2025.09.09)&R&"나눔고딕,보통"&10(주)아이메디텍`};
+
+    // ── 스타일 ──
+    const bdr={top:{style:"thin",color:{argb:"FF000000"}},left:{style:"thin",color:{argb:"FF000000"}},bottom:{style:"thin",color:{argb:"FF000000"}},right:{style:"thin",color:{argb:"FF000000"}}};
+    const gFill={type:"pattern",pattern:"solid",fgColor:{argb:"FFD9D9D9"}};
+    const titleFont={name:"나눔고딕",bold:true,size:14};
+    const hdrFont={name:"나눔고딕",bold:true,size:9};
+    const bodyFont={name:"나눔고딕",size:9};
+    const cM={horizontal:"center",vertical:"middle",wrapText:true};
+    const lM={horizontal:"left",vertical:"middle",wrapText:true};
+    const rM={horizontal:"right",vertical:"middle",wrapText:true};
+
+    const applyBdr=(cell)=>{cell.border=bdr;return cell;};
+    const hdrCell=(r,c,v,fill)=>{const cell=ws.getCell(r,c);cell.value=v;cell.font=hdrFont;cell.alignment=cM;cell.border=bdr;if(fill)cell.fill=gFill;return cell;};
+
+    // ── Row 1: 여백 ──
+    ws.getRow(1).height=2;
+
+    // ── Row 2~5: 제목 A2:AE5 병합 ──
+    ws.mergeCells("A2:AE5");
+    ws.getRow(2).height=19.35; ws.getRow(3).height=16.35; ws.getRow(4).height=37.25; ws.getRow(5).height=19.35;
+    const tc=ws.getCell("A2");
+    tc.value=`(  ${year}  ) 년도  ( ${month} ) 월   (  ${typeLabel}  ) 입·출고 관리대장`;
+    tc.font=titleFont; tc.alignment={horizontal:"center",vertical:"middle"}; tc.border=bdr;
+
+    // ── 서명란 AF2:AM5 ──
+    const sigLabels=[["AF2:AG2","작  성"],["AH2:AI2","검  토"],["AJ2:AK2","검  토"],["AL2:AM2","승  인"]];
+    sigLabels.forEach(([rng,label])=>{ws.mergeCells(rng);const c=ws.getCell(rng.split(":")[0]);c.value=label;c.font=hdrFont;c.alignment=cM;c.border=bdr;});
+    [["AF3:AG5"],["AH3:AI5"],["AJ3:AK5"],["AL3:AM5"]].forEach(([rng])=>{ws.mergeCells(rng);applyBdr(ws.getCell(rng.split(":")[0]));});
+
+    // ── Row 6: 구분선 ──
+    ws.getRow(6).height=5.85;
+
+    // ── Row 7: 범례 ──
+    ws.getRow(7).height=20;
+    const lgc=ws.getCell("AM7");
+    lgc.value="출고처 범례: P = 생산, Q = 품질, R = 연구, E = 기타(생산·품질·연구 외 출고 시, 출고처 상세 내용은 SOP-706-F07. 제조지시 및 기록서 참고)";
+    lgc.font={name:"나눔고딕",size:8}; lgc.alignment=rM;
+
+    // ── Row 8: 헤더 ──
+    ws.getRow(8).height=23.85;
+    ["보관위치","원료명","Lot No.","이월재고","단위","구분"].forEach((h,i)=>hdrCell(8,i+1,h,true));
+    for(let d=1;d<=31;d++) hdrCell(8,6+d,d,true);
+    hdrCell(8,38,"합계",true); hdrCell(8,39,"현재고",true);
+
+    // ── 데이터: LOT 단위 그룹화 ──
+    const tabIts=items.filter(i=>i.type===typeLabel);
+    const tabItemCodes=new Set(tabIts.map(i=>i.code));
+    const grpMap={};
+
+    // 1) lots 배열에서 LOT별 그룹 생성
+    lots.filter(l=>tabItemCodes.has(l.item)).sort((a,b)=>(a.mfg||"").localeCompare(b.mfg||"")).forEach(l=>{
+      const key=l.item+"__"+l.code;
+      const it=items.find(i=>i.code===l.item);
+      if(!grpMap[key]) grpMap[key]={item:l.item,itemName:l.itemName||(it?it.name:""),lot:l.code};
+    });
+    // 2) IO 기록에만 있는 품목+LOT 조합 추가
+    io.filter(r=>r.date&&r.date>=monthStartStr&&r.date<=monthEndStr&&tabItemCodes.has(r.item)).forEach(r=>{
+      const key=r.item+"__"+(r.lot||"");
+      if(!grpMap[key]){
+        const it=items.find(i=>i.code===r.item);
+        grpMap[key]={item:r.item,itemName:r.itemName||(it?it.name:""),lot:r.lot||""};
+      }
+    });
+    // 3) LOT가 전혀 없는 품목은 빈 LOT로 추가
+    tabIts.forEach(it=>{
+      const hasAny=Object.values(grpMap).some(g=>g.item===it.code);
+      if(!hasAny) grpMap[it.code+"__"]={item:it.code,itemName:it.name,lot:""};
+    });
+
+    // ── 이월재고 계산: LOT별 (현재 LOT 잔량에서 이번달 이후 변동분 역산) ──
+    const calcPrevStock=(itemCode,lotCode)=>{
+      if(lotCode){
+        const lotObj=lots.find(l=>l.code===lotCode&&l.item===itemCode);
+        const curQty=lotObj?lotObj.qty||0:0;
+        const inFrom=io.filter(r=>r.item===itemCode&&r.lot===lotCode&&r.date&&r.date>=monthStartStr&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
+        const outFrom=io.filter(r=>r.item===itemCode&&r.lot===lotCode&&r.date&&r.date>=monthStartStr&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
+        return curQty-inFrom+outFrom;
+      } else {
+        // LOT 미지정: 품목 전체 현재고 - 모든 LOT 잔량 (LOT 미추적 재고)
+        const itemStock=(items.find(i=>i.code===itemCode)||{}).stock||0;
+        const lotTotal=lots.filter(l=>l.item===itemCode).reduce((s,l)=>s+(l.qty||0),0);
+        const noLotCur=Math.max(0,itemStock-lotTotal);
+        const inFrom=io.filter(r=>r.item===itemCode&&!r.lot&&r.date&&r.date>=monthStartStr&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
+        const outFrom=io.filter(r=>r.item===itemCode&&!r.lot&&r.date&&r.date>=monthStartStr&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
+        return noLotCur-inFrom+outFrom;
+      }
+    };
+
+    let dr=9;
+
+    Object.values(grpMap).forEach(grp=>{
+      const it=items.find(i=>i.code===grp.item);
+      const lotObj=lots.find(l=>l.code===grp.lot);
+      const warehouse=lotObj?lotObj.warehouse:(it&&it.warehouse?it.warehouse:"");
+      const unit=it?it.unit||"":"";
+      const prevStock=calcPrevStock(grp.item,grp.lot);
+
+      // 일별 입고/출고/출고처 (해당 월, 해당 LOT만)
+      const inD={},outD={},destD={};
+      io.filter(r=>r.item===grp.item&&(r.lot||"")===(grp.lot||"")&&r.date&&r.date>=monthStartStr&&r.date<=monthEndStr).forEach(r=>{
+        const d=new Date(r.date).getDate();
+        if(r.type==="입고"){inD[d]=(inD[d]||0)+r.qty;}
+        else{outD[d]=(outD[d]||0)+r.qty; if(r.destination) destD[d]=r.destination;}
+      });
+      const totalIn=Object.values(inD).reduce((a,b)=>a+b,0);
+      const totalOut=Object.values(outD).reduce((a,b)=>a+b,0);
+      const curStock=prevStock+totalIn-totalOut;
+
+      // 이월재고 0 + 이번달 입출고 없으면 행 생략
+      if(prevStock<=0&&totalIn===0&&totalOut===0) return;
+
+      // ── 3행 공통 셀 (A,B,C,D,E 병합) ──
+      [[1,warehouse,cM],[2,grp.itemName,lM],[3,grp.lot,cM],[4,prevStock,cM],[5,unit,cM]].forEach(([ci,val,align])=>{
+        ws.mergeCells(dr,ci,dr+2,ci);
+        const c=ws.getCell(dr,ci); c.value=val; c.font=bodyFont; c.alignment=align; c.border=bdr;
+        [dr+1,dr+2].forEach(ri=>{const cc=ws.getCell(ri,ci);cc.border=bdr;});
+      });
+
+      // ── 입고 행 (dr) ──
+      ws.getRow(dr).height=23.85;
+      hdrCell(dr,6,"입고",true);
+      for(let d=1;d<=31;d++){const c=ws.getCell(dr,6+d);c.value=inD[d]||"";c.font=bodyFont;c.alignment=cM;c.border=bdr;}
+      const sumInC=ws.getCell(dr,38); sumInC.value=totalIn||""; sumInC.font=hdrFont; sumInC.alignment=cM; sumInC.border=bdr; sumInC.fill=gFill;
+      const curC=ws.getCell(dr,39); curC.value=curStock; curC.font={name:"나눔고딕",bold:true,size:9}; curC.alignment=cM; curC.border=bdr; curC.fill=gFill;
+
+      // ── 출고 행 (dr+1) ──
+      ws.getRow(dr+1).height=23.85;
+      hdrCell(dr+1,6,"출고",true);
+      for(let d=1;d<=31;d++){const c=ws.getCell(dr+1,6+d);c.value=outD[d]||"";c.font=bodyFont;c.alignment=cM;c.border=bdr;}
+      const sumOutC=ws.getCell(dr+1,38); sumOutC.value=totalOut||""; sumOutC.font=hdrFont; sumOutC.alignment=cM; sumOutC.border=bdr; sumOutC.fill=gFill;
+      applyBdr(ws.getCell(dr+1,39)).fill=gFill;
+
+      // ── 출고처 행 (dr+2) ──
+      ws.getRow(dr+2).height=23.85;
+      hdrCell(dr+2,6,"출고처",true);
+      for(let d=1;d<=31;d++){const c=ws.getCell(dr+2,6+d);c.value=destD[d]||"";c.font=bodyFont;c.alignment=cM;c.border=bdr;}
+      applyBdr(ws.getCell(dr+2,38)).fill=gFill;
+      applyBdr(ws.getCell(dr+2,39)).fill=gFill;
+
+      dr+=3;
+    });
+
+    ws.views=[{state:"frozen",ySplit:8,activeCell:"G9"}];
+
+    const fname=`원부자재입출고관리대장_${year}년${String(month).padStart(2,"0")}월_${typeLabel}.xlsx`;
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a"); a.href=url; a.download=fname; a.click();
+    URL.revokeObjectURL(url);
+    showToast("엑셀 다운로드 완료");
+  };
+
+  // ── 인쇄 (원부자재 월간 그리드) ──
+  const printIO=()=>{
+    const isMatTab=(ioTab==="원자재"||ioTab==="부자재");
+    const year=isMatTab?ioYear:(startDate?new Date(startDate).getFullYear():new Date().getFullYear());
+    const month=isMatTab?ioMonth:(startDate?new Date(startDate).getMonth()+1:new Date().getMonth()+1);
+    const daysInMonth=new Date(year,month,0).getDate();
+    const typeLabel=ioTab==="원자재"?"원자재":ioTab==="부자재"?"부자재":ioTab==="완제품"?"완제품":"전체";
+    const monthStartStr=String(year)+"-"+String(month).padStart(2,"0")+"-01";
+    const monthEndStr=String(year)+"-"+String(month).padStart(2,"0")+"-"+String(daysInMonth).padStart(2,"0");
+
+    // 이월재고 계산 함수 (LOT별 현재고 역산)
+    const calcPrevStock=(itemCode,lotCode)=>{
+      if(lotCode){
+        const lotObj=lots.find(l=>l.code===lotCode&&l.item===itemCode);
+        const curQty=lotObj?lotObj.qty||0:0;
+        const inFrom=io.filter(r=>r.item===itemCode&&r.lot===lotCode&&r.date&&r.date>=monthStartStr&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
+        const outFrom=io.filter(r=>r.item===itemCode&&r.lot===lotCode&&r.date&&r.date>=monthStartStr&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
+        return curQty-inFrom+outFrom;
+      } else {
+        const itemStock=(items.find(i=>i.code===itemCode)||{}).stock||0;
+        const lotTotal=lots.filter(l=>l.item===itemCode).reduce((s,l)=>s+(l.qty||0),0);
+        const noLotCur=Math.max(0,itemStock-lotTotal);
+        const inFrom=io.filter(r=>r.item===itemCode&&!r.lot&&r.date&&r.date>=monthStartStr&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
+        const outFrom=io.filter(r=>r.item===itemCode&&!r.lot&&r.date&&r.date>=monthStartStr&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
+        return noLotCur-inFrom+outFrom;
+      }
+    };
+
+    // 그룹화 — 원자재/부자재는 LOT 단위, 완제품/전체는 품목 단위
+    const grpMap={};
+    if(isMatTab){
+      const tabItemCodes=new Set(items.filter(i=>i.type===typeLabel).map(i=>i.code));
+      // lots 배열에서 LOT별 그룹
+      lots.filter(l=>tabItemCodes.has(l.item)).sort((a,b)=>(a.mfg||"").localeCompare(b.mfg||"")).forEach(l=>{
+        const key=l.item+"__"+l.code;
+        const it=items.find(i=>i.code===l.item);
+        if(!grpMap[key]) grpMap[key]={item:l.item,itemName:l.itemName||(it?it.name:""),lot:l.code};
+      });
+      // IO에만 있는 품목+LOT 조합
+      io.filter(r=>r.date&&r.date>=monthStartStr&&r.date<=monthEndStr&&tabItemCodes.has(r.item)).forEach(r=>{
+        const key=r.item+"__"+(r.lot||"");
+        if(!grpMap[key]){const it=items.find(i=>i.code===r.item);grpMap[key]={item:r.item,itemName:r.itemName||(it?it.name:""),lot:r.lot||""};}
+      });
+      // LOT 없는 품목
+      items.filter(i=>i.type===typeLabel).forEach(it=>{
+        if(!Object.values(grpMap).some(g=>g.item===it.code)) grpMap[it.code+"__"]={item:it.code,itemName:it.name,lot:""};
+      });
+    } else {
+      filteredIo.forEach(r=>{
+        if(!grpMap[r.item]){
+          const lot=lots.filter(l=>l.item===r.item).sort((a,b)=>(b.mfg||"").localeCompare(a.mfg||""))[0];
+          grpMap[r.item]={item:r.item,itemName:r.itemName,lot:lot?lot.code:""};
+        }
+      });
+    }
+
+    const dayNums=Array.from({length:daysInMonth},(_,i)=>i+1);
+
+    const rows=Object.values(grpMap).map(grp=>{
+      const it=items.find(i=>i.code===grp.item);
+      const lotObj=lots.find(l=>l.code===grp.lot);
+      const inD={},outD={},destD={};
+      if(isMatTab){
+        // LOT별 IO 필터
+        io.filter(r=>r.item===grp.item&&(r.lot||"")===(grp.lot||"")&&r.date&&r.date>=monthStartStr&&r.date<=monthEndStr).forEach(r=>{
+          const d=new Date(r.date).getDate();
+          if(r.type==="입고"){inD[d]=(inD[d]||0)+r.qty;}
+          else{outD[d]=(outD[d]||0)+r.qty;if(r.destination)destD[d]=r.destination;}
+        });
+      } else {
+        (filteredIo.filter(r=>r.item===grp.item)).forEach(r=>{
+          if(!r.date) return;
+          const rd=new Date(r.date);
+          if(rd.getFullYear()!==year||rd.getMonth()+1!==month) return;
+          const d=rd.getDate();
+          if(r.type==="입고"){inD[d]=(inD[d]||0)+r.qty;}
+          else{outD[d]=(outD[d]||0)+r.qty;if(r.destination)destD[d]=r.destination;}
+        });
+      }
+      const prevStock=isMatTab?calcPrevStock(grp.item,grp.lot):(it?it.stock||0:0);
+      const totalIn=Object.values(inD).reduce((a,b)=>a+b,0);
+      const totalOut=Object.values(outD).reduce((a,b)=>a+b,0);
+      const wh=lotObj?lotObj.warehouse:(it&&it.warehouse?it.warehouse:"");
+      if(prevStock<=0&&totalIn===0&&totalOut===0) return null;
+      return {warehouse:wh,itemName:grp.itemName,lot:grp.lot,prevStock,unit:it?it.unit||"":"",inD,outD,destD,totalIn,totalOut,curStock:prevStock+totalIn-totalOut};
+    }).filter(Boolean);
+
+    const dayCols=dayNums.map(d=>`<th>${d}</th>`).join("");
+    const dataRows=rows.map(r=>`
+      <tr>
+        <td rowspan="3" style="font-size:9px">${r.warehouse}</td>
+        <td rowspan="3" style="font-size:9px;text-align:left">${r.itemName}</td>
+        <td rowspan="3" style="font-size:9px">${r.lot}</td>
+        <td rowspan="3" style="font-size:9px">${r.prevStock}</td>
+        <td rowspan="3" style="font-size:9px">${r.unit}</td>
+        <td class="gry">입고</td>
+        ${dayNums.map(d=>`<td>${r.inD[d]||""}</td>`).join("")}
+        <td class="gry">${r.totalIn||""}</td>
+        <td class="gry" rowspan="3" style="font-weight:bold">${r.curStock}</td>
+      </tr>
+      <tr>
+        <td class="gry">출고</td>
+        ${dayNums.map(d=>`<td>${r.outD[d]||""}</td>`).join("")}
+        <td class="gry">${r.totalOut||""}</td>
+      </tr>
+      <tr>
+        <td class="gry">출고처</td>
+        ${dayNums.map(d=>`<td style="font-size:8px">${r.destD[d]||""}</td>`).join("")}
+        <td class="gry"></td>
+      </tr>`).join("");
+
+    const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
+    <title>${year}년 ${month}월 ${typeLabel} 입·출고 관리대장</title>
+    <style>
+      @page{size:A4 landscape;margin:10mm 8mm;}
+      body{font-family:'나눔고딕',sans-serif;font-size:9px;margin:0;}
+      .title-area{display:flex;margin-bottom:4px;}
+      .title{flex:1;text-align:center;font-size:14px;font-weight:bold;border:1px solid #000;padding:8px;}
+      .sig-area{display:flex;min-width:200px;}
+      .sig-box{border:1px solid #000;text-align:center;flex:1;padding:2px 4px;font-size:9px;min-height:50px;}
+      .legend{text-align:right;font-size:8px;color:#555;margin-bottom:2px;}
+      table{width:100%;border-collapse:collapse;font-size:8px;}
+      th,td{border:1px solid #000;padding:1px 2px;text-align:center;white-space:nowrap;}
+      th{background:#d9d9d9;font-weight:bold;}
+      .gry{background:#d9d9d9;font-weight:bold;}
+      .footer{text-align:center;font-size:8px;margin-top:4px;color:#555;}
+    </style></head><body>
+    <div class="title-area">
+      <div class="title">(  ${year}  ) 년도  ( ${month} ) 월  (  ${typeLabel}  ) 입·출고 관리대장</div>
+      <div class="sig-area">
+        <div class="sig-box">작&nbsp;&nbsp;성</div>
+        <div class="sig-box">검&nbsp;&nbsp;토</div>
+        <div class="sig-box">검&nbsp;&nbsp;토</div>
+        <div class="sig-box">승&nbsp;&nbsp;인</div>
+      </div>
+    </div>
+    <div class="legend">출고처 범례: P = 생산, Q = 품질, R = 연구, E = 기타</div>
+    <table>
+      <thead><tr>
+        <th>보관위치</th><th>원료명</th><th>Lot No.</th><th>이월재고</th><th>단위</th><th>구분</th>
+        ${dayCols}<th>합계</th><th>현재고</th>
+      </tr></thead>
+      <tbody>${dataRows||"<tr><td colspan='39'>데이터 없음</td></tr>"}</tbody>
+    </table>
+    <div class="footer">SOP-705-F01 &nbsp;&nbsp; Ver2.0(2025.09.09) &nbsp;&nbsp; (주)아이메디텍</div>
+    </body></html>`;
+
+    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const win=window.open(url,"_blank","width=1200,height=800");
+    win.onload=()=>{ win.focus(); win.print(); URL.revokeObjectURL(url); };
+  };
+
   return (
     <div>
       <div className="page-header">
         <div><div className="page-title">입출고관리</div><div className="page-sub">( 모델명 ) 입·출고 관리대장 — SOP-705-F08 — LOT별 재고 추적</div></div>
         <div style={{display:"flex",gap:8}}>
           {perm.canDelete&&sel.size>0&&<button className="btn btn-danger" onClick={bulkDel}>🗑 선택 삭제 ({sel.size})</button>}
-          <button className="btn btn-outline" onClick={downloadExcel}>📥 엑셀 다운로드</button>
+          <button className="btn btn-outline" onClick={printIO}>🖨️ 인쇄</button>
+          <button className="btn btn-outline" onClick={(ioTab==="원자재"||ioTab==="부자재")?downloadExcelMaterial:downloadExcel}>📥 엑셀 다운로드</button>
           {perm.canCreate&&<button className="btn btn-primary" onClick={()=>{setForm({...emptyForm,date:today,manager:currentUser?.name||""});setCodeInput("");setModal(true);}}>+ 입출고 등록</button>}
         </div>
       </div>
@@ -1587,14 +1932,28 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
 
       <div className="panel" style={{overflowX:"auto"}}>
         <div className="panel-top">
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:12,color:"#666"}}>일자</span>
-            <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={dateStyle}/>
-            <span style={{fontSize:12,color:"#aaa"}}>~</span>
-            <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={dateStyle}/>
-            <button className="btn btn-outline btn-sm" onClick={()=>{setStartDate(today);setEndDate(today);}}>오늘</button>
-            <button className="btn btn-outline btn-sm" onClick={()=>{setStartDate("");setEndDate("");}}>전체</button>
-          </div>
+          {(ioTab==="원자재"||ioTab==="부자재")?(
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <span style={{fontSize:12,color:"#666",fontWeight:600}}>📅 기준 월</span>
+              <select value={ioYear} onChange={e=>setIoYear(+e.target.value)} style={dateStyle}>
+                {Array.from({length:7},(_,i)=>_now.getFullYear()-3+i).map(y=><option key={y} value={y}>{y}년</option>)}
+              </select>
+              <select value={ioMonth} onChange={e=>setIoMonth(+e.target.value)} style={dateStyle}>
+                {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}월</option>)}
+              </select>
+              <button className="btn btn-outline btn-sm" onClick={()=>{setIoYear(_now.getFullYear());setIoMonth(_now.getMonth()+1);}}>이번달</button>
+              <button className="btn btn-outline btn-sm" onClick={()=>{const pm=_now.getMonth()===0?12:_now.getMonth();const py=_now.getMonth()===0?_now.getFullYear()-1:_now.getFullYear();setIoYear(py);setIoMonth(pm);}}>지난달</button>
+            </div>
+          ):(
+            <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <span style={{fontSize:12,color:"#666"}}>일자</span>
+              <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={dateStyle}/>
+              <span style={{fontSize:12,color:"#aaa"}}>~</span>
+              <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={dateStyle}/>
+              <button className="btn btn-outline btn-sm" onClick={()=>{setStartDate(today);setEndDate(today);}}>오늘</button>
+              <button className="btn btn-outline btn-sm" onClick={()=>{setStartDate("");setEndDate("");}}>전체</button>
+            </div>
+          )}
           <span style={{fontSize:12,color:"#aaa"}}>{displayRows.length}건</span>
         </div>
         <table style={{minWidth:900}}>
@@ -1609,7 +1968,7 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
               <th style={{textAlign:"center"}}>입고량</th>
               <th style={{textAlign:"center"}}>출고량</th>
               <th style={{textAlign:"center"}}>재고량</th>
-              <th>출고처</th>
+              <th>출처/구분</th>
               <th>담당자</th>
               <th>확인자</th>
               <th>비고</th>
@@ -1632,7 +1991,7 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
                   <td style={{textAlign:"center",color:r.type==="입고"?"#2563eb":"#ccc",fontWeight:r.type==="입고"?600:400}}>{r.type==="입고"?r.qty:"-"}</td>
                   <td style={{textAlign:"center",color:r.type==="출고"?"#e74c3c":"#ccc",fontWeight:r.type==="출고"?600:400}}>{r.type==="출고"?r.qty:"-"}</td>
                   <td style={{textAlign:"center",fontWeight:600,color:(r.runStock??0)<0?"#e74c3c":"#27ae60"}}>{r.runStock??0}</td>
-                  <td style={{fontSize:12,color:"#555"}}>{r.destination||"-"}</td>
+                  <td>{(()=>{const d=r.destination;if(!d)return<span style={{color:"#ccc"}}>-</span>;const lbl={P:"P 생산",Q:"Q 품질",R:"R 연구",E:"E 기타",BUY:"구매입고",RTN:"반품",TRF:"이월",ETC:"기타"};const cls={P:"badge-blue",Q:"badge-orange",R:"badge-green",E:"badge-gray",BUY:"badge-blue",RTN:"badge-orange",TRF:"badge-green",ETC:"badge-gray"};return<span className={`badge ${cls[d]||"badge-gray"}`}>{lbl[d]||d}</span>;})()}</td>
                   <td style={{fontSize:12,color:"#555"}}>{r.manager||"-"}</td>
                   <td style={{fontSize:12,color:"#555"}}>{r.approver||"-"}</td>
                   <td style={{fontSize:12,color:"#aaa",maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.note||"-"}</td>
@@ -1654,7 +2013,7 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
         <div className="modal-body">
           <div className="field-row">
             <div className="field"><label>일자</label><input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></div>
-            <div className="field"><label>구분</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value,lot:""})}><option>입고</option><option>출고</option></select></div>
+            <div className="field"><label>구분</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value,lot:"",destination:""})}><option>입고</option><option>출고</option></select></div>
           </div>
           <div className="field" style={{position:"relative"}}>
             <label>품목코드 *</label>
@@ -1665,7 +2024,7 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
                 if(exact){setForm(f=>({...f,item:exact.code,itemName:exact.name,unit:exact.unit||"EA",unitPrice:exact.price||0,lot:""}));}
                 else{setForm(f=>({...f,item:"",itemName:""}));}
               }}
-              placeholder="코드 입력 시 자동완성"
+              placeholder="품목코드 또는 품목명 검색"
               autoComplete="off"/>
             {codeInput&&!form.item&&(()=>{
               const tabItems=items.filter(i=>{
@@ -1674,7 +2033,8 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
                 if(ioTab==="부자재") return i.type==="부자재";
                 return true;
               });
-              const hits=tabItems.filter(i=>i.code.toLowerCase().includes(codeInput.toLowerCase())||i.name.includes(codeInput));
+              const _q=codeInput.toLowerCase();
+              const hits=tabItems.filter(i=>i.code.toLowerCase().includes(_q)||i.name.toLowerCase().includes(_q));
               return hits.length>0?(
                 <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #2563eb",borderRadius:6,boxShadow:"0 4px 12px rgba(0,0,0,0.12)",zIndex:300,maxHeight:180,overflowY:"auto"}}>
                   {hits.map(i=>(
@@ -1716,7 +2076,13 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
             </div>
           )}
           <div className="field-row" style={{marginTop:8}}>
-            {form.type==="출고"&&<div className="field"><label>출고처</label><input value={form.destination||""} onChange={e=>setForm({...form,destination:e.target.value})} placeholder="거래처 또는 병원명"/></div>}
+            <div className="field">
+              <label>{form.type==="출고"?"사용출처":"입고구분"}</label>
+              <select value={form.destination||""} onChange={e=>setForm({...form,destination:e.target.value})}>
+                <option value="">선택</option>
+                {form.type==="출고"?<><option value="P">P — 생산</option><option value="Q">Q — 품질</option><option value="R">R — 연구</option><option value="E">E — 기타</option></>:<><option value="BUY">구매입고</option><option value="RTN">반품입고</option><option value="TRF">이월</option><option value="ETC">기타</option></>}
+              </select>
+            </div>
             <div className="field"><label>담당자</label><input value={form.manager||""} onChange={e=>setForm({...form,manager:e.target.value})}/></div>
             <div className="field"><label>확인자</label><input value={form.approver||""} onChange={e=>setForm({...form,approver:e.target.value})}/></div>
           </div>
@@ -1769,7 +2135,8 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
   const [workWoCode,setWorkWoCode]=useState("");
   const [workProcTimes,setWorkProcTimes]=useState([]); // [{code,name,hours}]
   const [workMatQty,setWorkMatQty]=useState({});       // {itemCode: qty to deduct now}
-  const products=items.filter(i=>i.type==="완제품");
+  const products=items.filter(i=>i.type==="완제품"||i.type==="반제품");
+  const [prodCodeInput,setProdCodeInput]=useState("");
   const toggleSel=(code)=>setSel(prev=>{const s=new Set(prev);s.has(code)?s.delete(code):s.add(code);return s;});
   const SBadge=({s})=><span className={`badge ${s==="완료"?"badge-green":s==="진행중"?"badge-blue":s==="대기"?"badge-gray":"badge-red"}`}>{s}</span>;
 
@@ -1781,8 +2148,9 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
   };
 
   const openAdd=()=>{
-    setForm({code:"WO"+Date.now(),product:"",productName:"",orderQty:0,lot:"LOT"+Date.now(),processes:[],status:"대기",date:new Date().toISOString().slice(0,10),factoryCode:factories[0]?.code||""});
-    setModal("add");
+    const _today=new Date();const _ymd=String(_today.getFullYear()).slice(2)+String(_today.getMonth()+1).padStart(2,"0")+String(_today.getDate()).padStart(2,"0");const _seq=String((orders.filter(o=>o.code.startsWith("I"+_ymd)).length)+1).padStart(3,"0");const _newCode="I"+_ymd+_seq;
+    setForm({code:_newCode,product:"",productName:"",orderQty:0,lot:"LOT"+Date.now(),processes:[],status:"대기",date:new Date().toISOString().slice(0,10),factoryCode:factories[0]?.code||""});
+    setProdCodeInput("");setModal("add");
   };
   const addProcess=()=>setForm(f=>({...f,processes:[...f.processes,{code:"",name:""}]}));
   const setProc=(idx,val)=>{const ps=[...form.processes];const proc=processes.find(p=>p.code===val);ps[idx]={code:val,name:proc?.name||val};setForm(f=>({...f,processes:ps}));};
@@ -1798,7 +2166,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
     const bomEntry=bom.find(b=>b.product===order.product);
     if(bomEntry&&order.orderQty>0){
       setItems(prev=>prev.map(it=>{const mat=bomEntry.materials.find(m=>m.code===it.code);return mat?{...it,stock:Math.max(0,it.stock-mat.qty*order.orderQty)}:it;}));
-      const ioRecs=bomEntry.materials.map(m=>({date:doneDate,type:"출고",item:m.code,itemName:m.name,qty:m.qty*order.orderQty,unitPrice:items.find(i=>i.code===m.code)?.price||0,lot:order.lot||"",note:`작업지시서 ${order.code} 투입`}));
+      const ioRecs=bomEntry.materials.map(m=>({date:doneDate,type:"출고",item:m.code,itemName:m.name,qty:m.qty*order.orderQty,unitPrice:items.find(i=>i.code===m.code)?.price||0,lot:"",destination:"P",manager:"",approver:"",note:"작업지시서 "+order.code+" 투입"}));
       setIo(prev=>[...ioRecs,...prev]);
     }
     const goodQty=(order.orderQty||0)-(defectQty||0);
@@ -1857,7 +2225,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
     const it=items.find(i=>i.code===mat.code);
     const newStock=(it?.stock||0)-qty;
     if(newStock<0&&!window.confirm(`재고가 부족합니다 (현재 ${it?.stock||0}, 출고 ${qty}). 계속하시겠습니까?`)) return;
-    setIo(prev=>[{date:today,type:"출고",item:mat.code,itemName:mat.name,qty,unitPrice:it?.price||0,lot:workOrder.lot||"",note:`작업지시서 ${workWoCode} 투입`},...prev]);
+    setIo(prev=>[{date:today,type:"출고",item:mat.code,itemName:mat.name,qty,unitPrice:it?.price||0,lot:"",destination:"P",manager:"",approver:"",note:"작업지시서 "+workWoCode+" 투입"},...prev]);
     setItems(prev=>prev.map(i=>i.code===mat.code?{...i,stock:i.stock-qty}:i));
     setWorkMatQty(q=>({...q,[mat.code]:0}));
     showToast(`${mat.name} ${qty}${mat.unit} 출고 처리 완료`);
@@ -1876,9 +2244,9 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
   };
 
   const save=()=>{
-    if(!form.product){showToast("완제품을 선택해주세요");return;}
+    if(!form.product){showToast("품목을 선택해주세요");return;}
     const prd=products.find(p=>p.code===form.product);
-    const entry={...form,productName:prd?prd.name:"",status:modal==="add"?"대기":form.status};
+    const entry={...form,productName:prd?prd.name:form.productName,status:modal==="add"?"대기":form.status};
     if(modal==="add"){setOrders([...orders,entry]);}else{setOrders(orders.map(o=>o.code===form.code?entry:o));}
     showToast("저장되었습니다.");setModal(null);
   };
@@ -1947,7 +2315,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
                 {perm.canEdit&&o.status!=="완료"&&o.status!=="취소"&&(
                   <button className="btn btn-sm" style={{background:"#16a34a",color:"#fff",border:"none"}} onClick={()=>openComplete(o)}>✅ 완료</button>
                 )}
-                {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({...o,processes:o.processes||[]});setModal("edit");}}>수정</button>}
+                {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({...o,processes:o.processes||[]});setProdCodeInput(o.product||"");setModal("edit");}}>수정</button>}
                 {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(o.code)}>삭제</button>}
               </td>
             </tr>
@@ -2098,7 +2466,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
               {perm.canEdit&&viewWo.status!=="완료"&&viewWo.status!=="취소"&&(
                 <button className="btn btn-sm" style={{background:"#16a34a",color:"#fff",border:"none",padding:"7px 16px",borderRadius:6,cursor:"pointer"}} onClick={()=>{openComplete(viewWo);setViewWo(null);}}>✅ 완료 처리</button>
               )}
-              {perm.canEdit&&viewWo.status!=="완료"&&<button className="btn btn-primary" onClick={()=>{setForm({...viewWo,processes:viewWo.processes||[]});setModal("edit");setViewWo(null);}}>수정</button>}
+              {perm.canEdit&&viewWo.status!=="완료"&&<button className="btn btn-primary" onClick={()=>{setForm({...viewWo,processes:viewWo.processes||[]});setProdCodeInput(viewWo.product||"");setModal("edit");setViewWo(null);}}>수정</button>}
             </div>
           </div>
         </div>
@@ -2164,11 +2532,36 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
                 <div className="field"><label>지시일</label><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/></div>
               </div>
               <div className="field-row">
-                <div className="field">
-                  <label>완제품 * {form.product&&<span style={{fontSize:11,color:"#16a34a"}}>✅ 공정 {form.processes.length}개 자동 로드</span>}</label>
-                  <select value={form.product} onChange={e=>selectProduct(e.target.value)}>
-                    <option value="">선택</option>{products.map(p=><option key={p.code} value={p.code}>{p.name}</option>)}
-                  </select>
+                <div className="field" style={{position:"relative"}}>
+                  <label>완제품·반제품 * {form.product&&<span style={{fontSize:11,color:"#16a34a"}}>✅ 공정 {form.processes.length}개 자동 로드</span>}</label>
+                  <input value={prodCodeInput}
+                    onChange={e=>{
+                      const v=e.target.value; setProdCodeInput(v);
+                      const exact=products.find(p=>p.code===v);
+                      if(exact){const prd=items.find(i=>i.code===exact.code);const autoProcs=(prd?.processes||[]).map(pc=>{const proc=processes.find(pr=>pr.code===pc);return{code:pc,name:proc?.name||pc};});setForm(f=>({...f,product:exact.code,productName:exact.name,processes:autoProcs}));}
+                      else{setForm(f=>({...f,product:"",productName:""}));}
+                    }}
+                    placeholder="코드 또는 제품명 입력"
+                    autoComplete="off"/>
+                  {prodCodeInput&&!form.product&&(()=>{
+                    const hits=products.filter(p=>{const _q=prodCodeInput.toLowerCase();return p.code.toLowerCase().includes(_q)||p.name.toLowerCase().includes(_q);});
+                    return hits.length>0?(
+                      <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #2563eb",borderRadius:6,boxShadow:"0 4px 12px rgba(0,0,0,0.12)",zIndex:300,maxHeight:200,overflowY:"auto"}}>
+                        {hits.map(p=>(
+                          <div key={p.code}
+                            onClick={()=>{const prd=items.find(i=>i.code===p.code);const autoProcs=(prd?.processes||[]).map(pc=>{const proc=processes.find(pr=>pr.code===pc);return{code:pc,name:proc?.name||pc};});setForm(f=>({...f,product:p.code,productName:p.name,processes:autoProcs}));setProdCodeInput(p.code);}}
+                            style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #f0f0f0",fontSize:13}}
+                            onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"}
+                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                            <span style={{fontFamily:"monospace",color:"#2563eb",fontWeight:600}}>{p.code}</span>
+                            <span style={{marginLeft:8,fontWeight:600}}>{p.name}</span>
+                            <span className={`badge ${p.type==="완제품"?"badge-blue":"badge-orange"}`} style={{marginLeft:6,fontSize:10}}>{p.type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ):null;
+                  })()}
+                  {form.product&&<div style={{fontSize:12,color:"#16a34a",fontWeight:600,marginTop:5}}>✅ {form.productName}</div>}
                 </div>
                 <div className="field"><label>공장</label><select value={form.factoryCode} onChange={e=>setForm(f=>({...f,factoryCode:e.target.value}))}><option value="">선택</option>{factories.map(f=><option key={f.code} value={f.code}>{f.name}</option>)}</select></div>
               </div>
@@ -3086,11 +3479,10 @@ function OrdersLedgerPage({ordersLedger,setOrdersLedger,currentUser,perm,showToa
 </div>
 </body></html>`;
 
-    const w = window.open("","_blank","width=1200,height=800");
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    setTimeout(()=>{ w.print(); }, 600);
+    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const w=window.open(url,"_blank","width=1200,height=800");
+    w.onload=()=>{ w.focus(); w.print(); URL.revokeObjectURL(url); };
   };
 
   return (
