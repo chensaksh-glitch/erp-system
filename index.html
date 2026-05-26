@@ -754,53 +754,72 @@ function App() {
 }
 
 function AnalysisPage({orders, items}) {
-  const [period, setPeriod] = React.useState(6);
-  const barRef = React.useRef(null);
-  const lineRef = React.useRef(null);
-  const barChart = React.useRef(null);
-  const lineChart = React.useRef(null);
+  const nowYm = new Date().toISOString().slice(0,7);
+  const prevYm = (ym, n) => {
+    const [y,m] = ym.split("-").map(Number);
+    const d = new Date(y, m-1-n, 1);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  };
+  const [fromYm, setFromYm] = React.useState(prevYm(nowYm, 5));
+  const [toYm,   setToYm]   = React.useState(nowYm);
+  const [preset, setPreset]  = React.useState(6); // 현재 선택된 프리셋 (null=수동)
 
-  // 월 레이블 생성
-  const getMonths = (n) => {
-    const now = new Date();
-    const months = [];
-    for(let i=n-1;i>=0;i--) {
-      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
-      months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  const barRef   = React.useRef(null);
+  const lineRef  = React.useRef(null);
+  const barChart = React.useRef(null);
+  const lineChart= React.useRef(null);
+
+  // fromYm ~ toYm 사이의 모든 월 배열
+  const buildMonths = (from, to) => {
+    const result = [];
+    let [fy,fm] = from.split("-").map(Number);
+    const [ty,tm] = to.split("-").map(Number);
+    while(fy < ty || (fy===ty && fm<=tm)) {
+      result.push(`${fy}-${String(fm).padStart(2,'0')}`);
+      fm++; if(fm>12){fm=1;fy++;}
+      if(result.length>60) break; // 최대 5년
     }
-    return months;
+    return result;
   };
 
-  const months = getMonths(period);
+  const months = buildMonths(fromYm, toYm);
   const completedOrders = orders.filter(o=>o.status==="완료"&&o.doneDate);
+  const rangeOrders = completedOrders.filter(o=>o.doneDate.slice(0,7)>=fromYm&&o.doneDate.slice(0,7)<=toYm);
 
   const monthlyData = months.map(m=>{
     const mo = completedOrders.filter(o=>o.doneDate.slice(0,7)===m);
-    const qty = mo.reduce((s,o)=>s+(o.orderQty||0),0);
+    const qty    = mo.reduce((s,o)=>s+(o.orderQty||0),0);
     const defect = mo.reduce((s,o)=>s+(o.defectQty||0),0);
-    const rate = qty>0?parseFloat((defect/qty*100).toFixed(1)):0;
-    return {month:m, label:m.slice(5)+"월", count:mo.length, qty, defect, rate};
+    const rate   = qty>0?parseFloat((defect/qty*100).toFixed(1)):0;
+    const label  = months.length>12 ? m.slice(0,7) : m.slice(5)+"월";
+    return {month:m, label, count:mo.length, qty, defect, rate};
   });
 
-  // 제품별 생산 실적
+  // 제품별 실적 (선택 기간)
   const productMap = {};
-  completedOrders.forEach(o=>{
+  rangeOrders.forEach(o=>{
     const k = o.product||o.productName;
     if(!productMap[k]) productMap[k]={name:o.productName||k, count:0, qty:0, defect:0};
     productMap[k].count++;
-    productMap[k].qty += o.orderQty||0;
+    productMap[k].qty    += o.orderQty||0;
     productMap[k].defect += o.defectQty||0;
   });
   const productList = Object.values(productMap).sort((a,b)=>b.qty-a.qty);
 
-  // KPI
-  const totalCompleted = completedOrders.length;
-  const totalQty = completedOrders.reduce((s,o)=>s+(o.orderQty||0),0);
-  const totalDefect = completedOrders.reduce((s,o)=>s+(o.defectQty||0),0);
-  const avgDefectRate = totalQty>0?(totalDefect/totalQty*100).toFixed(1):0;
-  const completionRate = orders.length>0?(completedOrders.length/orders.length*100).toFixed(0):0;
+  // KPI (선택 기간)
+  const totalCompleted  = rangeOrders.length;
+  const totalQty        = rangeOrders.reduce((s,o)=>s+(o.orderQty||0),0);
+  const totalDefect     = rangeOrders.reduce((s,o)=>s+(o.defectQty||0),0);
+  const avgDefectRate   = totalQty>0?(totalDefect/totalQty*100).toFixed(1):0;
+  const completionRate  = orders.length>0?(completedOrders.length/orders.length*100).toFixed(0):0;
 
-  // 차트 그리기
+  const applyPreset = (n) => {
+    setPreset(n);
+    setFromYm(prevYm(nowYm, n-1));
+    setToYm(nowYm);
+  };
+
+  // 차트 - 막대
   React.useEffect(()=>{
     if(!barRef.current||typeof Chart==="undefined") return;
     if(barChart.current) barChart.current.destroy();
@@ -809,21 +828,18 @@ function AnalysisPage({orders, items}) {
       data:{
         labels: monthlyData.map(d=>d.label),
         datasets:[
-          {label:'생산수량(EA)', data:monthlyData.map(d=>d.qty), backgroundColor:'rgba(37,99,235,0.75)', borderRadius:5, yAxisID:'y'},
-          {label:'불량수량(EA)', data:monthlyData.map(d=>d.defect), backgroundColor:'rgba(231,76,60,0.7)', borderRadius:5, yAxisID:'y'},
+          {label:'생산수량(EA)', data:monthlyData.map(d=>d.qty), backgroundColor:'rgba(37,99,235,0.75)', borderRadius:4},
+          {label:'불량수량(EA)', data:monthlyData.map(d=>d.defect), backgroundColor:'rgba(231,76,60,0.7)',  borderRadius:4},
         ]
       },
-      options:{
-        responsive:true, maintainAspectRatio:false,
+      options:{responsive:true,maintainAspectRatio:false,
         plugins:{legend:{position:'top'},tooltip:{mode:'index'}},
-        scales:{
-          y:{beginAtZero:true, title:{display:true,text:'수량(EA)'}},
-        }
-      }
+        scales:{y:{beginAtZero:true,title:{display:true,text:'수량(EA)'}}}}
     });
     return ()=>{ if(barChart.current) barChart.current.destroy(); };
-  },[period, orders]);
+  },[fromYm, toYm, orders]);
 
+  // 차트 - 라인
   React.useEffect(()=>{
     if(!lineRef.current||typeof Chart==="undefined") return;
     if(lineChart.current) lineChart.current.destroy();
@@ -832,38 +848,54 @@ function AnalysisPage({orders, items}) {
       data:{
         labels: monthlyData.map(d=>d.label),
         datasets:[
-          {label:'불량률(%)', data:monthlyData.map(d=>d.rate), borderColor:'#e74c3c', backgroundColor:'rgba(231,76,60,0.08)', tension:0.4, pointRadius:5, pointBackgroundColor:'#e74c3c', fill:true},
-          {label:'완료건수', data:monthlyData.map(d=>d.count), borderColor:'#27ae60', backgroundColor:'rgba(39,174,96,0.08)', tension:0.4, pointRadius:5, pointBackgroundColor:'#27ae60', fill:false, yAxisID:'y2'},
+          {label:'불량률(%)',  data:monthlyData.map(d=>d.rate),  borderColor:'#e74c3c', backgroundColor:'rgba(231,76,60,0.08)', tension:0.4, pointRadius:5, fill:true},
+          {label:'완료건수',  data:monthlyData.map(d=>d.count), borderColor:'#27ae60', backgroundColor:'rgba(39,174,96,0.08)',  tension:0.4, pointRadius:5, fill:false, yAxisID:'y2'},
         ]
       },
-      options:{
-        responsive:true, maintainAspectRatio:false,
+      options:{responsive:true,maintainAspectRatio:false,
         plugins:{legend:{position:'top'},tooltip:{mode:'index'}},
         scales:{
-          y:{beginAtZero:true, title:{display:true,text:'불량률(%)'},position:'left'},
-          y2:{beginAtZero:true, title:{display:true,text:'완료건수'},position:'right',grid:{drawOnChartArea:false}},
-        }
-      }
+          y: {beginAtZero:true,title:{display:true,text:'불량률(%)'},position:'left'},
+          y2:{beginAtZero:true,title:{display:true,text:'완료건수'},position:'right',grid:{drawOnChartArea:false}},
+        }}
     });
     return ()=>{ if(lineChart.current) lineChart.current.destroy(); };
-  },[period, orders]);
+  },[fromYm, toYm, orders]);
+
+  const inputStyle={border:"1px solid #ddd",borderRadius:6,padding:"5px 10px",fontSize:13,outline:"none"};
 
   return (
     <div>
       <div className="page-header">
         <div><div className="page-title">📈 생산 실적 분석</div><div className="page-sub">월별 생산량·불량률 추이 및 제품별 현황</div></div>
-        <div style={{display:"flex",gap:6}}>
+      </div>
+
+      {/* 기간 필터 바 */}
+      <div style={{background:"#fff",borderRadius:10,padding:"12px 18px",boxShadow:"0 1px 3px rgba(0,0,0,0.07)",marginBottom:20,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <span style={{fontSize:13,fontWeight:600,color:"#555"}}>기간</span>
+        <input type="month" value={fromYm} max={toYm} style={inputStyle}
+          onChange={e=>{setFromYm(e.target.value);setPreset(null);}}/>
+        <span style={{color:"#aaa"}}>~</span>
+        <input type="month" value={toYm} min={fromYm} max={nowYm} style={inputStyle}
+          onChange={e=>{setToYm(e.target.value);setPreset(null);}}/>
+        <div style={{display:"flex",gap:5,marginLeft:8}}>
           {[3,6,12].map(n=>(
-            <button key={n} className={`btn btn-sm ${period===n?"btn-primary":"btn-outline"}`} onClick={()=>setPeriod(n)}>{n}개월</button>
+            <button key={n} className={`btn btn-sm ${preset===n?"btn-primary":"btn-outline"}`}
+              onClick={()=>applyPreset(n)}>{n}개월</button>
           ))}
+          <button className={`btn btn-sm ${preset===0?"btn-primary":"btn-outline"}`}
+            onClick={()=>{setPreset(0);setFromYm(nowYm.slice(0,4)+"-01");setToYm(nowYm);}}>올해</button>
         </div>
+        <span style={{marginLeft:"auto",fontSize:12,color:"#888"}}>
+          {months.length}개월 | 완료 {totalCompleted}건
+        </span>
       </div>
 
       {/* KPI 카드 */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
-        <div className="card"><div className="card-label">총 완료 작업지시</div><div className="card-val">{totalCompleted}<span style={{fontSize:16,fontWeight:400}}> 건</span></div><div className="card-sub">전체 {orders.length}건 중</div></div>
-        <div className="card ok"><div className="card-label">작업지시 완료율</div><div className="card-val">{completionRate}<span style={{fontSize:16,fontWeight:400}}> %</span></div><div className="card-sub">완료/전체</div></div>
-        <div className="card"><div className="card-label">총 생산량</div><div className="card-val" style={{fontSize:20}}>{totalQty.toLocaleString()}<span style={{fontSize:14,fontWeight:400}}> EA</span></div><div className="card-sub">완료된 작업 기준</div></div>
+        <div className="card"><div className="card-label">완료 작업지시</div><div className="card-val">{totalCompleted}<span style={{fontSize:16,fontWeight:400}}> 건</span></div><div className="card-sub">선택 기간 기준</div></div>
+        <div className="card ok"><div className="card-label">전체 완료율</div><div className="card-val">{completionRate}<span style={{fontSize:16,fontWeight:400}}> %</span></div><div className="card-sub">전체 {orders.length}건 중</div></div>
+        <div className="card"><div className="card-label">총 생산량</div><div className="card-val" style={{fontSize:20}}>{totalQty.toLocaleString()}<span style={{fontSize:14,fontWeight:400}}> EA</span></div><div className="card-sub">선택 기간 기준</div></div>
         <div className={`card${parseFloat(avgDefectRate)>3?" warn":""}`}><div className="card-label">평균 불량률</div><div className="card-val">{avgDefectRate}<span style={{fontSize:16,fontWeight:400}}> %</span></div><div className="card-sub">불량 {totalDefect.toLocaleString()} EA</div></div>
       </div>
 
@@ -881,7 +913,10 @@ function AnalysisPage({orders, items}) {
 
       {/* 제품별 생산 실적 */}
       <div className="panel">
-        <div className="panel-top"><b>🏷️ 제품별 생산 실적 (전체 기간)</b><span style={{fontSize:12,color:"#888"}}>{productList.length}개 제품</span></div>
+        <div className="panel-top">
+          <b>🏷️ 제품별 생산 실적</b>
+          <span style={{fontSize:12,color:"#888"}}>{fromYm} ~ {toYm} | {productList.length}개 제품</span>
+        </div>
         <table>
           <thead>
             <tr>
@@ -895,7 +930,7 @@ function AnalysisPage({orders, items}) {
           </thead>
           <tbody>
             {productList.map((p,i)=>{
-              const rate = p.qty>0?(p.defect/p.qty*100).toFixed(1):0;
+              const rate   = p.qty>0?(p.defect/p.qty*100).toFixed(1):0;
               const barPct = totalQty>0?Math.round(p.qty/totalQty*100):0;
               return (
                 <tr key={i}>
@@ -915,7 +950,7 @@ function AnalysisPage({orders, items}) {
                 </tr>
               );
             })}
-            {!productList.length&&<tr><td colSpan={6} className="empty">완료된 작업지시가 없습니다</td></tr>}
+            {!productList.length&&<tr><td colSpan={6} className="empty">선택 기간에 완료된 작업지시가 없습니다</td></tr>}
           </tbody>
         </table>
       </div>
