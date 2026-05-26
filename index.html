@@ -366,9 +366,9 @@ const initCostMaster = {
 };
 
 const PERMISSIONS = {
-  admin:   { canCreate:true,  canEdit:true,  canDelete:true,  canAdmin:true  },
-  manager: { canCreate:true,  canEdit:true,  canDelete:true,  canAdmin:false },
-  viewer:  { canCreate:false, canEdit:false, canDelete:false, canAdmin:false },
+  admin:   { canCreate:true,  canEdit:true,  canDelete:true,  canAdmin:true,  canViewPrice:true  },
+  manager: { canCreate:true,  canEdit:true,  canDelete:true,  canAdmin:false, canViewPrice:false },
+  viewer:  { canCreate:false, canEdit:false, canDelete:false, canAdmin:false, canViewPrice:false },
 };
 const initUsers = [
   { id:"admin",   pw:"admin123",   name:"관리자",  role:"admin"   },
@@ -456,12 +456,102 @@ function App() {
 
   const perm = currentUser ? PERMISSIONS[currentUser.role] : PERMISSIONS.viewer;
 
+  // 로그인 세션 복원 (Supabase 데이터 로드 완료 후)
+  useEffect(()=>{
+    if(!dbLoaded) return;
+    const savedId=localStorage.getItem('erpUserId');
+    if(savedId){
+      const u=users.find(u=>u.id===savedId);
+      if(u) setCurrentUser(u);
+    }
+  },[dbLoaded]);
+
   const handleLogin = () => {
     const u = users.find(u=>u.id===loginForm.id && u.pw===loginForm.pw);
-    if(u) { setCurrentUser(u); setLoginError(""); setLoginForm({id:"",pw:""}); }
+    if(u) {
+      setCurrentUser(u);
+      localStorage.setItem('erpUserId', u.id);
+      setLoginError(""); setLoginForm({id:"",pw:""});
+    }
     else { setLoginError("아이디 또는 비밀번호가 틀렸습니다."); }
   };
-  const handleLogout = () => { setCurrentUser(null); setPage("dashboard"); };
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('erpUserId');
+    setPage("dashboard");
+  };
+
+  // ── 백업 시스템 ──
+  const [backupModal, setBackupModal] = useState(null); // null | "confirm-restore"
+  const restoreFileRef = React.useRef(null);
+
+  const getAllData = () => ({
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    items, warehouses, processes, bom, lots, incoming, orders, io,
+    costBom, factories, costMaster, ordersLedger, users
+  });
+
+  const doBackup = () => {
+    const data = getAllData();
+    const json = JSON.stringify(data, null, 2);
+    const blob = new Blob([json], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const dateStr = new Date().toISOString().slice(0,10).replace(/-/g,"");
+    a.download = `MedERP_backup_${dateStr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    localStorage.setItem('lastBackupDate', new Date().toISOString());
+    showToast("✅ 백업 파일 다운로드 완료");
+  };
+
+  // 자동 월간 백업: dbLoaded 후 30일 경과 시 자동 실행
+  useEffect(()=>{
+    if(!dbLoaded) return;
+    const last = localStorage.getItem('lastBackupDate');
+    if(!last) return; // 첫 사용이면 패스 (수동으로 한 번은 직접 백업)
+    const daysPassed = (Date.now() - new Date(last).getTime()) / (1000*60*60*24);
+    if(daysPassed >= 30) {
+      setTimeout(()=>{ // 앱 완전 로드 후 2초 뒤
+        if(window.confirm("⚠️ 마지막 백업으로부터 30일이 지났습니다.\n지금 자동 백업을 진행할까요?")) {
+          doBackup();
+        }
+      }, 2000);
+    }
+  },[dbLoaded]);
+
+  const doRestore = async (file) => {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if(!data.version || !data.items) { alert("올바른 백업 파일이 아닙니다."); return; }
+      // Supabase에 모두 저장
+      const keys = ['items','warehouses','processes','bom','lots','incoming','orders','io','costBom','factories','costMaster','ordersLedger','users'];
+      for(const key of keys) {
+        if(data[key] !== undefined) await syncDB(key, data[key]);
+      }
+      // React state도 업데이트
+      if(data.items)        setItems(data.items);
+      if(data.warehouses)   setWarehouses(data.warehouses);
+      if(data.processes)    setProcesses(data.processes);
+      if(data.bom)          setBom(data.bom);
+      if(data.lots)         setLots(data.lots);
+      if(data.incoming)     setIncoming(data.incoming);
+      if(data.orders)       setOrders(data.orders);
+      if(data.io)           setIo(data.io);
+      if(data.costBom)      setCostBom(data.costBom);
+      if(data.factories)    setFactories(data.factories);
+      if(data.costMaster)   setCostMaster(data.costMaster);
+      if(data.ordersLedger) setOrdersLedger(data.ordersLedger);
+      if(data.users)        setUsers(data.users);
+      setBackupModal(null);
+      showToast("✅ 데이터 복원 완료");
+    } catch(e) {
+      alert("복원 실패: 파일이 손상되었거나 잘못된 형식입니다.\n" + e.message);
+    }
+  };
 
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
   const showAlert = (title, msg, reason="", showOrder=false) => setAlert({title,msg,reason,showOrder});
@@ -528,9 +618,7 @@ function App() {
     { section:"생산" },
     { key:"orders", icon:"🔧", label:"작업지시서" },
     { key:"ordersLedger", icon:"📝", label:"주문관리대장" },
-    { section:"원가관리" },
-    { key:"cost", icon:"💰", label:"원가 계산" },
-    { key:"factory", icon:"🏗️", label:"공장 관리" },
+    ...(perm.canViewPrice ? [{ section:"원가관리" }, { key:"cost", icon:"💰", label:"원가 계산" }, { key:"factory", icon:"🏗️", label:"공장 관리" }] : []),
     ...(perm.canAdmin ? [{ section:"관리" }, { key:"users", icon:"👤", label:"사용자 관리" }] : []),
   ];
 
@@ -548,8 +636,8 @@ function App() {
     io: <IOPage io={io} setIo={setIo} items={items} setItems={setItems} lots={lots} setLots={setLots} perm={perm} showToast={showToast} downloadCSV={downloadCSV} onItemClick={setDetailItem} currentUser={currentUser} />,
     ordersLedger: <OrdersLedgerPage ordersLedger={ordersLedger} setOrdersLedger={setOrdersLedger} currentUser={currentUser} perm={perm} showToast={showToast} />,
     orders: <OrdersPage orders={orders} setOrders={setOrders} items={items} setItems={setItems} bom={bom} processes={processes} factories={factories} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} defectWarehouse={defectWarehouse} goodWarehouse={goodWarehouse} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} checkOrderLinks={checkOrderLinks} />,
-    cost: <CostPage costBom={costBom} setCostBom={setCostBom} factories={factories} bom={bom} items={items} processes={processes} costMaster={costMaster} setCostMaster={setCostMaster} orders={orders} io={io} perm={perm} showToast={showToast} downloadCSV={downloadCSV} />,
-    factory: <FactoryPage factories={factories} setFactories={setFactories} perm={perm} showToast={showToast} />,
+    cost: perm.canViewPrice ? <CostPage costBom={costBom} setCostBom={setCostBom} factories={factories} bom={bom} items={items} processes={processes} costMaster={costMaster} setCostMaster={setCostMaster} orders={orders} io={io} perm={perm} showToast={showToast} downloadCSV={downloadCSV} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>접근 권한 없음</div><div style={{color:"#888",marginTop:8}}>원가 정보는 관리자만 열람할 수 있습니다</div></div>,
+    factory: perm.canViewPrice ? <FactoryPage factories={factories} setFactories={setFactories} perm={perm} showToast={showToast} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700}}>접근 권한 없음</div></div>,
     users: <UserPage users={users} setUsers={setUsers} currentUser={currentUser} showToast={showToast} />,
   };
 
@@ -605,6 +693,17 @@ function App() {
               {currentUser.role==="admin"?"관리자":currentUser.role==="manager"?"담당자":"조회자"}
             </span>
           </div>
+          {perm.canAdmin && (
+            <div style={{marginBottom:6,display:"flex",gap:5}}>
+              <button className="btn btn-outline btn-sm" style={{flex:1,fontSize:11}} onClick={doBackup}>💾 백업</button>
+              <button className="btn btn-outline btn-sm" style={{flex:1,fontSize:11}} onClick={()=>restoreFileRef.current&&restoreFileRef.current.click()}>📂 복원</button>
+            </div>
+          )}
+          <input ref={restoreFileRef} type="file" accept=".json" style={{display:"none"}} onChange={e=>{
+            const f=e.target.files[0]; if(!f) return;
+            e.target.value="";
+            setBackupModal({file:f});
+          }}/>
           <button className="btn btn-outline btn-sm" style={{width:"100%"}} onClick={handleLogout}>로그아웃</button>
         </div>
       </nav>
@@ -629,6 +728,24 @@ function App() {
 
       {toast && <div className="toast">{toast}</div>}
       {detailItem && <ItemDetailModal item={detailItem} items={items} lots={lots} io={io} bom={bom} onClose={()=>setDetailItem(null)} />}
+
+      {backupModal && (
+        <div className="overlay" style={{zIndex:400}}>
+          <div className="alert-modal" onClick={e=>e.stopPropagation()}>
+            <div className="alert-icon">⚠️</div>
+            <div className="alert-title">데이터 복원</div>
+            <div className="alert-msg" style={{textAlign:"left"}}>
+              <b style={{color:"#e74c3c"}}>주의: 현재 모든 데이터가 백업 파일로 덮어씌워집니다.</b><br/><br/>
+              파일명: <b>{backupModal.file?.name}</b><br/>
+              <br/>이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:4}}>
+              <button className="btn btn-outline" style={{flex:1}} onClick={()=>setBackupModal(null)}>취소</button>
+              <button className="btn btn-danger" style={{flex:1}} onClick={()=>doRestore(backupModal.file)}>복원 시작</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -666,10 +783,10 @@ function ItemDetailModal({item,items,lots,io,bom,onClose}) {
               <div style={{fontSize:11,color:"#888",marginBottom:3}}>규격</div>
               <b style={{fontSize:13}}>{item.spec||item.capacity||"-"}</b>
             </div>
-            <div style={{background:"#f8f9fb",borderRadius:8,padding:"10px 12px"}}>
+            {perm.canViewPrice&&<div style={{background:"#f8f9fb",borderRadius:8,padding:"10px 12px"}}>
               <div style={{fontSize:11,color:"#888",marginBottom:3}}>단가</div>
               <b style={{fontSize:13,color:"#2563eb"}}>{(item.price||0).toLocaleString()}원</b>
-            </div>
+            </div>}
           </div>
           {/* 재고 현황 */}
           <div style={{background:"#fff",border:"1px solid #eee",borderRadius:8,padding:"12px 16px",marginBottom:14}}>
@@ -899,7 +1016,7 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
           </div>
         </div>
         <table>
-          <thead><tr><th style={{width:36,textAlign:"center"}}>선택</th><th>품목코드</th><th>품목명</th><th>유형</th><th>규격</th><th>용량</th><th>단위</th><th>단가</th><th>최소재고</th><th>창고</th><th>투입공정</th><th>관리</th></tr></thead>
+          <thead><tr><th style={{width:36,textAlign:"center"}}>선택</th><th>품목코드</th><th>품목명</th><th>유형</th><th>규격</th><th>용량</th><th>단위</th>{perm.canViewPrice&&<th>단가</th>}<th>최소재고</th><th>창고</th><th>투입공정</th><th>관리</th></tr></thead>
           <tbody>
             {filtered.map(i=>(
               <tr key={i.code}>
@@ -911,7 +1028,7 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
                 <td><span className={`badge ${i.type==="완제품"?"badge-blue":i.type==="원자재"?"badge-green":i.type==="부자재"?"badge-orange":i.type==="자재"?"badge-green":"badge-orange"}`}>{i.type}</span></td>
                 <td style={{fontSize:12,color:"#555"}}>{i.spec||"-"}</td>
                 <td>{i.capacity||"-"}</td><td>{i.unit}</td>
-                <td>{(i.price||0).toLocaleString()}원</td>
+                {perm.canViewPrice&&<td>{(i.price||0).toLocaleString()}원</td>}
                 <td>{i.minStock}</td><td>{i.warehouse||"-"}</td>
                 <td style={{fontSize:11,color:"#2563eb"}}>{(i.processes||[]).length>0?(i.processes||[]).map(pc=>processes.find(p=>p.code===pc)?.name||pc).join(", "):"-"}</td>
                 <td style={{display:"flex",gap:4}}>
@@ -934,7 +1051,7 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
               <div className="field"><label>규격</label><input value={form.spec||""} onChange={e=>setForm({...form,spec:e.target.value})} placeholder="예) 1mL COC, Φ4mm, ISO 9001"/></div>
               <div className="field-row"><div className="field"><label>용량</label><input value={form.capacity} onChange={e=>setForm({...form,capacity:e.target.value})} placeholder="예) 500ml"/></div><div className="field"><label>창고</label><select value={form.warehouse} onChange={e=>setForm({...form,warehouse:e.target.value})}><option value="">선택</option>{warehouses.map(w=><option key={w.code} value={w.name}>{w.name}</option>)}</select></div></div>
               <div className="field-row"><div className="field"><label>현재 재고</label><input type="number" value={form.stock} onChange={e=>setForm({...form,stock:+e.target.value})}/></div><div className="field"><label>최소 재고</label><input type="number" value={form.minStock} onChange={e=>setForm({...form,minStock:+e.target.value})}/></div></div>
-              <div className="field"><label>단가 (원)</label><input type="number" value={form.price||0} onChange={e=>setForm({...form,price:+e.target.value})} placeholder="0"/></div>
+              {perm.canViewPrice&&<div className="field"><label>단가 (원)</label><input type="number" value={form.price||0} onChange={e=>setForm({...form,price:+e.target.value})} placeholder="0"/></div>}
               {form.type==="완제품"&&(
                 <div style={{marginTop:10}}>
                   <label style={{fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:6}}>⚙️ 투입 공정 설정 <span style={{color:"#aaa",fontWeight:400}}>(작업지시서에 자동 반영)</span></label>
@@ -1525,7 +1642,7 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
         </div>
         <table><thead><tr>
           <th style={{width:36,textAlign:"center"}}>선택</th><th>코드</th><th>품목코드</th><th>품목명</th>
-          <th style={{textAlign:"right"}}>수량</th><th style={{textAlign:"right"}}>단가</th>
+          <th style={{textAlign:"right"}}>수량</th>{perm.canViewPrice&&<th style={{textAlign:"right"}}>단가</th>}
           <th>공급업체</th><th>입고일</th><th>창고</th><th>LOT</th><th>상태</th><th>관리</th>
         </tr></thead>
         <tbody>{incoming.filter(i=>{const d=i.incomingDate||i.eta||"";if(startDate&&d<startDate)return false;if(endDate&&d>endDate)return false;return true;}).map(i=>(
@@ -1535,7 +1652,7 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
             <td><span style={{fontFamily:"monospace",fontSize:12,color:"#2563eb"}}>{i.item}</span></td>
             <td><b>{i.itemName}</b></td>
             <td style={{textAlign:"right"}}>{fmt3(i.qty)} {i.unit}</td>
-            <td style={{textAlign:"right",color:i.unitPrice>0?"#2563eb":"#aaa"}}>{i.unitPrice>0?i.unitPrice.toLocaleString()+"원":"-"}</td>
+            {perm.canViewPrice&&<td style={{textAlign:"right",color:i.unitPrice>0?"#2563eb":"#aaa"}}>{i.unitPrice>0?i.unitPrice.toLocaleString()+"원":"-"}</td>}
             <td>{i.supplier||"-"}</td>
             <td>{i.incomingDate||i.eta||"-"}</td>
             <td>{i.warehouse||"-"}</td>
@@ -2128,62 +2245,79 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
       return {warehouse:wh,itemName:grp.itemName,lot:grp.lot,prevStock,unit:it?it.unit||"":"",inD,outD,destD,totalIn,totalOut,curStock:prevStock+totalIn-totalOut};
     }).filter(Boolean);
 
-    const dayCols=dayNums.map(d=>`<th>${d}</th>`).join("");
+    // 소숫점 3자리 포맷터
+    const f3=(n)=>{if(n===undefined||n===null||n===0||n==="")return"";const v=Math.round((+n)*1000)/1000;return isNaN(v)?"":v.toLocaleString("ko-KR",{maximumFractionDigits:3});};
+
+    const dayCols=dayNums.map(d=>`<th class="day">${d}</th>`).join("");
     const dataRows=rows.map(r=>`
       <tr>
-        <td rowspan="3" style="font-size:9px">${r.warehouse}</td>
-        <td rowspan="3" style="font-size:9px;text-align:left">${r.itemName}</td>
-        <td rowspan="3" style="font-size:9px">${r.lot}</td>
-        <td rowspan="3" style="font-size:9px">${r.prevStock}</td>
-        <td rowspan="3" style="font-size:9px">${r.unit}</td>
-        <td class="gry">입고</td>
-        ${dayNums.map(d=>`<td>${r.inD[d]||""}</td>`).join("")}
-        <td class="gry">${r.totalIn||""}</td>
-        <td class="gry" rowspan="3" style="font-weight:bold">${r.curStock}</td>
+        <td rowspan="3" class="fix-wh">${r.warehouse}</td>
+        <td rowspan="3" class="fix-nm" style="text-align:left">${r.itemName}</td>
+        <td rowspan="3" class="fix-lt">${r.lot}</td>
+        <td rowspan="3" class="fix-num">${f3(r.prevStock)}</td>
+        <td rowspan="3" class="fix-un">${r.unit}</td>
+        <td class="gry fix-gb">입고</td>
+        ${dayNums.map(d=>`<td class="day">${f3(r.inD[d])}</td>`).join("")}
+        <td class="gry fix-sum">${f3(r.totalIn)}</td>
+        <td class="gry fix-num" rowspan="3" style="font-weight:bold">${f3(r.curStock)}</td>
       </tr>
       <tr>
-        <td class="gry">출고</td>
-        ${dayNums.map(d=>`<td>${r.outD[d]||""}</td>`).join("")}
-        <td class="gry">${r.totalOut||""}</td>
+        <td class="gry fix-gb">출고</td>
+        ${dayNums.map(d=>`<td class="day">${f3(r.outD[d])}</td>`).join("")}
+        <td class="gry fix-sum">${f3(r.totalOut)}</td>
       </tr>
       <tr>
-        <td class="gry">출고처</td>
-        ${dayNums.map(d=>`<td style="font-size:8px">${r.destD[d]||""}</td>`).join("")}
-        <td class="gry"></td>
+        <td class="gry fix-gb">출고처</td>
+        ${dayNums.map(d=>`<td class="day" style="font-size:6px">${r.destD[d]||""}</td>`).join("")}
+        <td class="gry fix-sum"></td>
       </tr>`).join("");
 
     const html=`<!DOCTYPE html><html><head><meta charset="UTF-8">
     <title>${year}년 ${month}월 ${typeLabel} 입·출고 관리대장</title>
     <style>
-      @page{size:A4 landscape;margin:10mm 8mm;}
-      body{font-family:'나눔고딕',sans-serif;font-size:9px;margin:0;}
-      .title-area{display:flex;margin-bottom:4px;}
-      .title{flex:1;text-align:center;font-size:14px;font-weight:bold;border:1px solid #000;padding:8px;}
-      .sig-area{display:flex;min-width:200px;}
-      .sig-box{border:1px solid #000;text-align:center;flex:1;padding:2px 4px;font-size:9px;min-height:50px;}
-      .legend{text-align:right;font-size:8px;color:#555;margin-bottom:2px;}
-      table{width:100%;border-collapse:collapse;font-size:8px;}
-      th,td{border:1px solid #000;padding:1px 2px;text-align:center;white-space:nowrap;}
+      @page{size:A4 landscape;margin:8mm 6mm;}
+      body{font-family:'나눔고딕','맑은 고딕',sans-serif;font-size:8px;margin:0;}
+      .title-area{display:flex;margin-bottom:3px;align-items:stretch;}
+      .title{flex:1;text-align:center;font-size:13px;font-weight:bold;border:1px solid #000;padding:6px;}
+      .sig-area{display:flex;min-width:180px;}
+      .sig-box{border:1px solid #000;text-align:center;flex:1;padding:2px 3px;font-size:8px;min-height:42px;display:flex;align-items:center;justify-content:center;}
+      .legend{text-align:right;font-size:7px;color:#555;margin-bottom:2px;}
+      table{width:100%;border-collapse:collapse;font-size:7.5px;table-layout:fixed;}
+      th,td{border:1px solid #000;padding:1px 1px;text-align:center;overflow:hidden;word-break:break-all;line-height:1.2;}
       th{background:#d9d9d9;font-weight:bold;}
       .gry{background:#d9d9d9;font-weight:bold;}
-      .footer{text-align:center;font-size:8px;margin-top:4px;color:#555;}
+      .footer{text-align:center;font-size:7px;margin-top:3px;color:#555;}
+      /* 고정 컬럼 너비 */
+      .fix-wh{width:14mm;}
+      .fix-nm{width:38mm;}
+      .fix-lt{width:22mm;}
+      .fix-num{width:13mm;}
+      .fix-un{width:7mm;}
+      .fix-gb{width:9mm;background:#d9d9d9;}
+      .fix-sum{width:13mm;}
+      /* 날짜 컬럼: 나머지 공간 균등 분배 */
+      .day{width:4.5mm;font-size:7px;}
+      @media print{
+        body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+      }
     </style></head><body>
     <div class="title-area">
       <div class="title">(  ${year}  ) 년도  ( ${month} ) 월  (  ${typeLabel}  ) 입·출고 관리대장</div>
       <div class="sig-area">
-        <div class="sig-box">작&nbsp;&nbsp;성</div>
-        <div class="sig-box">검&nbsp;&nbsp;토</div>
-        <div class="sig-box">검&nbsp;&nbsp;토</div>
-        <div class="sig-box">승&nbsp;&nbsp;인</div>
+        <div class="sig-box">작&nbsp;성</div>
+        <div class="sig-box">검&nbsp;토</div>
+        <div class="sig-box">검&nbsp;토</div>
+        <div class="sig-box">승&nbsp;인</div>
       </div>
     </div>
     <div class="legend">출고처 범례: P = 생산, Q = 품질, R = 연구, E = 기타</div>
     <table>
       <thead><tr>
-        <th>보관위치</th><th>원료명</th><th>Lot No.</th><th>이월재고</th><th>단위</th><th>구분</th>
-        ${dayCols}<th>합계</th><th>현재고</th>
+        <th class="fix-wh">보관위치</th><th class="fix-nm">원료명</th><th class="fix-lt">Lot No.</th>
+        <th class="fix-num">이월재고</th><th class="fix-un">단위</th><th class="fix-gb">구분</th>
+        ${dayCols}<th class="fix-sum">합계</th><th class="fix-num">현재고</th>
       </tr></thead>
-      <tbody>${dataRows||"<tr><td colspan='39'>데이터 없음</td></tr>"}</tbody>
+      <tbody>${dataRows||"<tr><td colspan='40'>데이터 없음</td></tr>"}</tbody>
     </table>
     <div class="footer">SOP-705-F01 &nbsp;&nbsp; Ver2.0(2025.09.09) &nbsp;&nbsp; (주)아이메디텍</div>
     </body></html>`;
@@ -2339,7 +2473,7 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
           <div className="field-row">
             <div className="field"><label>수량</label><input type="number" value={form.qty} onChange={e=>setForm({...form,qty:+e.target.value})}/></div>
             <div className="field"><label>단위</label><select value={form.unit||"EA"} onChange={e=>setForm({...form,unit:e.target.value})}>{UNITS.map(u=><option key={u} value={u}>{u}</option>)}</select></div>
-            {form.type==="입고"&&<div className="field"><label>단가 (원)</label><input type="number" value={form.unitPrice||0} onChange={e=>setForm({...form,unitPrice:+e.target.value})}/></div>}
+            {form.type==="입고"&&perm.canViewPrice&&<div className="field"><label>단가 (원)</label><input type="number" value={form.unitPrice||0} onChange={e=>setForm({...form,unitPrice:+e.target.value})}/></div>}
           </div>
           <div className="field">
             <label>Lot No. {form.item&&itemLots.length>0&&<span style={{color:"#888",fontSize:11}}>(해당 품목 LOT {itemLots.length}개)</span>}</label>
@@ -2593,15 +2727,25 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
       alert(`이미 ${workOrder.status} 처리된 작업지시서입니다.`);
       return;
     }
-    // 자재 출고 여부 체크
+    // 재고 부족 자재만 체크 (재고 충분하면 완료 시 자동 출고됨)
     if(workBom&&workBom.materials.length>0){
-      const notDeducted=workBom.materials.filter(m=>{
+      const insufficient=workBom.materials.filter(m=>{
         const done=alreadyDeducted(m.code);
-        return done<=0;
+        const need=m.qty*(workOrder.orderQty||1);
+        const remaining=need-done;
+        if(remaining<=0) return false;
+        const it=items.find(i=>i.code===m.code);
+        return (it?.stock||0)<remaining;
       });
-      if(notDeducted.length>0){
-        const list=notDeducted.map(m=>`• ${m.name} (${fmt3(m.qty*workOrder.orderQty)}${m.unit})`).join("\n");
-        alert(`⚠️ 아직 출고되지 않은 자재가 있습니다.\n자재 출고 처리 후 완료해주세요.\n\n미출고 자재:\n${list}`);
+      if(insufficient.length>0){
+        const list=insufficient.map(m=>{
+          const done=alreadyDeducted(m.code);
+          const need=m.qty*(workOrder.orderQty||1);
+          const remaining=need-done;
+          const it=items.find(i=>i.code===m.code);
+          return `• ${m.name}: 필요 ${fmt3(remaining)}${m.unit}, 현재고 ${fmt3(it?.stock||0)}${m.unit}`;
+        }).join("\n");
+        alert(`❌ 재고 부족으로 완료 처리 불가\n\n${list}\n\n부족한 자재를 먼저 입고해주세요.`);
         return;
       }
     }
