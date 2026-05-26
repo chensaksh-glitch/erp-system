@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #222; font-size: 14px; }
@@ -618,6 +619,7 @@ function App() {
     { section:"생산" },
     { key:"orders", icon:"🔧", label:"작업지시서" },
     { key:"ordersLedger", icon:"📝", label:"주문관리대장" },
+    { key:"analysis", icon:"📈", label:"생산 실적 분석" },
     ...(perm.canViewPrice ? [{ section:"원가관리" }, { key:"cost", icon:"💰", label:"원가 계산" }, { key:"factory", icon:"🏗️", label:"공장 관리" }] : []),
     ...(perm.canAdmin ? [{ section:"관리" }, { key:"users", icon:"👤", label:"사용자 관리" }] : []),
   ];
@@ -625,7 +627,7 @@ function App() {
   const dataMB = (JSON.stringify({items,bom,lots,orders,incoming,io,costBom,factories,processes,warehouses,costMaster}).length/1024/1024).toFixed(3);
 
   const pages = {
-    dashboard: <Dashboard items={items} lots={lots} orders={orders} incoming={incoming} setPage={setPage} dataMB={dataMB} onItemClick={setDetailItem} />,
+    dashboard: <Dashboard items={items} lots={lots} orders={orders} incoming={incoming} setPage={setPage} dataMB={dataMB} onItemClick={setDetailItem} io={io} />,
     items: <ItemsPage items={items} setItems={setItems} warehouses={warehouses} processes={processes} perm={perm} showToast={showToast} tryDelete={tryDelete} checkItemLinks={checkItemLinks} downloadCSV={downloadCSV} onItemClick={setDetailItem} />,
     warehouse: <WarehousePage warehouses={warehouses} setWarehouses={setWarehouses} perm={perm} showToast={showToast} tryDelete={tryDelete} checkWarehouseLinks={checkWarehouseLinks} />,
     process: <ProcessPage processes={processes} setProcesses={setProcesses} perm={perm} showToast={showToast} tryDelete={tryDelete} checkProcessLinks={checkProcessLinks} />,
@@ -639,6 +641,7 @@ function App() {
     cost: perm.canViewPrice ? <CostPage costBom={costBom} setCostBom={setCostBom} factories={factories} bom={bom} items={items} processes={processes} costMaster={costMaster} setCostMaster={setCostMaster} orders={orders} io={io} perm={perm} showToast={showToast} downloadCSV={downloadCSV} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>접근 권한 없음</div><div style={{color:"#888",marginTop:8}}>원가 정보는 관리자만 열람할 수 있습니다</div></div>,
     factory: perm.canViewPrice ? <FactoryPage factories={factories} setFactories={setFactories} perm={perm} showToast={showToast} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700}}>접근 권한 없음</div></div>,
     users: <UserPage users={users} setUsers={setUsers} currentUser={currentUser} showToast={showToast} />,
+    analysis: <AnalysisPage orders={orders} items={items} />,
   };
 
   if(!dbLoaded) return (
@@ -746,6 +749,176 @@ function App() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function AnalysisPage({orders, items}) {
+  const [period, setPeriod] = React.useState(6);
+  const barRef = React.useRef(null);
+  const lineRef = React.useRef(null);
+  const barChart = React.useRef(null);
+  const lineChart = React.useRef(null);
+
+  // 월 레이블 생성
+  const getMonths = (n) => {
+    const now = new Date();
+    const months = [];
+    for(let i=n-1;i>=0;i--) {
+      const d = new Date(now.getFullYear(), now.getMonth()-i, 1);
+      months.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+    }
+    return months;
+  };
+
+  const months = getMonths(period);
+  const completedOrders = orders.filter(o=>o.status==="완료"&&o.doneDate);
+
+  const monthlyData = months.map(m=>{
+    const mo = completedOrders.filter(o=>o.doneDate.slice(0,7)===m);
+    const qty = mo.reduce((s,o)=>s+(o.orderQty||0),0);
+    const defect = mo.reduce((s,o)=>s+(o.defectQty||0),0);
+    const rate = qty>0?parseFloat((defect/qty*100).toFixed(1)):0;
+    return {month:m, label:m.slice(5)+"월", count:mo.length, qty, defect, rate};
+  });
+
+  // 제품별 생산 실적
+  const productMap = {};
+  completedOrders.forEach(o=>{
+    const k = o.product||o.productName;
+    if(!productMap[k]) productMap[k]={name:o.productName||k, count:0, qty:0, defect:0};
+    productMap[k].count++;
+    productMap[k].qty += o.orderQty||0;
+    productMap[k].defect += o.defectQty||0;
+  });
+  const productList = Object.values(productMap).sort((a,b)=>b.qty-a.qty);
+
+  // KPI
+  const totalCompleted = completedOrders.length;
+  const totalQty = completedOrders.reduce((s,o)=>s+(o.orderQty||0),0);
+  const totalDefect = completedOrders.reduce((s,o)=>s+(o.defectQty||0),0);
+  const avgDefectRate = totalQty>0?(totalDefect/totalQty*100).toFixed(1):0;
+  const completionRate = orders.length>0?(completedOrders.length/orders.length*100).toFixed(0):0;
+
+  // 차트 그리기
+  React.useEffect(()=>{
+    if(!barRef.current||typeof Chart==="undefined") return;
+    if(barChart.current) barChart.current.destroy();
+    barChart.current = new Chart(barRef.current, {
+      type:'bar',
+      data:{
+        labels: monthlyData.map(d=>d.label),
+        datasets:[
+          {label:'생산수량(EA)', data:monthlyData.map(d=>d.qty), backgroundColor:'rgba(37,99,235,0.75)', borderRadius:5, yAxisID:'y'},
+          {label:'불량수량(EA)', data:monthlyData.map(d=>d.defect), backgroundColor:'rgba(231,76,60,0.7)', borderRadius:5, yAxisID:'y'},
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'top'},tooltip:{mode:'index'}},
+        scales:{
+          y:{beginAtZero:true, title:{display:true,text:'수량(EA)'}},
+        }
+      }
+    });
+    return ()=>{ if(barChart.current) barChart.current.destroy(); };
+  },[period, orders]);
+
+  React.useEffect(()=>{
+    if(!lineRef.current||typeof Chart==="undefined") return;
+    if(lineChart.current) lineChart.current.destroy();
+    lineChart.current = new Chart(lineRef.current, {
+      type:'line',
+      data:{
+        labels: monthlyData.map(d=>d.label),
+        datasets:[
+          {label:'불량률(%)', data:monthlyData.map(d=>d.rate), borderColor:'#e74c3c', backgroundColor:'rgba(231,76,60,0.08)', tension:0.4, pointRadius:5, pointBackgroundColor:'#e74c3c', fill:true},
+          {label:'완료건수', data:monthlyData.map(d=>d.count), borderColor:'#27ae60', backgroundColor:'rgba(39,174,96,0.08)', tension:0.4, pointRadius:5, pointBackgroundColor:'#27ae60', fill:false, yAxisID:'y2'},
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{position:'top'},tooltip:{mode:'index'}},
+        scales:{
+          y:{beginAtZero:true, title:{display:true,text:'불량률(%)'},position:'left'},
+          y2:{beginAtZero:true, title:{display:true,text:'완료건수'},position:'right',grid:{drawOnChartArea:false}},
+        }
+      }
+    });
+    return ()=>{ if(lineChart.current) lineChart.current.destroy(); };
+  },[period, orders]);
+
+  return (
+    <div>
+      <div className="page-header">
+        <div><div className="page-title">📈 생산 실적 분석</div><div className="page-sub">월별 생산량·불량률 추이 및 제품별 현황</div></div>
+        <div style={{display:"flex",gap:6}}>
+          {[3,6,12].map(n=>(
+            <button key={n} className={`btn btn-sm ${period===n?"btn-primary":"btn-outline"}`} onClick={()=>setPeriod(n)}>{n}개월</button>
+          ))}
+        </div>
+      </div>
+
+      {/* KPI 카드 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:24}}>
+        <div className="card"><div className="card-label">총 완료 작업지시</div><div className="card-val">{totalCompleted}<span style={{fontSize:16,fontWeight:400}}> 건</span></div><div className="card-sub">전체 {orders.length}건 중</div></div>
+        <div className="card ok"><div className="card-label">작업지시 완료율</div><div className="card-val">{completionRate}<span style={{fontSize:16,fontWeight:400}}> %</span></div><div className="card-sub">완료/전체</div></div>
+        <div className="card"><div className="card-label">총 생산량</div><div className="card-val" style={{fontSize:20}}>{totalQty.toLocaleString()}<span style={{fontSize:14,fontWeight:400}}> EA</span></div><div className="card-sub">완료된 작업 기준</div></div>
+        <div className={`card${parseFloat(avgDefectRate)>3?" warn":""}`}><div className="card-label">평균 불량률</div><div className="card-val">{avgDefectRate}<span style={{fontSize:16,fontWeight:400}}> %</span></div><div className="card-sub">불량 {totalDefect.toLocaleString()} EA</div></div>
+      </div>
+
+      {/* 차트 2개 */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:24}}>
+        <div className="panel" style={{padding:20}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:14,color:"#1a2236"}}>📊 월별 생산량 / 불량수량</div>
+          <div style={{height:260}}><canvas ref={barRef}/></div>
+        </div>
+        <div className="panel" style={{padding:20}}>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:14,color:"#1a2236"}}>📉 불량률 추이 / 완료건수</div>
+          <div style={{height:260}}><canvas ref={lineRef}/></div>
+        </div>
+      </div>
+
+      {/* 제품별 생산 실적 */}
+      <div className="panel">
+        <div className="panel-top"><b>🏷️ 제품별 생산 실적 (전체 기간)</b><span style={{fontSize:12,color:"#888"}}>{productList.length}개 제품</span></div>
+        <table>
+          <thead>
+            <tr>
+              <th>제품명</th>
+              <th style={{textAlign:"right"}}>완료건수</th>
+              <th style={{textAlign:"right"}}>총 생산량</th>
+              <th style={{textAlign:"right"}}>총 불량</th>
+              <th style={{textAlign:"right"}}>불량률</th>
+              <th>생산 비율</th>
+            </tr>
+          </thead>
+          <tbody>
+            {productList.map((p,i)=>{
+              const rate = p.qty>0?(p.defect/p.qty*100).toFixed(1):0;
+              const barPct = totalQty>0?Math.round(p.qty/totalQty*100):0;
+              return (
+                <tr key={i}>
+                  <td><b>{p.name}</b></td>
+                  <td style={{textAlign:"right"}}>{p.count}건</td>
+                  <td style={{textAlign:"right",fontWeight:700}}>{p.qty.toLocaleString()} EA</td>
+                  <td style={{textAlign:"right",color:p.defect>0?"#e74c3c":"#27ae60",fontWeight:600}}>{p.defect}</td>
+                  <td style={{textAlign:"right",color:parseFloat(rate)>3?"#e74c3c":"#333"}}>{rate}%</td>
+                  <td style={{width:160}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{flex:1,background:"#f0f2f5",borderRadius:10,height:8,overflow:"hidden"}}>
+                        <div style={{width:`${barPct}%`,background:"#2563eb",height:"100%",borderRadius:10}}/>
+                      </div>
+                      <span style={{fontSize:12,color:"#888",minWidth:30}}>{barPct}%</span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {!productList.length&&<tr><td colSpan={6} className="empty">완료된 작업지시가 없습니다</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -900,7 +1073,7 @@ function ItemDetailModal({item,items,lots,io,bom,onClose}) {
   );
 }
 
-function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick}) {
+function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick,io}) {
   const totalItems = items.length;
   const lowStock = items.filter(i=>i.stock<i.minStock).length;
   const inProgress = orders.filter(o=>o.status==="진행중").length;
@@ -908,17 +1081,35 @@ function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick}) {
   const lowItems = items.filter(i=>i.stock<i.minStock);
   const activeOrders = orders.filter(o=>o.status==="진행중"||o.status==="대기");
   const typeBadge = (t)=>t==="완제품"?"badge-blue":t==="원자재"||t==="자재"?"badge-green":"badge-orange";
+
+  // 이달 실적
+  const thisMonth = new Date().toISOString().slice(0,7);
+  const thisMonthOrders = orders.filter(o=>o.status==="완료"&&o.doneDate&&o.doneDate.slice(0,7)===thisMonth);
+  const thisMonthQty = thisMonthOrders.reduce((s,o)=>s+(o.orderQty||0),0);
+  const thisMonthDefect = thisMonthOrders.reduce((s,o)=>s+(o.defectQty||0),0);
+  const defectRate = thisMonthQty>0?(thisMonthDefect/thisMonthQty*100).toFixed(1):0;
+
+  // 최근 완료 작업지시
+  const recentDone = orders.filter(o=>o.status==="완료"&&o.doneDate).sort((a,b)=>b.doneDate.localeCompare(a.doneDate)).slice(0,5);
+
   return (
     <div>
-      <div className="page-header"><div><div className="page-title">대시보드</div><div className="page-sub">의료기기 생산관리 현황</div></div></div>
-      <div className="cards">
-        <div className="card"><div className="card-label">전체 품목</div><div className="card-val">{totalItems}<span style={{fontSize:16,fontWeight:400}}> 종</span></div><div className="card-sub">등록 품목 수</div></div>
-        <div className={`card${lowStock>0?" warn":""}`}><div className="card-label">재고 부족</div><div className="card-val">{lowStock}<span style={{fontSize:16,fontWeight:400}}> 건</span></div><div className="card-sub">최소재고 미만</div></div>
-        <div className="card"><div className="card-label">진행중 작업</div><div className="card-val">{inProgress}<span style={{fontSize:16,fontWeight:400}}> 건</span></div><div className="card-sub">생산 진행중</div></div>
-        <div className="card ok"><div className="card-label">입고 예정</div><div className="card-val">{incomingCount}<span style={{fontSize:16,fontWeight:400}}> 건</span></div><div className="card-sub">자재 입고 대기</div></div>
+      <div className="page-header"><div><div className="page-title">대시보드</div><div className="page-sub">의료기기 생산관리 현황</div></div>
+        <button className="btn btn-outline btn-sm" onClick={()=>setPage("analysis")}>📈 생산 실적 분석</button>
       </div>
 
-      <div style={{background:"#fff",borderRadius:10,padding:"12px 20px",boxShadow:"0 1px 3px rgba(0,0,0,0.07)",marginBottom:20,display:"flex",alignItems:"center",gap:16}}>
+      {/* 상단 카드 6개 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:14,marginBottom:20}}>
+        <div className="card"><div className="card-label">전체 품목</div><div className="card-val">{totalItems}<span style={{fontSize:14,fontWeight:400}}> 종</span></div><div className="card-sub">등록 품목 수</div></div>
+        <div className={`card${lowStock>0?" warn":""}`}><div className="card-label">재고 부족</div><div className="card-val">{lowStock}<span style={{fontSize:14,fontWeight:400}}> 건</span></div><div className="card-sub">최소재고 미만</div></div>
+        <div className="card"><div className="card-label">진행중 작업</div><div className="card-val">{inProgress}<span style={{fontSize:14,fontWeight:400}}> 건</span></div><div className="card-sub">생산 진행중</div></div>
+        <div className="card ok"><div className="card-label">입고 예정</div><div className="card-val">{incomingCount}<span style={{fontSize:14,fontWeight:400}}> 건</span></div><div className="card-sub">자재 입고 대기</div></div>
+        <div className="card"><div className="card-label">이달 생산량</div><div className="card-val" style={{fontSize:20}}>{thisMonthQty.toLocaleString()}<span style={{fontSize:14,fontWeight:400}}> EA</span></div><div className="card-sub">{thisMonthOrders.length}건 완료</div></div>
+        <div className={`card${parseFloat(defectRate)>3?" warn":""}`}><div className="card-label">이달 불량률</div><div className="card-val" style={{fontSize:20}}>{defectRate}<span style={{fontSize:14,fontWeight:400}}> %</span></div><div className="card-sub">불량 {thisMonthDefect}EA</div></div>
+      </div>
+
+      {/* 데이터 사용량 */}
+      <div style={{background:"#fff",borderRadius:10,padding:"10px 20px",boxShadow:"0 1px 3px rgba(0,0,0,0.07)",marginBottom:20,display:"flex",alignItems:"center",gap:16}}>
         <span style={{fontSize:13,fontWeight:600,color:"#555"}}>💾 데이터 사용량</span>
         <div style={{flex:1,background:"#f0f2f5",borderRadius:20,height:8,overflow:"hidden"}}>
           <div style={{width:`${Math.min(parseFloat(dataMB)/500*100,100)}%`,background:parseFloat(dataMB)>450?"#e74c3c":parseFloat(dataMB)>200?"#e67e22":"#2563eb",height:"100%",borderRadius:20,transition:"width 0.3s"}}/>
@@ -926,26 +1117,49 @@ function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick}) {
         <span style={{fontSize:13,fontWeight:600,color:parseFloat(dataMB)>450?"#e74c3c":"#2563eb",minWidth:140}}>{dataMB} MB / 500 MB</span>
       </div>
 
-      <div className="panel" style={{marginBottom:20}}>
-        <div className="panel-top"><b>⚠️ 재고 부족</b><span style={{fontSize:12,color:"#888"}}>{lowItems.length}건</span></div>
-        <table>
-          <thead><tr><th>코드</th><th>품목명</th><th>분류</th><th style={{textAlign:"right"}}>현재고</th><th style={{textAlign:"right"}}>최소재고</th><th>단위</th></tr></thead>
-          <tbody>
-            {lowItems.map(i=>(
-              <tr key={i.code} style={{cursor:"pointer"}} onClick={()=>onItemClick(i)}>
-                <td style={{fontSize:12,color:"#888"}}>{i.code}</td>
-                <td><b style={{color:"#2563eb",textDecoration:"underline dotted"}}>{i.name}</b></td>
-                <td><span className={`badge ${typeBadge(i.type)}`}>{i.type}</span></td>
-                <td style={{textAlign:"right",color:"#e74c3c",fontWeight:700}}>{fmt3(i.stock)}</td>
-                <td style={{textAlign:"right"}}>{fmt3(i.minStock)}</td>
-                <td>{i.unit}</td>
-              </tr>
-            ))}
-            {!lowItems.length&&<tr><td colSpan={6} className="empty">재고 부족 품목 없음 ✅</td></tr>}
-          </tbody>
-        </table>
+      {/* 2열 레이아웃 */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:20}}>
+        {/* 재고 부족 */}
+        <div className="panel">
+          <div className="panel-top"><b>⚠️ 재고 부족</b><span style={{fontSize:12,color:"#888"}}>{lowItems.length}건</span></div>
+          <table>
+            <thead><tr><th>품목명</th><th>분류</th><th style={{textAlign:"right"}}>현재고</th><th style={{textAlign:"right"}}>최소재고</th></tr></thead>
+            <tbody>
+              {lowItems.map(i=>(
+                <tr key={i.code} style={{cursor:"pointer"}} onClick={()=>onItemClick(i)}>
+                  <td><b style={{color:"#2563eb",textDecoration:"underline dotted"}}>{i.name}</b></td>
+                  <td><span className={`badge ${typeBadge(i.type)}`}>{i.type}</span></td>
+                  <td style={{textAlign:"right",color:"#e74c3c",fontWeight:700}}>{fmt3(i.stock)}</td>
+                  <td style={{textAlign:"right"}}>{fmt3(i.minStock)}</td>
+                </tr>
+              ))}
+              {!lowItems.length&&<tr><td colSpan={4} className="empty">재고 부족 품목 없음 ✅</td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+        {/* 최근 완료 작업지시 */}
+        <div className="panel">
+          <div className="panel-top"><b>✅ 최근 완료 작업지시</b><button className="btn btn-outline btn-sm" onClick={()=>setPage("orders")}>전체 보기</button></div>
+          <table>
+            <thead><tr><th>지시번호</th><th>제품명</th><th style={{textAlign:"right"}}>수량</th><th style={{textAlign:"right"}}>불량</th><th>완료일</th></tr></thead>
+            <tbody>
+              {recentDone.map(o=>(
+                <tr key={o.code}>
+                  <td style={{fontSize:12,color:"#888",fontWeight:600}}>{o.code}</td>
+                  <td><b>{o.productName}</b></td>
+                  <td style={{textAlign:"right"}}>{(o.orderQty||0).toLocaleString()}</td>
+                  <td style={{textAlign:"right",color:o.defectQty>0?"#e74c3c":"#27ae60",fontWeight:700}}>{o.defectQty||0}</td>
+                  <td style={{fontSize:12,color:"#888"}}>{o.doneDate||"-"}</td>
+                </tr>
+              ))}
+              {!recentDone.length&&<tr><td colSpan={5} className="empty">완료된 작업지시 없음</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
 
+      {/* 진행중 작업지시 */}
       <div className="panel">
         <div className="panel-top">
           <b>🏭 진행중 작업지시</b>
@@ -964,7 +1178,7 @@ function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick}) {
                 <td><span className={`badge ${o.status==="진행중"?"badge-blue":o.status==="완료"?"badge-green":"badge-gray"}`}>{o.status}</span></td>
               </tr>
             ))}
-            {!activeOrders.length&&<tr><td colSpan={6} className="empty">등록된 작업지시가 없습니다</td></tr>}
+            {!activeOrders.length&&<tr><td colSpan={6} className="empty">진행중인 작업지시가 없습니다</td></tr>}
           </tbody>
         </table>
       </div>
