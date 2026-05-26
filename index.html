@@ -1073,6 +1073,50 @@ function ItemDetailModal({item,items,lots,io,bom,onClose}) {
   );
 }
 
+// ── 공용 CSV 유틸 ──
+function parseCsvRows(text) {
+  const lines = text.replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n");
+  const nonEmpty = lines.filter(l=>l.trim());
+  if(nonEmpty.length < 2) return {headers:[], rows:[]};
+  const parseRow = (line) => {
+    const result = []; let cur = ""; let inQ = false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+      else if(c===','&&!inQ){result.push(cur.trim());cur="";}
+      else cur+=c;
+    }
+    result.push(cur.trim());
+    return result;
+  };
+  const headers = parseRow(nonEmpty[0]);
+  const rows = nonEmpty.slice(1).map(l=>parseRow(l));
+  return {headers, rows};
+}
+
+function downloadTemplate(headers, exampleRow, filename) {
+  const bom = "﻿";
+  const csv = [headers.join(","), exampleRow.map(v=>`"${v}"`).join(",")].join("\n");
+  const blob = new Blob([bom+csv],{type:"text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href=url; a.download=filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+function UploadBtn({onUpload, label="📂 업로드"}) {
+  const ref = React.useRef(null);
+  return (
+    <>
+      <button className="btn btn-outline" onClick={()=>ref.current&&ref.current.click()}>{label}</button>
+      <input ref={ref} type="file" accept=".csv" style={{display:"none"}} onChange={async e=>{
+        const f=e.target.files[0]; if(!f) return; e.target.value="";
+        const text = await f.text();
+        onUpload(text);
+      }}/>
+    </>
+  );
+}
+
 function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick,io}) {
   const totalItems = items.length;
   const lowStock = items.filter(i=>i.stock<i.minStock).length;
@@ -1217,7 +1261,44 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
             if(blocked){showToast("연계 데이터가 있는 품목이 포함되어 있습니다.");return;}
             setItems(items.filter(i=>!selected.has(i.code)));setSelected(new Set());showToast(`${codes.length}개 삭제되었습니다.`);
           }}>🗑 선택 삭제 ({selected.size})</button>}
-          <button className="btn btn-outline" onClick={()=>downloadCSV(["코드","품목명","유형","규격","단위","용량","재고","최소재고","창고"],items.map(i=>[i.code,i.name,i.type,i.spec||"",i.unit,i.capacity,i.stock,i.minStock,i.warehouse]),"품목목록.csv")}>📥 엑셀 다운로드</button>
+          <button className="btn btn-outline" onClick={()=>downloadCSV(["코드","품목명","유형","규격","단위","용량","재고","최소재고","창고"],items.map(i=>[i.code,i.name,i.type,i.spec||"",i.unit,i.capacity,i.stock,i.minStock,i.warehouse]),"품목목록.csv")}>📥 목록 다운로드</button>
+          {perm.canCreate&&<>
+            <button className="btn btn-outline" onClick={()=>downloadTemplate(
+              ["코드","품목명","유형","단위","규격","용량","현재고","최소재고","단가"],
+              ["IMPC-001","원자재A","원자재","EA","규격A","","0","10","0"],
+              "품목_업로드양식.csv"
+            )}>📋 양식 다운로드</button>
+            <UploadBtn label="📂 CSV 업로드" onUpload={(text)=>{
+              const {headers,rows}=parseCsvRows(text);
+              const hi=(name)=>headers.findIndex(h=>h===name||h.replace(/\s/g,"")===name);
+              const iCode=hi("코드"); const iName=hi("품목명"); const iType=hi("유형");
+              const iUnit=hi("단위"); const iSpec=hi("규격"); const iCap=hi("용량");
+              const iStock=hi("현재고"); const iMin=hi("최소재고"); const iPrice=hi("단가");
+              if(iCode<0||iName<0){showToast("❌ 코드, 품목명 컬럼이 필요합니다");return;}
+              let added=0, skipped=0;
+              const newItems=[...items];
+              rows.forEach(r=>{
+                const code=(r[iCode]||"").trim();
+                const name=(r[iName]||"").trim();
+                if(!code||!name){skipped++;return;}
+                if(newItems.find(i=>i.code===code)){skipped++;return;}
+                newItems.push({
+                  code, name,
+                  type: iType>=0?(r[iType]||"원자재"):"원자재",
+                  unit: iUnit>=0?(r[iUnit]||"EA"):"EA",
+                  spec: iSpec>=0?(r[iSpec]||""):"",
+                  capacity: iCap>=0?(r[iCap]||""):"",
+                  stock: iStock>=0?parseFloat(r[iStock])||0:0,
+                  minStock: iMin>=0?parseFloat(r[iMin])||0:0,
+                  price: iPrice>=0?parseFloat(r[iPrice])||0:0,
+                  warehouse:"", processes:[]
+                });
+                added++;
+              });
+              setItems(newItems);
+              showToast(`✅ ${added}개 추가 완료 (중복/오류 ${skipped}건 건너뜀)`);
+            }}/>
+          </>}
           {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ 품목 등록</button>}
         </div>
       </div>
@@ -1719,7 +1800,43 @@ function LotPage({lots,setLots,items,warehouses,perm,showToast,tryDelete,downloa
         <div><div className="page-title">LOT 관리</div><div className="page-sub">LOT번호 관리</div></div>
         <div style={{display:"flex",gap:8}}>
           {perm.canDelete&&sel.size>0&&<button className="btn btn-danger" onClick={bulkDel}>🗑 선택 삭제 ({sel.size})</button>}
-          <button className="btn btn-outline" onClick={()=>downloadCSV(["LOT번호","품목","수량","제조일","유효기간","상태","창고"],lots.map(l=>[l.code,l.itemName,l.qty,l.mfg,l.exp,l.status,l.warehouse]),"LOT목록.csv")}>📥 엑셀</button>
+          <button className="btn btn-outline" onClick={()=>downloadCSV(["LOT번호","품목","수량","제조일","유효기간","상태","창고"],lots.map(l=>[l.code,l.itemName,l.qty,l.mfg,l.exp,l.status,l.warehouse]),"LOT목록.csv")}>📥 목록 다운로드</button>
+          {perm.canCreate&&<>
+            <button className="btn btn-outline" onClick={()=>downloadTemplate(
+              ["LOT번호","품목코드","품목명","수량","제조일","유효기간","창고"],
+              ["LOT20260101","IMPC-001","원자재A","100","2026-01-01","2028-01-01","창고1"],
+              "LOT_업로드양식.csv"
+            )}>📋 양식 다운로드</button>
+            <UploadBtn label="📂 CSV 업로드" onUpload={(text)=>{
+              const {headers,rows}=parseCsvRows(text);
+              const hi=(name)=>headers.findIndex(h=>h===name||h.replace(/\s/g,"")===name);
+              const iCode=hi("LOT번호"); const iItem=hi("품목코드"); const iName=hi("품목명");
+              const iQty=hi("수량"); const iMfg=hi("제조일"); const iExp=hi("유효기간"); const iWh=hi("창고");
+              if(iItem<0){showToast("❌ 품목코드 컬럼이 필요합니다");return;}
+              let added=0, skipped=0;
+              const newLots=[...lots];
+              rows.forEach(r=>{
+                const itemCode=(r[iItem]||"").trim();
+                if(!itemCode){skipped++;return;}
+                const it=items.find(i=>i.code===itemCode);
+                const lotCode=iCode>=0&&r[iCode]?.trim()?r[iCode].trim():"LOT"+Date.now()+Math.random().toString(36).slice(2,6);
+                if(newLots.find(l=>l.code===lotCode)){skipped++;return;}
+                newLots.push({
+                  code:lotCode,
+                  item:itemCode,
+                  itemName:iName>=0?(r[iName]||it?.name||itemCode):it?.name||itemCode,
+                  qty:iQty>=0?parseFloat(r[iQty])||0:0,
+                  mfg:iMfg>=0?(r[iMfg]||""):"",
+                  exp:iExp>=0?(r[iExp]||""):"",
+                  status:"정상",
+                  warehouse:iWh>=0?(r[iWh]||""):""
+                });
+                added++;
+              });
+              setLots(newLots);
+              showToast(`✅ ${added}개 추가 완료 (중복/오류 ${skipped}건 건너뜀)`);
+            }}/>
+          </>}
           {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ LOT 등록</button>}
         </div>
       </div>
@@ -1839,6 +1956,48 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
         <div><div className="page-title">입고 예정</div><div className="page-sub">완제품·원자재·부자재 입고 등록 — 입고 처리 시 입출고 이력 자동 등록 — LOT 지정 시 LOT 자동 생성</div></div>
         <div style={{display:"flex",gap:8}}>
           {perm.canDelete&&sel.size>0&&<button className="btn btn-danger" onClick={bulkDel}>🗑 선택 삭제 ({sel.size})</button>}
+          {perm.canCreate&&<>
+            <button className="btn btn-outline" onClick={()=>downloadTemplate(
+              ["품목코드","품목명","수량","입고예정일","공급업체","창고","단가","LOT번호"],
+              ["IMPC-001","원자재A","100","2026-06-01","공급업체명","창고1","1000","LOT20260601"],
+              "입고예정_업로드양식.csv"
+            )}>📋 양식 다운로드</button>
+            <UploadBtn label="📂 CSV 업로드" onUpload={(text)=>{
+              const {headers,rows}=parseCsvRows(text);
+              const hi=(name)=>headers.findIndex(h=>h===name||h.replace(/\s/g,"")===name);
+              const iItem=hi("품목코드"); const iName=hi("품목명"); const iQty=hi("수량");
+              const iDate=hi("입고예정일"); const iSup=hi("공급업체"); const iWh=hi("창고");
+              const iPrice=hi("단가"); const iLot=hi("LOT번호");
+              if(iItem<0){showToast("❌ 품목코드 컬럼이 필요합니다");return;}
+              let added=0, skipped=0;
+              const newInc=[...incoming];
+              const today2=new Date().toISOString().slice(0,10);
+              rows.forEach(r=>{
+                const itemCode=(r[iItem]||"").trim();
+                if(!itemCode){skipped++;return;}
+                const qty=iQty>=0?parseFloat(r[iQty])||0:0;
+                const incomingDate=iDate>=0?(r[iDate]||today2):today2;
+                const supplier=iSup>=0?(r[iSup]||""):"";
+                // 중복 체크: 품목코드 + 입고예정일 + 수량 + 공급업체가 모두 같으면 건너뜀
+                const isDup=newInc.some(x=>x.item===itemCode&&x.incomingDate===incomingDate&&x.qty===qty&&x.supplier===supplier);
+                if(isDup){skipped++;return;}
+                const it=items.find(i=>i.code===itemCode);
+                newInc.push({
+                  code:"INC"+Date.now()+Math.random().toString(36).slice(2,5),
+                  item:itemCode,
+                  itemName:iName>=0?(r[iName]||it?.name||itemCode):it?.name||itemCode,
+                  qty, unit:it?.unit||"EA", incomingDate, supplier,
+                  warehouse:iWh>=0?(r[iWh]||""):it?.warehouse||"",
+                  unitPrice:iPrice>=0?parseFloat(r[iPrice])||0:0,
+                  lot:iLot>=0?(r[iLot]||""):"",
+                  status:"대기"
+                });
+                added++;
+              });
+              setIncoming(newInc);
+              showToast(`✅ ${added}개 추가 완료 (중복/오류 ${skipped}건 건너뜀)`);
+            }}/>
+          </>}
           {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ 입고 등록</button>}
         </div>
       </div>
@@ -4412,6 +4571,53 @@ function OrdersLedgerPage({ordersLedger,setOrdersLedger,currentUser,perm,showToa
         <div style={{display:"flex",gap:8}}>
           <button className="btn btn-outline" onClick={printLedger}>🖨️ 인쇄</button>
           <button className="btn btn-outline" onClick={downloadExcel}>📥 엑셀 다운로드</button>
+          {perm.canCreate&&<>
+            <button className="btn btn-outline" onClick={()=>downloadTemplate(
+              ["날짜","거래처","품명","규격","수량","납기","결제조건","요구사항","고객요구사항","실현가능여부","납품일","비고"],
+              [today,"거래처명","제품명","규격","100","2026-06-30","현금","","이상없음","O","",""],
+              "주문관리대장_업로드양식.csv"
+            )}>📋 양식 다운로드</button>
+            <UploadBtn label="📂 CSV 업로드" onUpload={(text)=>{
+              const {headers,rows}=parseCsvRows(text);
+              const hi=(name)=>headers.findIndex(h=>h===name||h.replace(/\s/g,"")===name);
+              const iDate=hi("날짜"); const iClient=hi("거래처"); const iProd=hi("품명");
+              const iSpec=hi("규격"); const iQty=hi("수량"); const iDue=hi("납기");
+              const iPay=hi("결제조건"); const iReq=hi("요구사항"); const iCReq=hi("고객요구사항");
+              const iFeas=hi("실현가능여부"); const iDel=hi("납품일"); const iNote=hi("비고");
+              if(iClient<0||iProd<0){showToast("❌ 거래처, 품명 컬럼이 필요합니다");return;}
+              let added=0, skipped=0;
+              const maxNo = ordersLedger.length>0?Math.max(...ordersLedger.map(r=>r.no||0)):0;
+              const newLedger=[...ordersLedger];
+              rows.forEach((r,idx)=>{
+                const client=(r[iClient]||"").trim();
+                const product=(r[iProd]||"").trim();
+                if(!client||!product){skipped++;return;}
+                const dateStr=iDate>=0?(r[iDate]||today):today;
+                const qty=iQty>=0?parseFloat(r[iQty])||1:1;
+                // 중복 체크: 날짜 + 거래처 + 품명 + 수량이 모두 같으면 건너뜀
+                const isDup=newLedger.some(x=>x.date===dateStr&&x.client===client&&x.product===product&&x.qty===qty);
+                if(isDup){skipped++;return;}
+                const orderNo=genOrderNo(dateStr);
+                newLedger.push({
+                  no:maxNo+idx+1, date:dateStr,
+                  receiver:currentUser?.name||"",
+                  client, orderNo, product, qty,
+                  spec:iSpec>=0?(r[iSpec]||""):"",
+                  dueDate:iDue>=0?(r[iDue]||"N/A"):"N/A",
+                  paymentTerms:iPay>=0?(r[iPay]||"N/A"):"N/A",
+                  requirements:iReq>=0?(r[iReq]||"N/A"):"N/A",
+                  customerReq:iCReq>=0?(r[iCReq]||"이상없음"):"이상없음",
+                  feasible:iFeas>=0?(r[iFeas]||"O"):"O",
+                  deliveryDate:iDel>=0?(r[iDel]||""):"",
+                  note:iNote>=0?(r[iNote]||""):"",
+                  taxInvoice:""
+                });
+                added++;
+              });
+              setOrdersLedger(newLedger);
+              showToast(`✅ ${added}개 추가 완료 (중복/오류 ${skipped}건 건너뜀)`);
+            }}/>
+          </>}
           {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ 주문 등록</button>}
         </div>
       </div>
