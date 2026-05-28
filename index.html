@@ -41,15 +41,16 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 .card.ok .card-val { color: #27ae60; }
 
 /* TABLE PANEL */
-.panel { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow: hidden; }
 .panel-top { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid #f0f0f0; gap: 10px; }
 .panel-top input { border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 11px; font-size: 13px; width: 220px; outline: none; }
 .panel-top input:focus { border-color: #2563eb; }
-table { width: 100%; border-collapse: collapse; }
-th { background: #f8f9fb; font-size: 12px; font-weight: 600; color: #666; padding: 10px 14px; text-align: left; border-bottom: 1px solid #eee; }
-td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #f5f5f5; color: #333; vertical-align: middle; }
+table { width: 100%; border-collapse: collapse; table-layout: auto; }
+th { background: #f8f9fb; font-size: 12px; font-weight: 600; color: #666; padding: 10px 14px; text-align: left; border-bottom: 1px solid #eee; white-space: nowrap; }
+td { padding: 10px 14px; font-size: 13px; border-bottom: 1px solid #f5f5f5; color: #333; vertical-align: middle; white-space: nowrap; }
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fafbff; }
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.panel { background: #fff; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.07); overflow-x: auto; }
 .badge { display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; }
 .badge-blue { background: #ebf3ff; color: #2563eb; }
 .badge-green { background: #e8faf0; color: #27ae60; }
@@ -59,7 +60,7 @@ tr:hover td { background: #fafbff; }
 .badge-yellow { background: #fffde7; color: #f39c12; }
 
 /* BUTTONS */
-.btn { display: inline-flex; align-items: center; gap: 5px; padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.15s; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: all 0.15s; }
 .btn-primary { background: #2563eb; color: #fff; }
 .btn-primary:hover { background: #1d4ed8; }
 .btn-outline { background: #fff; color: #555; border: 1px solid #ddd; }
@@ -112,13 +113,17 @@ tr:hover td { background: #fafbff; }
 .empty { text-align: center; padding: 40px 20px; color: #aaa; font-size: 13px; }
 
 /* LOGIN */
-.login-wrap { min-height:100vh; background:linear-gradient(135deg,#1a2236 0%,#2d3a52 100%); display:flex; align-items:center; justify-content:center; }
-.login-card { background:#fff; border-radius:16px; padding:40px 36px; width:360px; box-shadow:0 20px 60px rgba(0,0,0,0.3); }
-.login-logo { text-align:center; margin-bottom:28px; }
+.login-wrap { min-height:100vh; background:linear-gradient(135deg,#1a2236 0%,#2d3a52 100%); display:flex; align-items:center; justify-content:center; padding:20px; }
+.login-card { background:#fff; border-radius:16px; padding:40px 36px; width:380px; max-width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.3); text-align:center; }
+.login-logo { margin-bottom:28px; }
 .login-logo h1 { font-size:22px; font-weight:800; color:#1a2236; margin-bottom:4px; }
 .login-logo span { color:#2563eb; }
 .login-logo p { font-size:12px; color:#aaa; }
-.login-error { background:#fdecea; color:#e74c3c; font-size:13px; padding:8px 12px; border-radius:6px; margin-bottom:12px; }
+.login-error { background:#fdecea; color:#e74c3c; font-size:13px; padding:8px 12px; border-radius:6px; margin-bottom:12px; text-align:left; }
+.login-card .field { text-align:left; }
+.login-card .field label { text-align:left; font-size:13px; font-weight:700; color:#1a2236; margin-bottom:7px; }
+.login-card .field input { font-size:14px; padding:11px 14px; border-radius:8px; }
+.login-hint { font-size:11px; color:#bbb; margin-top:16px; line-height:1.8; }
 
 /* NAV USER */
 .nav-user { margin-top:auto; padding:14px 16px; border-top:1px solid #2d3a52; }
@@ -134,6 +139,30 @@ tr:hover td { background: #fafbff; }
 <div id="root"></div>
 
 <script>
+// ── 버전 관리 ──
+const APP_VERSION = "1.0.0";
+const CHANGELOG = [
+  {
+    version: "1.0.0",
+    date: "2026-05-28",
+    label: "정식 출시",
+    changes: [
+      "📦 품목 / 창고 / 공정 / BOM 기준정보 관리",
+      "🗄️ LOT 기반 재고 현황 (기준일 조회 지원)",
+      "🚚 입고 예정 및 입출고 관리",
+      "🔄 창고 간 이동 (LOT 단위, 입출고 이력 자동 생성)",
+      "🔧 작업지시서 (공정 투입 · 완료 · 불량처리)",
+      "📝 주문관리대장 (CSV 업로드/다운로드)",
+      "📈 생산 실적 분석 (월별 차트)",
+      "💰 원가 계산 (자재비 · 노무비 · 시설비 · 포장비)",
+      "📌 표준원가 관리 (BOM 자동계산 · 확정 · 실적 비교)",
+      "☁️ Supabase 실시간 자동 동기화",
+      "💾 수동/자동 백업 및 복원",
+      "🔐 권한별 접근 제어 (관리자 · 매니저 · 조회자)",
+    ]
+  }
+];
+
 const SUPABASE_URL = 'https://bwxkeuizvhyggdkngraj.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_zBiSYJfZgt6Yrlafe1-YjA_Yt_Nv0P9';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -368,7 +397,7 @@ const initCostMaster = {
 
 const PERMISSIONS = {
   admin:   { canCreate:true,  canEdit:true,  canDelete:true,  canAdmin:true,  canViewPrice:true  },
-  manager: { canCreate:true,  canEdit:true,  canDelete:true,  canAdmin:false, canViewPrice:false },
+  manager: { canCreate:true,  canEdit:true,  canDelete:false, canAdmin:false, canViewPrice:false },
   viewer:  { canCreate:false, canEdit:false, canDelete:false, canAdmin:false, canViewPrice:false },
 };
 const initUsers = [
@@ -387,6 +416,57 @@ const DELETE_ORDER = [
   "⑦ 품목",
 ];
 
+// ── 버전 배지 + 업데이트 내역 모달 ──
+function VersionBadge() {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <div style={{marginTop:20,textAlign:"center"}}>
+        <span
+          onClick={()=>setOpen(true)}
+          style={{fontSize:12,color:"#aaa",cursor:"pointer",padding:"4px 12px",border:"1px solid #e8e8e8",borderRadius:20,display:"inline-block",transition:"all 0.15s"}}
+          onMouseEnter={e=>{e.currentTarget.style.color="#2563eb";e.currentTarget.style.borderColor="#2563eb";}}
+          onMouseLeave={e=>{e.currentTarget.style.color="#aaa";e.currentTarget.style.borderColor="#e8e8e8";}}
+        >
+          v{APP_VERSION} · 업데이트 내역
+        </span>
+      </div>
+      {open&&(
+        <div className="overlay" onClick={()=>setOpen(false)}>
+          <div className="modal" style={{maxWidth:460}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <span className="modal-title">📋 업데이트 내역</span>
+              <button className="modal-close" onClick={()=>setOpen(false)}>✕</button>
+            </div>
+            <div className="modal-body" style={{padding:"16px 22px",maxHeight:480,overflowY:"auto"}}>
+              {CHANGELOG.map(log=>(
+                <div key={log.version} style={{marginBottom:24}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                    <span style={{fontSize:16,fontWeight:800,color:"#1a2236"}}>v{log.version}</span>
+                    <span style={{fontSize:11,background:"#2563eb",color:"#fff",padding:"2px 10px",borderRadius:20,fontWeight:700}}>{log.label}</span>
+                    <span style={{fontSize:12,color:"#aaa",marginLeft:"auto"}}>{log.date}</span>
+                  </div>
+                  <ul style={{listStyle:"none",padding:0,margin:0,display:"flex",flexDirection:"column",gap:7}}>
+                    {log.changes.map((c,i)=>(
+                      <li key={i} style={{fontSize:13,color:"#444",display:"flex",alignItems:"flex-start",gap:8,lineHeight:1.5}}>
+                        <span style={{color:"#2563eb",marginTop:1,flexShrink:0}}>✓</span>
+                        <span style={{whiteSpace:"normal"}}>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-primary" onClick={()=>setOpen(false)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function App() {
   const [page, setPage] = useState("dashboard");
   const [items, setItems] = useState(initItems);
@@ -402,6 +482,8 @@ function App() {
   const [costMaster, setCostMaster] = useState(initCostMaster);
   const [ordersLedger, setOrdersLedger] = useState(initOrdersLedger);
   const [users, setUsers] = useState(initUsers);
+  const [transfers, setTransfers] = useState([]);
+  const [stdCosts, setStdCosts] = useState([]);
   const [dbLoaded, setDbLoaded] = useState(false);
 
   // ── Supabase: 앱 시작 시 전체 데이터 로드 ──
@@ -425,6 +507,8 @@ function App() {
         if(store.costMaster) setCostMaster(store.costMaster);
         if(store.ordersLedger) setOrdersLedger(store.ordersLedger);
         if(store.users)    setUsers(store.users);
+        if(store.transfers) setTransfers(store.transfers);
+        if(store.stdCosts)  setStdCosts(store.stdCosts);
       }catch(e){console.error('DB 연결 오류:',e);}
       finally{setDbLoaded(true);}
     })();
@@ -448,6 +532,8 @@ function App() {
   useEffect(()=>{if(dbLoaded) syncDB('costMaster',costMaster);},[costMaster,dbLoaded]);
   useEffect(()=>{if(dbLoaded) syncDB('ordersLedger',ordersLedger);},[ordersLedger,dbLoaded]);
   useEffect(()=>{if(dbLoaded) syncDB('users',users);},[users,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('transfers',transfers);},[transfers,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('stdCosts',stdCosts);},[stdCosts,dbLoaded]);
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({id:"",pw:""});
   const [loginError, setLoginError] = useState("");
@@ -457,28 +543,16 @@ function App() {
 
   const perm = currentUser ? PERMISSIONS[currentUser.role] : PERMISSIONS.viewer;
 
-  // 로그인 세션 복원 (Supabase 데이터 로드 완료 후)
-  useEffect(()=>{
-    if(!dbLoaded) return;
-    const savedId=localStorage.getItem('erpUserId');
-    if(savedId){
-      const u=users.find(u=>u.id===savedId);
-      if(u) setCurrentUser(u);
-    }
-  },[dbLoaded]);
-
   const handleLogin = () => {
     const u = users.find(u=>u.id===loginForm.id && u.pw===loginForm.pw);
     if(u) {
       setCurrentUser(u);
-      localStorage.setItem('erpUserId', u.id);
       setLoginError(""); setLoginForm({id:"",pw:""});
     }
     else { setLoginError("아이디 또는 비밀번호가 틀렸습니다."); }
   };
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('erpUserId');
     setPage("dashboard");
   };
 
@@ -490,7 +564,7 @@ function App() {
     version: 1,
     exportedAt: new Date().toISOString(),
     items, warehouses, processes, bom, lots, incoming, orders, io,
-    costBom, factories, costMaster, ordersLedger, users
+    costBom, factories, costMaster, ordersLedger, users, transfers, stdCosts
   });
 
   const doBackup = () => {
@@ -547,6 +621,8 @@ function App() {
       if(data.costMaster)   setCostMaster(data.costMaster);
       if(data.ordersLedger) setOrdersLedger(data.ordersLedger);
       if(data.users)        setUsers(data.users);
+      if(data.transfers)    setTransfers(data.transfers);
+      if(data.stdCosts)     setStdCosts(data.stdCosts);
       setBackupModal(null);
       showToast("✅ 데이터 복원 완료");
     } catch(e) {
@@ -613,9 +689,9 @@ function App() {
     { key:"bom", icon:"📋", label:"BOM (자재명세서)" },
     { section:"재고·입출고" },
     { key:"stock", icon:"🗄️", label:"재고 현황" },
-    { key:"lot", icon:"🔖", label:"LOT 관리" },
     { key:"incoming", icon:"🚚", label:"입고 예정" },
     { key:"io", icon:"↕️", label:"입출고관리" },
+    { key:"transfer", icon:"🔄", label:"창고 간 이동" },
     { section:"생산" },
     { key:"orders", icon:"🔧", label:"작업지시서" },
     { key:"ordersLedger", icon:"📝", label:"주문관리대장" },
@@ -633,12 +709,12 @@ function App() {
     process: <ProcessPage processes={processes} setProcesses={setProcesses} perm={perm} showToast={showToast} tryDelete={tryDelete} checkProcessLinks={checkProcessLinks} />,
     bom: <BomPage bom={bom} setBom={setBom} items={items} perm={perm} showToast={showToast} tryDelete={tryDelete} />,
     stock: <StockPage items={items} lots={lots} io={io} warehouses={warehouses} downloadCSV={downloadCSV} onItemClick={setDetailItem} />,
-    lot: <LotPage lots={lots} setLots={setLots} items={items} warehouses={warehouses} perm={perm} showToast={showToast} tryDelete={tryDelete} downloadCSV={downloadCSV} />,
     incoming: <IncomingPage incoming={incoming} setIncoming={setIncoming} items={items} setItems={setItems} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} perm={perm} showToast={showToast} tryDelete={tryDelete} />,
     io: <IOPage io={io} setIo={setIo} items={items} setItems={setItems} lots={lots} setLots={setLots} perm={perm} showToast={showToast} downloadCSV={downloadCSV} onItemClick={setDetailItem} currentUser={currentUser} />,
+    transfer: <TransferPage transfers={transfers} setTransfers={setTransfers} items={items} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} downloadCSV={downloadCSV} />,
     ordersLedger: <OrdersLedgerPage ordersLedger={ordersLedger} setOrdersLedger={setOrdersLedger} currentUser={currentUser} perm={perm} showToast={showToast} />,
     orders: <OrdersPage orders={orders} setOrders={setOrders} items={items} setItems={setItems} bom={bom} processes={processes} factories={factories} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} defectWarehouse={defectWarehouse} goodWarehouse={goodWarehouse} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} checkOrderLinks={checkOrderLinks} />,
-    cost: perm.canViewPrice ? <CostPage costBom={costBom} setCostBom={setCostBom} factories={factories} bom={bom} items={items} processes={processes} costMaster={costMaster} setCostMaster={setCostMaster} orders={orders} io={io} perm={perm} showToast={showToast} downloadCSV={downloadCSV} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>접근 권한 없음</div><div style={{color:"#888",marginTop:8}}>원가 정보는 관리자만 열람할 수 있습니다</div></div>,
+    cost: perm.canViewPrice ? <CostPage costBom={costBom} setCostBom={setCostBom} factories={factories} bom={bom} items={items} processes={processes} costMaster={costMaster} setCostMaster={setCostMaster} orders={orders} io={io} stdCosts={stdCosts} setStdCosts={setStdCosts} currentUser={currentUser} perm={perm} showToast={showToast} downloadCSV={downloadCSV} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>접근 권한 없음</div><div style={{color:"#888",marginTop:8}}>원가 정보는 관리자만 열람할 수 있습니다</div></div>,
     factory: perm.canViewPrice ? <FactoryPage factories={factories} setFactories={setFactories} perm={perm} showToast={showToast} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700}}>접근 권한 없음</div></div>,
     users: <UserPage users={users} setUsers={setUsers} currentUser={currentUser} showToast={showToast} />,
     analysis: <AnalysisPage orders={orders} items={items} />,
@@ -672,9 +748,7 @@ function App() {
             onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="비밀번호 입력"/>
         </div>
         <button className="btn btn-primary" style={{width:"100%",marginTop:8,padding:"10px"}} onClick={handleLogin}>로그인</button>
-        <div style={{marginTop:16,fontSize:11,color:"#bbb",textAlign:"center"}}>
-          admin / admin123 &nbsp;|&nbsp; manager / manager123 &nbsp;|&nbsp; viewer / viewer123
-        </div>
+        <VersionBadge />
       </div>
     </div>
   );
@@ -730,7 +804,7 @@ function App() {
       )}
 
       {toast && <div className="toast">{toast}</div>}
-      {detailItem && <ItemDetailModal item={detailItem} items={items} lots={lots} io={io} bom={bom} onClose={()=>setDetailItem(null)} />}
+      {detailItem && <ItemDetailModal item={detailItem} items={items} lots={lots} io={io} bom={bom} perm={perm} onClose={()=>setDetailItem(null)} />}
 
       {backupModal && (
         <div className="overlay" style={{zIndex:400}}>
@@ -745,6 +819,226 @@ function App() {
             <div style={{display:"flex",gap:8,marginTop:4}}>
               <button className="btn btn-outline" style={{flex:1}} onClick={()=>setBackupModal(null)}>취소</button>
               <button className="btn btn-danger" style={{flex:1}} onClick={()=>doRestore(backupModal.file)}>복원 시작</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════
+//  창고 간 이동 (TransferPage)
+// ══════════════════════════════════════════════
+function TransferPage({transfers,setTransfers,items,lots,setLots,io,setIo,warehouses,currentUser,perm,showToast,tryDelete,downloadCSV}) {
+  const today = new Date().toISOString().slice(0,10);
+  const emptyForm = {item:"",itemName:"",lot:"",qty:"",fromWarehouse:"",toWarehouse:"",date:today,note:""};
+  const [form,setForm]   = React.useState(emptyForm);
+  const [modal,setModal] = React.useState(false);
+  const [sel,setSel]     = React.useState(new Set());
+  const [search,setSearch] = React.useState("");
+
+  // 선택 품목에 해당하는 LOT 목록
+  const lotOptions = lots.filter(l=>l.item===form.item && l.qty>0);
+  // 선택 LOT의 현재 창고를 fromWarehouse 기본값으로
+  const selLot = lots.find(l=>l.code===form.lot);
+
+  const openAdd = () => {
+    setForm({...emptyForm, date:today});
+    setModal(true);
+  };
+
+  const save = () => {
+    if(!form.item)          { showToast("품목을 선택해주세요"); return; }
+    if(!form.lot)           { showToast("LOT를 선택해주세요"); return; }
+    if(!form.fromWarehouse) { showToast("출발 창고를 선택해주세요"); return; }
+    if(!form.toWarehouse)   { showToast("도착 창고를 선택해주세요"); return; }
+    if(form.fromWarehouse===form.toWarehouse) { showToast("출발 창고와 도착 창고가 같습니다"); return; }
+    const qty = Number(form.qty);
+    if(!qty||qty<=0)        { showToast("수량을 입력해주세요"); return; }
+    const lotObj = lots.find(l=>l.code===form.lot);
+    if(lotObj && qty > lotObj.qty) { showToast(`LOT 재고 부족 (현재고: ${lotObj.qty})`); return; }
+
+    const id = "TR" + Date.now();
+    const rec = {
+      id, date:form.date, item:form.item, itemName:form.itemName,
+      lot:form.lot, qty, fromWarehouse:form.fromWarehouse,
+      toWarehouse:form.toWarehouse, note:form.note,
+      manager: currentUser?.name||""
+    };
+
+    // LOT 창고 업데이트: qty만큼 출발창고 LOT 차감 → 도착창고에 동일 LOT 생성 or 합산
+    setLots(prev => {
+      let updated = prev.map(l => l.code===form.lot ? {...l, qty: l.qty-qty, warehouse: form.fromWarehouse} : l);
+      const dest = updated.find(l=>l.code===form.lot+"_"+form.toWarehouse || (l.code===form.lot && l.warehouse===form.toWarehouse));
+      if(dest) {
+        updated = updated.map(l=>(l.code===dest.code)?{...l,qty:l.qty+qty}:l);
+      } else {
+        const srcLot = lots.find(l=>l.code===form.lot);
+        updated = [...updated, {...srcLot, code:"LOT_MV_"+Date.now(), qty, warehouse:form.toWarehouse}];
+      }
+      return updated;
+    });
+
+    // IO 기록: 출발창고 출고 + 도착창고 입고
+    const ioOut = {date:form.date,type:"출고",item:form.item,itemName:form.itemName,qty,unitPrice:0,lot:form.lot,destination:form.toWarehouse,manager:currentUser?.name||"",approver:"",note:`창고이동→${form.toWarehouse} ${form.note||""}`};
+    const ioIn  = {date:form.date,type:"입고",item:form.item,itemName:form.itemName,qty,unitPrice:0,lot:form.lot,destination:"",manager:currentUser?.name||"",approver:"",note:`창고이동←${form.fromWarehouse} ${form.note||""}`};
+    setIo(prev=>[ioOut,ioIn,...prev]);
+
+    setTransfers(prev=>[rec,...prev]);
+    showToast("✅ 창고 간 이동이 완료되었습니다.");
+    setModal(false);
+  };
+
+  const del = (id) => {
+    tryDelete([], ()=>{
+      setTransfers(prev=>prev.filter(t=>t.id!==id));
+      showToast("삭제되었습니다.");
+    }, "이동 이력 삭제 불가");
+  };
+  const bulkDel = () => {
+    if(!window.confirm(`선택한 ${sel.size}개를 삭제하시겠습니까?`)) return;
+    setTransfers(prev=>prev.filter(t=>!sel.has(t.id)));
+    setSel(new Set());
+    showToast(`${sel.size}개 삭제되었습니다.`);
+  };
+
+  const filtered = transfers.filter(t=>
+    !search ||
+    t.itemName?.includes(search) ||
+    t.item?.includes(search) ||
+    t.lot?.includes(search) ||
+    t.fromWarehouse?.includes(search) ||
+    t.toWarehouse?.includes(search)
+  );
+
+  const toggleSel = (id) => { const s=new Set(sel); s.has(id)?s.delete(id):s.add(id); setSel(s); };
+  const allCheck = filtered.length>0 && filtered.every(t=>sel.has(t.id));
+
+  return (
+    <div className="page-content">
+      <div className="page-header">
+        <h2>🔄 창고 간 이동</h2>
+        <p>LOT 단위로 창고 간 재고를 이동합니다. 이동 시 입출고 이력이 자동 생성됩니다.</p>
+      </div>
+
+      {/* 툴바 */}
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+        {perm.canDelete&&sel.size>0&&<button className="btn btn-danger" onClick={bulkDel}>🗑 선택 삭제 ({sel.size})</button>}
+        <button className="btn btn-outline" onClick={()=>downloadCSV(
+          ["이동일","품목코드","품목명","LOT번호","수량","출발창고","도착창고","담당자","비고"],
+          filtered.map(t=>[t.date,t.item,t.itemName,t.lot,t.qty,t.fromWarehouse,t.toWarehouse,t.manager||"",t.note||""])
+          ,"창고이동이력.csv")}>📥 목록 다운로드</button>
+        {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ 창고 간 이동</button>}
+      </div>
+
+      {/* 검색 */}
+      <div style={{marginBottom:12}}>
+        <input className="input" placeholder="품목명, LOT, 창고 검색…" value={search} onChange={e=>setSearch(e.target.value)} style={{maxWidth:320}} />
+      </div>
+
+      {/* 테이블 */}
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              {perm.canDelete&&<th style={{width:36}}><input type="checkbox" checked={allCheck} onChange={e=>{const s=new Set();if(e.target.checked)filtered.forEach(t=>s.add(t.id));setSel(s);}}/></th>}
+              <th>이동일</th><th>품목코드</th><th>품목명</th><th>LOT번호</th>
+              <th>수량</th><th>출발 창고</th><th style={{color:"#3b7ddd"}}>→ 도착 창고</th>
+              <th>담당자</th><th>비고</th><th>관리</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length===0
+              ? <tr><td colSpan={11} className="empty">이동 이력이 없습니다</td></tr>
+              : filtered.map(t=>(
+                <tr key={t.id}>
+                  {perm.canDelete&&<td><input type="checkbox" checked={sel.has(t.id)} onChange={()=>toggleSel(t.id)}/></td>}
+                  <td>{t.date}</td>
+                  <td><code style={{fontSize:11}}>{t.item}</code></td>
+                  <td style={{fontWeight:600}}>{t.itemName}</td>
+                  <td><code style={{fontSize:11}}>{t.lot}</code></td>
+                  <td style={{textAlign:"right",fontWeight:600}}>{(t.qty||0).toLocaleString()}</td>
+                  <td>{t.fromWarehouse}</td>
+                  <td style={{color:"#3b7ddd",fontWeight:600}}>{t.toWarehouse}</td>
+                  <td>{t.manager||"-"}</td>
+                  <td style={{color:"#888",fontSize:12}}>{t.note||""}</td>
+                  <td>{perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(t.id)}>삭제</button>}</td>
+                </tr>
+              ))
+            }
+          </tbody>
+        </table>
+      </div>
+
+      {/* 이동 등록 모달 */}
+      {modal&&(
+        <div className="modal-overlay" onClick={e=>{if(e.target.className==="modal-overlay")setModal(false);}}>
+          <div className="modal" style={{maxWidth:520}}>
+            <div className="modal-header"><h3>🔄 창고 간 이동 등록</h3><button className="modal-close" onClick={()=>setModal(false)}>✕</button></div>
+            <div className="modal-body" style={{display:"flex",flexDirection:"column",gap:14}}>
+              {/* 이동일 */}
+              <div>
+                <label className="label">이동일 *</label>
+                <input className="input" type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})} />
+              </div>
+              {/* 품목 선택 */}
+              <div>
+                <label className="label">품목 *</label>
+                <select className="input" value={form.item} onChange={e=>{
+                  const it=items.find(i=>i.code===e.target.value);
+                  setForm({...form,item:e.target.value,itemName:it?.name||"",lot:"",fromWarehouse:"",qty:""});
+                }}>
+                  <option value="">-- 품목 선택 --</option>
+                  {items.map(i=><option key={i.code} value={i.code}>{i.name} ({i.code})</option>)}
+                </select>
+              </div>
+              {/* LOT 선택 */}
+              <div>
+                <label className="label">LOT 번호 *</label>
+                <select className="input" value={form.lot} onChange={e=>{
+                  const l=lots.find(x=>x.code===e.target.value);
+                  setForm({...form,lot:e.target.value,fromWarehouse:l?.warehouse||""});
+                }} disabled={!form.item}>
+                  <option value="">-- LOT 선택 --</option>
+                  {lotOptions.map(l=><option key={l.code} value={l.code}>{l.code} (재고: {l.qty} / {l.warehouse})</option>)}
+                </select>
+                {form.item&&lotOptions.length===0&&<div style={{color:"#e55",fontSize:12,marginTop:4}}>⚠ 해당 품목의 사용 가능한 LOT가 없습니다</div>}
+              </div>
+              {/* 출발 창고 */}
+              <div>
+                <label className="label">출발 창고 *</label>
+                <select className="input" value={form.fromWarehouse} onChange={e=>setForm({...form,fromWarehouse:e.target.value})}>
+                  <option value="">-- 창고 선택 --</option>
+                  {warehouses.map(w=><option key={w.code} value={w.name}>{w.name}</option>)}
+                </select>
+              </div>
+              {/* 도착 창고 */}
+              <div>
+                <label className="label">도착 창고 *</label>
+                <select className="input" value={form.toWarehouse} onChange={e=>setForm({...form,toWarehouse:e.target.value})}>
+                  <option value="">-- 창고 선택 --</option>
+                  {warehouses.filter(w=>w.name!==form.fromWarehouse).map(w=><option key={w.code} value={w.name}>{w.name}</option>)}
+                </select>
+              </div>
+              {/* 수량 */}
+              <div>
+                <label className="label">이동 수량 *
+                  {selLot&&<span style={{fontWeight:400,color:"#888",marginLeft:8}}>(LOT 현재고: {selLot.qty})</span>}
+                </label>
+                <input className="input" type="number" min="1" max={selLot?.qty||undefined}
+                  value={form.qty} onChange={e=>setForm({...form,qty:e.target.value})}
+                  placeholder={selLot?`최대 ${selLot.qty}`:"수량 입력"} />
+              </div>
+              {/* 비고 */}
+              <div>
+                <label className="label">비고</label>
+                <input className="input" value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="이동 사유 등 (선택)" />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-outline" onClick={()=>setModal(false)}>취소</button>
+              <button className="btn btn-primary" onClick={save}>✅ 이동 완료</button>
             </div>
           </div>
         </div>
@@ -958,7 +1252,7 @@ function AnalysisPage({orders, items}) {
   );
 }
 
-function ItemDetailModal({item,items,lots,io,bom,onClose}) {
+function ItemDetailModal({item,items,lots,io,bom,perm,onClose}) {
   if(!item) return null;
   const itemLots = lots.filter(l=>l.item===item.code);
   const recentIo = io.filter(r=>r.item===item.code).slice(0,6);
@@ -1297,7 +1591,7 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
             setItems(items.filter(i=>!selected.has(i.code)));setSelected(new Set());showToast(`${codes.length}개 삭제되었습니다.`);
           }}>🗑 선택 삭제 ({selected.size})</button>}
           <button className="btn btn-outline" onClick={()=>downloadCSV(["코드","품목명","유형","규격","단위","용량","재고","최소재고","창고"],items.map(i=>[i.code,i.name,i.type,i.spec||"",i.unit,i.capacity,i.stock,i.minStock,i.warehouse]),"품목목록.csv")}>📥 목록 다운로드</button>
-          {perm.canCreate&&<>
+          {perm.canAdmin&&<>
             <button className="btn btn-outline" onClick={()=>downloadTemplate(
               ["코드","품목명","유형","단위","규격","용량","현재고","최소재고","단가"],
               ["IMPC-001","원자재A","원자재","EA","규격A","","0","10","0"],
@@ -1836,7 +2130,7 @@ function LotPage({lots,setLots,items,warehouses,perm,showToast,tryDelete,downloa
         <div style={{display:"flex",gap:8}}>
           {perm.canDelete&&sel.size>0&&<button className="btn btn-danger" onClick={bulkDel}>🗑 선택 삭제 ({sel.size})</button>}
           <button className="btn btn-outline" onClick={()=>downloadCSV(["LOT번호","품목","수량","제조일","유효기간","상태","창고"],lots.map(l=>[l.code,l.itemName,l.qty,l.mfg,l.exp,l.status,l.warehouse]),"LOT목록.csv")}>📥 목록 다운로드</button>
-          {perm.canCreate&&<>
+          {perm.canAdmin&&<>
             <button className="btn btn-outline" onClick={()=>downloadTemplate(
               ["LOT번호","품목코드","품목명","수량","제조일","유효기간","창고"],
               ["LOT20260101","IMPC-001","원자재A","100","2026-01-01","2028-01-01","창고1"],
@@ -1991,7 +2285,7 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
         <div><div className="page-title">입고 예정</div><div className="page-sub">완제품·원자재·부자재 입고 등록 — 입고 처리 시 입출고 이력 자동 등록 — LOT 지정 시 LOT 자동 생성</div></div>
         <div style={{display:"flex",gap:8}}>
           {perm.canDelete&&sel.size>0&&<button className="btn btn-danger" onClick={bulkDel}>🗑 선택 삭제 ({sel.size})</button>}
-          {perm.canCreate&&<>
+          {perm.canAdmin&&<>
             <button className="btn btn-outline" onClick={()=>downloadTemplate(
               ["품목코드","품목명","수량","입고예정일","공급업체","창고","단가","LOT번호"],
               ["IMPC-001","원자재A","100","2026-06-01","공급업체명","창고1","1000","LOT20260601"],
@@ -3649,7 +3943,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
   );
 }
 
-function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,setCostMaster,orders,io,perm,showToast,downloadCSV}) {
+function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,setCostMaster,orders,io,stdCosts,setStdCosts,currentUser,perm,showToast,downloadCSV}) {
   const [activeTab,setActiveTab]=useState("calc");
   const [selId,setSelId]=useState(costBom[0]?.id||"");
   const [selWoCode,setSelWoCode]=useState("");
@@ -3818,6 +4112,7 @@ function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,s
       <div className="tabs">
         <div className={`tab${activeTab==="calc"?" active":""}`} onClick={()=>setActiveTab("calc")}>💰 원가 계산</div>
         <div className={`tab${activeTab==="wolist"?" active":""}`} onClick={()=>setActiveTab("wolist")}>📊 작업지시 원가</div>
+        <div className={`tab${activeTab==="stdcost"?" active":""}`} onClick={()=>setActiveTab("stdcost")}>📌 표준원가</div>
         <div className={`tab${activeTab==="master"?" active":""}`} onClick={()=>setActiveTab("master")}>📋 원가 마스터</div>
       </div>
 
@@ -4071,6 +4366,7 @@ function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,s
                 <th style={{textAlign:"right"}}>자재비</th><th style={{textAlign:"right"}}>노무비</th>
                 <th style={{textAlign:"right"}}>시설비</th><th style={{textAlign:"right"}}>포장비</th>
                 <th style={{textAlign:"right"}}>총 원가</th><th style={{textAlign:"right"}}>1개당 원가</th>
+                <th style={{textAlign:"right",color:"#7c3aed"}}>표준원가</th><th style={{textAlign:"right",color:"#e55"}}>차이</th>
                 <th>완료일</th><th>상태</th><th></th>
               </tr>
             </thead>
@@ -4089,12 +4385,13 @@ function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,s
                   <td style={{textAlign:"right",color:o.packCost>0?"#16a34a":"#aaa",fontWeight:600}}>{o.packCost.toLocaleString()}</td>
                   <td style={{textAlign:"right",fontWeight:700,fontSize:14}}>{Math.round(o.total).toLocaleString()}</td>
                   <td style={{textAlign:"right",color:o.unitCost>0?"#7c3aed":"#aaa",fontWeight:700,fontSize:14}}>{o.unitCost.toLocaleString()}</td>
+                  {(()=>{const sc=stdCosts.find(s=>s.productCode===o.product);const diff=sc&&o.unitCost>0?o.unitCost-sc.stdUnitCost:null;return(<><td style={{textAlign:"right",color:"#7c3aed",fontWeight:600}}>{sc?sc.stdUnitCost.toLocaleString():<span style={{color:"#bbb"}}>-</span>}</td><td style={{textAlign:"right",fontWeight:600,color:diff==null?"#bbb":diff>0?"#e55":"#16a34a"}}>{diff==null?"-":((diff>0?"+":"")+diff.toLocaleString())}</td></>);})()}
                   <td style={{fontSize:12,color:"#888"}}>{o.doneDate||o.date||"-"}</td>
                   <td><span className={`badge ${o.status==="완료"?"badge-green":o.status==="진행중"?"badge-blue":"badge-gray"}`}>{o.status}</span></td>
                   <td><button className="btn btn-outline btn-sm" onClick={()=>{setSelWoCode(o.code);setActiveTab("calc");}}>상세보기</button></td>
                 </tr>
               ))}
-              {!woCostList.length&&<tr><td colSpan={12} className="empty">등록된 작업지시가 없습니다</td></tr>}
+              {!woCostList.length&&<tr><td colSpan={14} className="empty">등록된 작업지시가 없습니다</td></tr>}
             </tbody>
           </table>
           <div style={{padding:"10px 18px",fontSize:12,color:"#aaa",borderTop:"1px solid #f0f0f0"}}>
@@ -4102,6 +4399,187 @@ function CostPage({costBom,setCostBom,factories,bom,items,processes,costMaster,s
           </div>
         </div>
       )}
+
+      {activeTab==="stdcost"&&(()=>{
+        // ── 표준원가 탭 ──
+        const finishedItems=items.filter(i=>i.type==="완제품"||i.type==="반제품");
+
+        // BOM 기반 자동계산
+        const calcFromBom=(productCode,batchSize)=>{
+          const bomEntry=bom.find(b=>b.product===productCode);
+          const matCost=(bomEntry?.materials||[]).reduce((s,m)=>{
+            const it=items.find(i=>i.code===m.code);
+            return s+(it?.price||0)*m.qty;
+          },0)*batchSize;
+          const laborCost=0; // 공정시간 데이터 없으면 0
+          const facilityCost=0;
+          const packCost=(()=>{
+            const cb=costBom.find(c=>c.linkedProduct===productCode);
+            return cb?(cb.packingGroups||[]).reduce((s,g)=>s+g.items.reduce((ss,it)=>ss+(it.price||0)*(it.qty||0),0),0):0;
+          })();
+          const depr=(()=>{
+            const cb=costBom.find(c=>c.linkedProduct===productCode);
+            return cb?.mfgSection?.depreciation||0;
+          })();
+          const stdTotal=matCost+laborCost+facilityCost+packCost+depr;
+          const stdUnitCost=batchSize>0?Math.round(stdTotal/batchSize):0;
+          return {stdMatCost:Math.round(matCost),stdLaborCost:laborCost,stdFacilityCost:facilityCost,stdPackCost:Math.round(packCost),stdDepr:depr,stdTotal:Math.round(stdTotal),stdUnitCost};
+        };
+
+        const upsertStd=(productCode,patch)=>{
+          setStdCosts(prev=>{
+            const idx=prev.findIndex(s=>s.productCode===productCode);
+            const it=items.find(i=>i.code===productCode);
+            const base=idx>=0?prev[idx]:{productCode,productName:it?.name||productCode,batchSize:1,stdMatCost:0,stdLaborCost:0,stdFacilityCost:0,stdPackCost:0,stdDepr:0,stdTotal:0,stdUnitCost:0,targetPrice:0,confirmedAt:"",confirmedBy:""};
+            const updated={...base,...patch};
+            // 합계 재계산
+            const t=updated.stdMatCost+updated.stdLaborCost+updated.stdFacilityCost+updated.stdPackCost+updated.stdDepr;
+            updated.stdTotal=Math.round(t);
+            updated.stdUnitCost=updated.batchSize>0?Math.round(t/updated.batchSize):0;
+            if(idx>=0){const arr=[...prev];arr[idx]=updated;return arr;}
+            return [...prev,updated];
+          });
+        };
+
+        const confirmStd=(productCode)=>{
+          if(!perm.canAdmin){showToast("관리자만 표준원가를 확정할 수 있습니다");return;}
+          upsertStd(productCode,{confirmedAt:new Date().toISOString().slice(0,10),confirmedBy:currentUser?.name||""});
+          showToast("✅ 표준원가가 확정되었습니다.");
+        };
+
+        const autoCalc=(productCode)=>{
+          const sc=stdCosts.find(s=>s.productCode===productCode);
+          const bs=sc?.batchSize||1;
+          const calc=calcFromBom(productCode,bs);
+          upsertStd(productCode,calc);
+          showToast("BOM 기반 자동계산 완료");
+        };
+
+        return(
+          <div>
+            <div className="panel" style={{marginBottom:16}}>
+              <div className="panel-top">
+                <b>📌 표준원가 관리</b>
+                <span style={{fontSize:12,color:"#888"}}>제품별 표준원가를 설정하고 확정합니다. 확정 후 실제원가와 비교됩니다.</span>
+              </div>
+              <table>
+                <thead>
+                  <tr style={{background:"#1a2236",color:"#fff"}}>
+                    <th>제품코드</th><th>제품명</th><th style={{textAlign:"right"}}>배치</th>
+                    <th style={{textAlign:"right",color:"#93c5fd"}}>자재비</th>
+                    <th style={{textAlign:"right",color:"#fcd34d"}}>노무비</th>
+                    <th style={{textAlign:"right",color:"#a78bfa"}}>시설비</th>
+                    <th style={{textAlign:"right",color:"#6ee7b7"}}>포장비</th>
+                    <th style={{textAlign:"right",color:"#f9a8d4"}}>감가상각</th>
+                    <th style={{textAlign:"right"}}>표준총원가</th>
+                    <th style={{textAlign:"right",color:"#fbbf24"}}>단위원가</th>
+                    <th style={{textAlign:"right",color:"#34d399"}}>목표판매가</th>
+                    <th>확정일</th><th>확정자</th><th>액션</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {finishedItems.map(it=>{
+                    const sc=stdCosts.find(s=>s.productCode===it.code)||{productCode:it.code,productName:it.name,batchSize:1,stdMatCost:0,stdLaborCost:0,stdFacilityCost:0,stdPackCost:0,stdDepr:0,stdTotal:0,stdUnitCost:0,targetPrice:0,confirmedAt:"",confirmedBy:""};
+                    const isConfirmed=!!sc.confirmedAt;
+                    const inp=(field,w=80)=>(
+                      <input type="number" value={sc[field]||0}
+                        onChange={e=>upsertStd(it.code,{[field]:+e.target.value})}
+                        style={{width:w,border:"1px solid #ddd",borderRadius:4,padding:"3px 6px",fontSize:12,textAlign:"right",background:isConfirmed?"#f9fafb":"#fff"}}
+                        readOnly={isConfirmed&&!perm.canAdmin}
+                      />
+                    );
+                    const margin=sc.targetPrice>0&&sc.stdUnitCost>0?Math.round((sc.targetPrice-sc.stdUnitCost)/sc.targetPrice*100):null;
+                    return(
+                      <tr key={it.code} style={{background:isConfirmed?"#f0fdf4":"#fff"}}>
+                        <td><code style={{fontSize:11,color:"#2563eb"}}>{it.code}</code></td>
+                        <td style={{fontWeight:600}}>{it.name}<span style={{marginLeft:6,fontSize:10,background:"#e0e7ff",color:"#4338ca",padding:"1px 4px",borderRadius:3}}>{it.type}</span></td>
+                        <td style={{textAlign:"right"}}>
+                          <input type="number" value={sc.batchSize||1} min="1"
+                            onChange={e=>upsertStd(it.code,{batchSize:+e.target.value})}
+                            style={{width:60,border:"1px solid #ddd",borderRadius:4,padding:"3px 6px",fontSize:12,textAlign:"right"}}/>
+                        </td>
+                        <td style={{textAlign:"right"}}>{inp("stdMatCost",90)}</td>
+                        <td style={{textAlign:"right"}}>{inp("stdLaborCost",90)}</td>
+                        <td style={{textAlign:"right"}}>{inp("stdFacilityCost",90)}</td>
+                        <td style={{textAlign:"right"}}>{inp("stdPackCost",90)}</td>
+                        <td style={{textAlign:"right"}}>{inp("stdDepr",80)}</td>
+                        <td style={{textAlign:"right",fontWeight:700}}>{(sc.stdTotal||0).toLocaleString()}</td>
+                        <td style={{textAlign:"right",fontWeight:700,color:"#7c3aed"}}>{(sc.stdUnitCost||0).toLocaleString()}</td>
+                        <td style={{textAlign:"right"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:4,justifyContent:"flex-end"}}>
+                            <input type="number" value={sc.targetPrice||0}
+                              onChange={e=>upsertStd(it.code,{targetPrice:+e.target.value})}
+                              style={{width:90,border:"1px solid #ddd",borderRadius:4,padding:"3px 6px",fontSize:12,textAlign:"right"}}/>
+                            {margin!=null&&<span style={{fontSize:11,color:margin>=0?"#16a34a":"#e55",fontWeight:600,minWidth:36}}>{margin}%</span>}
+                          </div>
+                        </td>
+                        <td style={{fontSize:12,color:isConfirmed?"#16a34a":"#aaa",fontWeight:isConfirmed?700:400}}>
+                          {isConfirmed?sc.confirmedAt:"미확정"}
+                        </td>
+                        <td style={{fontSize:12,color:"#555"}}>{sc.confirmedBy||"-"}</td>
+                        <td>
+                          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                            <button className="btn btn-outline btn-sm" onClick={()=>autoCalc(it.code)} title="BOM 자재비 자동계산">🔄 BOM계산</button>
+                            {perm.canAdmin&&(
+                              isConfirmed
+                                ?<button className="btn btn-outline btn-sm" style={{color:"#e55",borderColor:"#e55"}} onClick={()=>upsertStd(it.code,{confirmedAt:"",confirmedBy:""})}>↩ 해제</button>
+                                :<button className="btn btn-primary btn-sm" onClick={()=>confirmStd(it.code)}>✅ 확정</button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!finishedItems.length&&<tr><td colSpan={14} className="empty">완제품/반제품 품목이 없습니다</td></tr>}
+                </tbody>
+              </table>
+              <div style={{padding:"10px 18px",fontSize:12,color:"#aaa",borderTop:"1px solid #f0f0f0"}}>
+                * 🔄 BOM계산 버튼: BOM 자재 단가 × 수량 기반 자재비 자동 입력 (노무비·시설비는 수동 입력)
+                &nbsp;|&nbsp; ✅ 확정 버튼(관리자 전용): 확정 후 「작업지시 원가」탭에서 실제원가와 비교 가능
+              </div>
+            </div>
+
+            {/* 표준 vs 실제 요약 */}
+            {stdCosts.filter(s=>s.confirmedAt).length>0&&(
+              <div className="panel">
+                <div className="panel-top"><b>📊 표준원가 vs 실제원가 비교 (확정 제품)</b></div>
+                <table>
+                  <thead>
+                    <tr style={{background:"#1a2236",color:"#fff"}}>
+                      <th>제품명</th>
+                      <th style={{textAlign:"right",color:"#93c5fd"}}>표준 단위원가</th>
+                      <th style={{textAlign:"right",color:"#fbbf24"}}>최근 실적 단위원가</th>
+                      <th style={{textAlign:"right"}}>차이</th>
+                      <th style={{textAlign:"right"}}>차이율</th>
+                      <th style={{textAlign:"right",color:"#34d399"}}>목표판매가</th>
+                      <th>확정일</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stdCosts.filter(s=>s.confirmedAt).map(s=>{
+                      const recentWo=woCostList.filter(o=>o.product===s.productCode&&o.unitCost>0).sort((a,b)=>(b.doneDate||b.date||"").localeCompare(a.doneDate||a.date||""))[0];
+                      const actual=recentWo?.unitCost||null;
+                      const diff=actual!=null?actual-s.stdUnitCost:null;
+                      const rate=s.stdUnitCost>0&&diff!=null?Math.round(diff/s.stdUnitCost*100):null;
+                      return(
+                        <tr key={s.productCode}>
+                          <td style={{fontWeight:600}}>{s.productName}</td>
+                          <td style={{textAlign:"right",color:"#7c3aed",fontWeight:700}}>{s.stdUnitCost.toLocaleString()}</td>
+                          <td style={{textAlign:"right",fontWeight:700}}>{actual!=null?actual.toLocaleString():<span style={{color:"#bbb"}}>실적없음</span>}</td>
+                          <td style={{textAlign:"right",fontWeight:700,color:diff==null?"#bbb":diff>0?"#e55":"#16a34a"}}>{diff==null?"-":((diff>0?"+":"")+diff.toLocaleString())}</td>
+                          <td style={{textAlign:"right",color:rate==null?"#bbb":rate>0?"#e55":"#16a34a",fontWeight:600}}>{rate==null?"-":`${rate>0?"+":""}${rate}%`}</td>
+                          <td style={{textAlign:"right",color:"#16a34a",fontWeight:600}}>{s.targetPrice>0?s.targetPrice.toLocaleString():"-"}</td>
+                          <td style={{fontSize:12,color:"#16a34a"}}>{s.confirmedAt}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {activeTab==="master"&&(
         <div>
@@ -4606,7 +5084,7 @@ function OrdersLedgerPage({ordersLedger,setOrdersLedger,currentUser,perm,showToa
         <div style={{display:"flex",gap:8}}>
           <button className="btn btn-outline" onClick={printLedger}>🖨️ 인쇄</button>
           <button className="btn btn-outline" onClick={downloadExcel}>📥 엑셀 다운로드</button>
-          {perm.canCreate&&<>
+          {perm.canAdmin&&<>
             <button className="btn btn-outline" onClick={()=>downloadTemplate(
               ["날짜","거래처","품명","규격","수량","납기","결제조건","요구사항","고객요구사항","실현가능여부","납품일","비고"],
               [today,"거래처명","제품명","규격","100","2026-06-30","현금","","이상없음","O","",""],
