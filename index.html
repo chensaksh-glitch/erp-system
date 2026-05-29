@@ -1472,14 +1472,33 @@ function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick,io}) {
       </div>
 
       {/* 상단 카드 6개 */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:14,marginBottom:20}}>
-        <div className="card"><div className="card-label">전체 품목</div><div className="card-val">{totalItems}<span style={{fontSize:14,fontWeight:400}}> 종</span></div><div className="card-sub">등록 품목 수</div></div>
-        <div className={`card${lowStock>0?" warn":""}`}><div className="card-label">재고 부족</div><div className="card-val">{lowStock}<span style={{fontSize:14,fontWeight:400}}> 건</span></div><div className="card-sub">최소재고 미만</div></div>
-        <div className="card"><div className="card-label">진행중 작업</div><div className="card-val">{inProgress}<span style={{fontSize:14,fontWeight:400}}> 건</span></div><div className="card-sub">생산 진행중</div></div>
-        <div className="card ok"><div className="card-label">입고 예정</div><div className="card-val">{incomingCount}<span style={{fontSize:14,fontWeight:400}}> 건</span></div><div className="card-sub">자재 입고 대기</div></div>
-        <div className="card"><div className="card-label">이달 생산량</div><div className="card-val" style={{fontSize:20}}>{thisMonthQty.toLocaleString()}<span style={{fontSize:14,fontWeight:400}}> EA</span></div><div className="card-sub">{thisMonthOrders.length}건 완료</div></div>
-        <div className={`card${parseFloat(defectRate)>3?" warn":""}`}><div className="card-label">이달 불량률</div><div className="card-val" style={{fontSize:20}}>{defectRate}<span style={{fontSize:14,fontWeight:400}}> %</span></div><div className="card-sub">불량 {thisMonthDefect}EA</div></div>
-      </div>
+      {(()=>{
+        const cardStyle={cursor:"pointer",transition:"transform 0.12s,box-shadow 0.12s"};
+        const hover=(e)=>{e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.12)";};
+        const leave=(e)=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";};
+        return(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:14,marginBottom:20}}>
+            <div className="card" style={cardStyle} onClick={()=>setPage("items")} onMouseEnter={hover} onMouseLeave={leave}>
+              <div className="card-label">전체 품목</div><div className="card-val">{totalItems}<span style={{fontSize:14,fontWeight:400}}> 종</span></div><div className="card-sub">등록 품목 수</div>
+            </div>
+            <div className={`card${lowStock>0?" warn":""}`} style={cardStyle} onClick={()=>setPage("stock")} onMouseEnter={hover} onMouseLeave={leave}>
+              <div className="card-label">재고 부족</div><div className="card-val">{lowStock}<span style={{fontSize:14,fontWeight:400}}> 건</span></div><div className="card-sub">최소재고 미만</div>
+            </div>
+            <div className="card" style={cardStyle} onClick={()=>setPage("orders")} onMouseEnter={hover} onMouseLeave={leave}>
+              <div className="card-label">진행중 작업</div><div className="card-val">{inProgress}<span style={{fontSize:14,fontWeight:400}}> 건</span></div><div className="card-sub">생산 진행중</div>
+            </div>
+            <div className="card ok" style={cardStyle} onClick={()=>setPage("incoming")} onMouseEnter={hover} onMouseLeave={leave}>
+              <div className="card-label">입고 예정</div><div className="card-val">{incomingCount}<span style={{fontSize:14,fontWeight:400}}> 건</span></div><div className="card-sub">자재 입고 대기</div>
+            </div>
+            <div className="card" style={cardStyle} onClick={()=>setPage("analysis")} onMouseEnter={hover} onMouseLeave={leave}>
+              <div className="card-label">이달 생산량</div><div className="card-val" style={{fontSize:20}}>{thisMonthQty.toLocaleString()}<span style={{fontSize:14,fontWeight:400}}> EA</span></div><div className="card-sub">{thisMonthOrders.length}건 완료</div>
+            </div>
+            <div className={`card${parseFloat(defectRate)>3?" warn":""}`} style={cardStyle} onClick={()=>setPage("analysis")} onMouseEnter={hover} onMouseLeave={leave}>
+              <div className="card-label">이달 불량률</div><div className="card-val" style={{fontSize:20}}>{defectRate}<span style={{fontSize:14,fontWeight:400}}> %</span></div><div className="card-sub">불량 {thisMonthDefect}EA</div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 데이터 사용량 */}
       <div style={{background:"#fff",borderRadius:10,padding:"10px 20px",boxShadow:"0 1px 3px rgba(0,0,0,0.07)",marginBottom:20,display:"flex",alignItems:"center",gap:16}}>
@@ -1494,7 +1513,7 @@ function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick,io}) {
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20,marginBottom:20}}>
         {/* 재고 부족 */}
         <div className="panel">
-          <div className="panel-top"><b>⚠️ 재고 부족</b><span style={{fontSize:12,color:"#888"}}>{lowItems.length}건</span></div>
+          <div className="panel-top" style={{cursor:"pointer"}} onClick={()=>setPage("stock")}><b>⚠️ 재고 부족</b><span style={{fontSize:12,color:"#888"}}>{lowItems.length}건 &rsaquo;</span></div>
           <table>
             <thead><tr><th>품목명</th><th>분류</th><th style={{textAlign:"right"}}>현재고</th><th style={{textAlign:"right"}}>최소재고</th></tr></thead>
             <tbody>
@@ -1513,12 +1532,12 @@ function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick,io}) {
 
         {/* 최근 완료 작업지시 */}
         <div className="panel">
-          <div className="panel-top"><b>✅ 최근 완료 작업지시</b><button className="btn btn-outline btn-sm" onClick={()=>setPage("orders")}>전체 보기</button></div>
+          <div className="panel-top"><b>✅ 최근 완료 작업지시</b><button className="btn btn-outline btn-sm" onClick={()=>setPage("orders")}>전체 보기 &rsaquo;</button></div>
           <table>
             <thead><tr><th>지시번호</th><th>제품명</th><th style={{textAlign:"right"}}>수량</th><th style={{textAlign:"right"}}>불량</th><th>완료일</th></tr></thead>
             <tbody>
               {recentDone.map(o=>(
-                <tr key={o.code}>
+                <tr key={o.code} style={{cursor:"pointer"}} onClick={()=>setPage("orders")}>
                   <td style={{fontSize:12,color:"#888",fontWeight:600}}>{o.code}</td>
                   <td><b>{o.productName}</b></td>
                   <td style={{textAlign:"right"}}>{(o.orderQty||0).toLocaleString()}</td>
@@ -1536,13 +1555,13 @@ function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick,io}) {
       <div className="panel">
         <div className="panel-top">
           <b>🏭 진행중 작업지시</b>
-          <button className="btn btn-outline btn-sm" onClick={()=>setPage("orders")}>전체 보기</button>
+          <button className="btn btn-outline btn-sm" onClick={()=>setPage("orders")}>전체 보기 &rsaquo;</button>
         </div>
         <table>
           <thead><tr><th>지시번호</th><th>제품명</th><th style={{textAlign:"right"}}>수량</th><th>현재 공정</th><th>완료기한</th><th>상태</th></tr></thead>
           <tbody>
             {activeOrders.map(o=>(
-              <tr key={o.code}>
+              <tr key={o.code} style={{cursor:"pointer"}} onClick={()=>setPage("orders")}>
                 <td style={{fontSize:12,color:"#888",fontWeight:600}}>{o.code}</td>
                 <td><b>{o.productName}</b></td>
                 <td style={{textAlign:"right"}}>{o.orderQty}</td>
