@@ -3484,19 +3484,23 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
   const del=(code)=>{
     const o=orders.find(x=>x.code===code);
     let msg="삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.";
-    if(o?.status==="완료") msg=`완료된 작업지시서(${code})입니다.\n삭제 시 관련 입출고 이력은 남습니다.\n정말 삭제하시겠습니까?`;
-    else if(o?.status==="진행중") msg=`진행중인 작업지시서(${code})입니다.\n삭제하시겠습니까? 삭제 후 복구할 수 없습니다.`;
+    if(o?.status==="완료") msg=`완료된 작업지시서(${code})입니다.\n관련 입출고 이력도 함께 삭제됩니다.\n정말 삭제하시겠습니까?`;
+    else if(o?.status==="진행중") msg=`진행중인 작업지시서(${code})입니다.\n관련 입출고 이력도 함께 삭제됩니다.\n삭제하시겠습니까?`;
     if(!window.confirm(msg)) return;
-    setOrders(orders.filter(x=>x.code!==code));showToast("삭제되었습니다.");
+    setOrders(orders.filter(x=>x.code!==code));
+    setIo(prev=>prev.filter(r=>!r.note||!r.note.includes(code)));
+    showToast("삭제되었습니다.");
   };
   const bulkDel=()=>{
     const hasCompleted=[...sel].some(c=>{const o=orders.find(x=>x.code===c);return o&&o.status==="완료";});
     const n=sel.size;
     const msg=hasCompleted
-      ?`선택 항목 중 완료된 작업지시서가 포함되어 있습니다.\n${n}개 모두 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`
-      :`선택한 ${n}개를 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`;
+      ?`선택 항목 중 완료된 작업지시서가 포함되어 있습니다.\n관련 입출고 이력도 함께 삭제됩니다.\n${n}개 모두 삭제하시겠습니까?`
+      :`선택한 ${n}개를 삭제하시겠습니까?\n관련 입출고 이력도 함께 삭제됩니다.`;
     if(!window.confirm(msg))return;
-    setOrders(orders.filter(o=>!sel.has(o.code)));setSel(new Set());showToast(`${n}개 삭제되었습니다.`);
+    setOrders(orders.filter(o=>!sel.has(o.code)));
+    setIo(prev=>prev.filter(r=>!r.note||![...sel].some(code=>r.note.includes(code))));
+    setSel(new Set());showToast(`${n}개 삭제되었습니다.`);
   };
 
   const formBom=bom.find(b=>b.product===form.product);
