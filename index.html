@@ -487,6 +487,8 @@ function App() {
   const [users, setUsers] = useState(initUsers);
   const [transfers, setTransfers] = useState([]);
   const [stdCosts, setStdCosts] = useState([]);
+  const [shipments, setShipments] = useState([]);
+  const [mfgDocs, setMfgDocs] = useState({});
   const [dbLoaded, setDbLoaded] = useState(false);
 
   // ── Supabase: 앱 시작 시 전체 데이터 로드 ──
@@ -512,6 +514,8 @@ function App() {
         if(store.users)    setUsers(store.users);
         if(store.transfers) setTransfers(store.transfers);
         if(store.stdCosts)  setStdCosts(store.stdCosts);
+        if(store.shipments) setShipments(store.shipments);
+        if(store.mfg_docs)  setMfgDocs(store.mfg_docs);
       }catch(e){console.error('DB 연결 오류:',e);}
       finally{setDbLoaded(true);}
     })();
@@ -537,6 +541,8 @@ function App() {
   useEffect(()=>{if(dbLoaded) syncDB('users',users);},[users,dbLoaded]);
   useEffect(()=>{if(dbLoaded) syncDB('transfers',transfers);},[transfers,dbLoaded]);
   useEffect(()=>{if(dbLoaded) syncDB('stdCosts',stdCosts);},[stdCosts,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('shipments',shipments);},[shipments,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('mfg_docs',mfgDocs);},[mfgDocs,dbLoaded]);
   const [currentUser, setCurrentUser] = useState(null);
   const [loginForm, setLoginForm] = useState({id:"",pw:""});
   const [loginError, setLoginError] = useState("");
@@ -567,7 +573,7 @@ function App() {
     version: 1,
     exportedAt: new Date().toISOString(),
     items, warehouses, processes, bom, lots, incoming, orders, io,
-    costBom, factories, costMaster, ordersLedger, users, transfers, stdCosts
+    costBom, factories, costMaster, ordersLedger, users, transfers, stdCosts, shipments
   });
 
   const doBackup = () => {
@@ -626,6 +632,7 @@ function App() {
       if(data.users)        setUsers(data.users);
       if(data.transfers)    setTransfers(data.transfers);
       if(data.stdCosts)     setStdCosts(data.stdCosts);
+      if(data.shipments)    setShipments(data.shipments);
       setBackupModal(null);
       showToast("✅ 데이터 복원 완료");
     } catch(e) {
@@ -692,6 +699,7 @@ function App() {
     { key:"bom", icon:"📋", label:"BOM (자재명세서)" },
     { section:"재고·입출고" },
     { key:"stock", icon:"🗄️", label:"재고 현황" },
+    { key:"lot", icon:"🏷️", label:"LOT 관리" },
     { key:"incoming", icon:"🚚", label:"입고 예정" },
     { key:"io", icon:"↕️", label:"입출고관리" },
     { key:"transfer", icon:"🔄", label:"창고 간 이동" },
@@ -707,20 +715,22 @@ function App() {
 
   const pages = {
     dashboard: <Dashboard items={items} lots={lots} orders={orders} incoming={incoming} setPage={setPage} dataMB={dataMB} onItemClick={setDetailItem} io={io} />,
-    items: <ItemsPage items={items} setItems={setItems} warehouses={warehouses} processes={processes} perm={perm} showToast={showToast} tryDelete={tryDelete} checkItemLinks={checkItemLinks} downloadCSV={downloadCSV} onItemClick={setDetailItem} />,
+    items: <ItemsPage items={items} setItems={setItems} warehouses={warehouses} processes={processes} perm={perm} showToast={showToast} tryDelete={tryDelete} checkItemLinks={checkItemLinks} downloadCSV={downloadCSV} onItemClick={setDetailItem} mfgDocs={mfgDocs} setMfgDocs={setMfgDocs} />,
     warehouse: <WarehousePage warehouses={warehouses} setWarehouses={setWarehouses} perm={perm} showToast={showToast} tryDelete={tryDelete} checkWarehouseLinks={checkWarehouseLinks} />,
     process: <ProcessPage processes={processes} setProcesses={setProcesses} perm={perm} showToast={showToast} tryDelete={tryDelete} checkProcessLinks={checkProcessLinks} />,
     bom: <BomPage bom={bom} setBom={setBom} items={items} perm={perm} showToast={showToast} tryDelete={tryDelete} />,
-    stock: <StockPage items={items} lots={lots} io={io} warehouses={warehouses} downloadCSV={downloadCSV} onItemClick={setDetailItem} />,
+    stock: <StockPage items={items} lots={lots} io={io} warehouses={warehouses} downloadCSV={downloadCSV} onItemClick={setDetailItem} setLots={setLots} setIo={setIo} perm={perm} showToast={showToast} tryDelete={tryDelete} />,
+    lot: <LotPage lots={lots} setLots={setLots} items={items} warehouses={warehouses} perm={perm} showToast={showToast} tryDelete={tryDelete} downloadCSV={downloadCSV} />,
     incoming: <IncomingPage incoming={incoming} setIncoming={setIncoming} items={items} setItems={setItems} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} perm={perm} showToast={showToast} tryDelete={tryDelete} currentUser={currentUser} />,
     io: <IOPage io={io} setIo={setIo} items={items} setItems={setItems} lots={lots} setLots={setLots} perm={perm} showToast={showToast} downloadCSV={downloadCSV} onItemClick={setDetailItem} currentUser={currentUser} />,
     transfer: <TransferPage transfers={transfers} setTransfers={setTransfers} items={items} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} downloadCSV={downloadCSV} />,
     ordersLedger: <OrdersLedgerPage ordersLedger={ordersLedger} setOrdersLedger={setOrdersLedger} currentUser={currentUser} perm={perm} showToast={showToast} />,
-    orders: <OrdersPage orders={orders} setOrders={setOrders} items={items} setItems={setItems} bom={bom} processes={processes} factories={factories} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} defectWarehouse={defectWarehouse} goodWarehouse={goodWarehouse} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} checkOrderLinks={checkOrderLinks} />,
+    orders: <OrdersPage orders={orders} setOrders={setOrders} items={items} setItems={setItems} bom={bom} processes={processes} factories={factories} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} defectWarehouse={defectWarehouse} goodWarehouse={goodWarehouse} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} checkOrderLinks={checkOrderLinks} mfgDocs={mfgDocs} />,
     cost: perm.canViewPrice ? <CostPage costBom={costBom} setCostBom={setCostBom} factories={factories} bom={bom} items={items} processes={processes} costMaster={costMaster} setCostMaster={setCostMaster} orders={orders} io={io} stdCosts={stdCosts} setStdCosts={setStdCosts} currentUser={currentUser} perm={perm} showToast={showToast} downloadCSV={downloadCSV} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>접근 권한 없음</div><div style={{color:"#888",marginTop:8}}>원가 정보는 관리자만 열람할 수 있습니다</div></div>,
     factory: perm.canViewPrice ? <FactoryPage factories={factories} setFactories={setFactories} perm={perm} showToast={showToast} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700}}>접근 권한 없음</div></div>,
     users: <UserPage users={users} setUsers={setUsers} currentUser={currentUser} showToast={showToast} />,
     analysis: <AnalysisPage orders={orders} items={items} />,
+    shipment: <ShipmentPage shipments={shipments} setShipments={setShipments} items={items} setItems={setItems} lots={lots} setLots={setLots} io={io} setIo={setIo} currentUser={currentUser} perm={perm} showToast={showToast} downloadCSV={downloadCSV} />,
   };
 
   if(!dbLoaded) return (
@@ -870,37 +880,62 @@ function TransferPage({transfers,setTransfers,items,lots,setLots,io,setIo,wareho
       manager: currentUser?.name||""
     };
 
-    // LOT 창고 업데이트: qty만큼 출발창고 LOT 차감 → 도착창고에 동일 LOT 생성 or 합산
+    // 도착 LOT 코드 결정 (동기적으로 계산)
+    const srcLot = lots.find(l=>l.code===form.lot);
+    const existDest = lots.find(l=>l.item===form.item && l.code===form.lot && l.warehouse===form.toWarehouse);
+    const mvCode = form.lot+"_MV_"+form.toWarehouse;
+    const existMv = lots.find(l=>l.code===mvCode);
+    const destLotCode = existDest ? existDest.code : mvCode;
+
+    // LOT 창고 업데이트: qty만큼 출발창고 LOT 차감 → 도착창고에 기존 LOT 합산 or 신규 생성
     setLots(prev => {
-      let updated = prev.map(l => l.code===form.lot ? {...l, qty: l.qty-qty, warehouse: form.fromWarehouse} : l);
-      const dest = updated.find(l=>l.code===form.lot+"_"+form.toWarehouse || (l.code===form.lot && l.warehouse===form.toWarehouse));
-      if(dest) {
-        updated = updated.map(l=>(l.code===dest.code)?{...l,qty:l.qty+qty}:l);
-      } else {
-        const srcLot = lots.find(l=>l.code===form.lot);
-        updated = [...updated, {...srcLot, code:"LOT_MV_"+Date.now(), qty, warehouse:form.toWarehouse}];
-      }
-      return updated;
+      const updated = prev.map(l=>
+        l.code===form.lot && l.warehouse===form.fromWarehouse ? {...l, qty:l.qty-qty} :
+        l.code===destLotCode ? {...l, qty:(l.qty||0)+qty} : l
+      );
+      if(existDest || existMv) return updated;
+      return [...updated, {...srcLot, code:destLotCode, qty, warehouse:form.toWarehouse}];
     });
 
-    // IO 기록: 출발창고 출고 + 도착창고 입고
-    const ioOut = {date:form.date,type:"출고",item:form.item,itemName:form.itemName,qty,unitPrice:0,lot:form.lot,destination:form.toWarehouse,manager:currentUser?.name||"",approver:"",note:`창고이동→${form.toWarehouse} ${form.note||""}`};
-    const ioIn  = {date:form.date,type:"입고",item:form.item,itemName:form.itemName,qty,unitPrice:0,lot:form.lot,destination:"",manager:currentUser?.name||"",approver:"",note:`창고이동←${form.fromWarehouse} ${form.note||""}`};
+    // IO 기록: 출발창고 출고(원본 LOT) + 도착창고 입고(도착 LOT) — _transferId로 삭제 시 역추적
+    const ioOut = {date:form.date,type:"출고",item:form.item,itemName:form.itemName,qty,unitPrice:0,lot:form.lot,destination:form.toWarehouse,manager:currentUser?.name||"",approver:"",note:`창고이동→${form.toWarehouse} ${form.note||""}`,_transferId:id};
+    const ioIn  = {date:form.date,type:"입고",item:form.item,itemName:form.itemName,qty,unitPrice:0,lot:destLotCode,destination:"",manager:currentUser?.name||"",approver:"",note:`창고이동←${form.fromWarehouse} ${form.note||""}`,_transferId:id};
     setIo(prev=>[ioOut,ioIn,...prev]);
 
-    setTransfers(prev=>[rec,...prev]);
+    setTransfers(prev=>[{...rec,_destLotCode:destLotCode},...prev]);
     showToast("✅ 창고 간 이동이 완료되었습니다.");
     setModal(false);
   };
 
+  const _revertTransfer=(t)=>{
+    // IO 역추적 삭제 (_transferId 우선, 없으면 note 패턴으로 매칭)
+    setIo(prev=>prev.filter(r=>
+      r._transferId ? r._transferId!==t.id :
+      !(r.item===t.item && r.qty===t.qty && (r.note||"").includes("창고이동") &&
+        ((r.lot===t.lot&&r.type==="출고")||(r.lot===(t._destLotCode||t.lot+"_MV_"+t.toWarehouse)&&r.type==="입고")))
+    ));
+    // LOT 수량 복구
+    const destCode=t._destLotCode||t.lot+"_MV_"+t.toWarehouse;
+    setLots(prev=>{
+      const updated=prev.map(l=>l.code===t.lot&&(l.warehouse===t.fromWarehouse||!l.warehouse)?{...l,qty:(l.qty||0)+t.qty}:l);
+      const destLot=updated.find(l=>l.code===destCode);
+      if(!destLot) return updated;
+      if((destLot.qty||0)<=t.qty) return updated.filter(l=>l.code!==destCode);
+      return updated.map(l=>l.code===destCode?{...l,qty:(l.qty||0)-t.qty}:l);
+    });
+  };
+
   const del = (id) => {
     tryDelete([], ()=>{
+      const t=transfers.find(t=>t.id===id);
+      if(t) _revertTransfer(t);
       setTransfers(prev=>prev.filter(t=>t.id!==id));
       showToast("삭제되었습니다.");
     }, "이동 이력 삭제 불가");
   };
   const bulkDel = () => {
     if(!window.confirm(`선택한 ${sel.size}개를 삭제하시겠습니까?`)) return;
+    transfers.filter(t=>sel.has(t.id)).forEach(t=>_revertTransfer(t));
     setTransfers(prev=>prev.filter(t=>!sel.has(t.id)));
     setSel(new Set());
     showToast(`${sel.size}개 삭제되었습니다.`);
@@ -1581,13 +1616,35 @@ function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick,io}) {
   );
 }
 
-function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete,checkItemLinks,downloadCSV,onItemClick}) {
+function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete,checkItemLinks,downloadCSV,onItemClick,mfgDocs,setMfgDocs}) {
   const [q,setQ]=useState(""); const [modal,setModal]=useState(null);
   const [form,setForm]=useState({code:"",name:"",type:"완제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0,processes:[]});
   const [selected,setSelected]=useState(new Set());
+  const [docModal,setDocModal]=useState(null); // {item}
   const filtered=items.filter(i=>i.name.includes(q)||i.code.includes(q));
   const toggleSel=(code)=>setSelected(prev=>{const s=new Set(prev);s.has(code)?s.delete(code):s.add(code);return s;});
   const toggleProc=(code)=>setForm(f=>{const ps=f.processes||[];return{...f,processes:ps.includes(code)?ps.filter(c=>c!==code):[...ps,code]};});
+
+  const handleDocUpload=(itemCode,file)=>{
+    if(file.size>10*1024*1024){showToast("❌ 파일 크기는 10MB 이하만 가능합니다.");return;}
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      setMfgDocs(prev=>({...prev,[itemCode]:{filename:file.name,data:e.target.result,fileType:file.type,uploadedAt:new Date().toISOString()}}));
+      showToast(`✅ ${file.name} 업로드 완료`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const viewDoc=(doc)=>{
+    const win=window.open("","_blank");
+    if(doc.fileType==="application/pdf"||doc.filename.endsWith(".pdf")){
+      win.document.write(`<html><body style="margin:0"><iframe src="${doc.data}" style="width:100%;height:100vh;border:none"></iframe></body></html>`);
+    } else {
+      const a=win.document.createElement("a");
+      a.href=doc.data; a.download=doc.filename; a.click();
+      win.close();
+    }
+  };
   const openAdd=()=>{setForm({code:"",name:"",type:"완제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0,processes:[]});setModal("add");};
   const save=()=>{
     if(!form.code||!form.name){showToast("코드와 품목명은 필수입니다.");return;}
@@ -1662,7 +1719,7 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
           </div>
         </div>
         <table>
-          <thead><tr><th style={{width:36,textAlign:"center"}}>선택</th><th>품목코드</th><th>품목명</th><th>유형</th><th>규격</th><th>용량</th><th>단위</th>{perm.canViewPrice&&<th>단가</th>}<th>최소재고</th><th>창고</th><th>투입공정</th><th>관리</th></tr></thead>
+          <thead><tr><th style={{width:36,textAlign:"center"}}>선택</th><th>품목코드</th><th>품목명</th><th>유형</th><th>규격</th><th>용량</th><th>단위</th>{perm.canViewPrice&&<th>단가</th>}<th>최소재고</th><th>창고</th><th>투입공정</th><th>제조지시서</th><th>관리</th></tr></thead>
           <tbody>
             {filtered.map(i=>(
               <tr key={i.code}>
@@ -1677,13 +1734,19 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
                 {perm.canViewPrice&&<td>{(i.price||0).toLocaleString()}원</td>}
                 <td>{i.minStock}</td><td>{i.warehouse||"-"}</td>
                 <td style={{fontSize:11,color:"#2563eb"}}>{(i.processes||[]).length>0?(i.processes||[]).map(pc=>processes.find(p=>p.code===pc)?.name||pc).join(", "):"-"}</td>
+                <td>
+                  {mfgDocs&&mfgDocs[i.code]
+                    ? <button className="btn btn-outline btn-sm" style={{color:"#7c3aed",borderColor:"#7c3aed",fontSize:11}} onClick={()=>setDocModal({item:i})}>📄 보기</button>
+                    : <button className="btn btn-outline btn-sm" style={{fontSize:11}} onClick={()=>setDocModal({item:i})}>+ 첨부</button>
+                  }
+                </td>
                 <td style={{display:"flex",gap:4}}>
                   {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({...i,processes:i.processes||[]});setModal("edit");}}>수정</button>}
                   {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(i.code)}>삭제</button>}
                 </td>
               </tr>
             ))}
-            {!filtered.length&&<tr><td colSpan={12} className="empty">검색 결과 없음</td></tr>}
+            {!filtered.length&&<tr><td colSpan={13} className="empty">검색 결과 없음</td></tr>}
           </tbody>
         </table>
       </div>
@@ -1718,6 +1781,52 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
               )}
             </div>
             <div className="modal-foot"><button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button><button className="btn btn-primary" onClick={save}>저장</button></div>
+          </div>
+        </div>
+      )}
+
+      {docModal&&(
+        <div className="overlay" onClick={()=>setDocModal(null)}>
+          <div className="modal" style={{width:500}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <span className="modal-title" style={{color:"#7c3aed"}}>📄 제조지시서 — {docModal.item.name}</span>
+              <button className="modal-close" onClick={()=>setDocModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {mfgDocs&&mfgDocs[docModal.item.code]?(
+                <div>
+                  <div style={{background:"#f5f3ff",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#7c3aed",marginBottom:4}}>📎 {mfgDocs[docModal.item.code].filename}</div>
+                    <div style={{fontSize:11,color:"#888"}}>업로드: {new Date(mfgDocs[docModal.item.code].uploadedAt).toLocaleString("ko-KR")}</div>
+                  </div>
+                  <div style={{display:"flex",gap:8,marginBottom:12}}>
+                    <button className="btn btn-primary" onClick={()=>viewDoc(mfgDocs[docModal.item.code])}>
+                      {mfgDocs[docModal.item.code].fileType==="application/pdf"||mfgDocs[docModal.item.code].filename.endsWith(".pdf")?"🔍 PDF 열기":"📥 파일 다운로드"}
+                    </button>
+                    {perm.canEdit&&<button className="btn btn-danger" onClick={()=>{if(window.confirm("제조지시서를 삭제하시겠습니까?")){setMfgDocs(prev=>{const n={...prev};delete n[docModal.item.code];return n;});setDocModal(null);showToast("삭제되었습니다.");}}}>🗑 삭제</button>}
+                  </div>
+                  {perm.canEdit&&(
+                    <div style={{borderTop:"1px solid #f0f0f0",paddingTop:12}}>
+                      <label style={{fontSize:12,color:"#888",display:"block",marginBottom:6}}>파일 교체</label>
+                      <input type="file" accept=".pdf,.doc,.docx" onChange={e=>{if(e.target.files[0]) handleDocUpload(docModal.item.code,e.target.files[0]);}} style={{fontSize:12}}/>
+                    </div>
+                  )}
+                </div>
+              ):(
+                <div>
+                  <div style={{textAlign:"center",padding:"20px 0",color:"#aaa",fontSize:13,marginBottom:16}}>첨부된 제조지시서가 없습니다.</div>
+                  {perm.canEdit&&(
+                    <div>
+                      <label style={{fontSize:13,fontWeight:600,color:"#555",display:"block",marginBottom:8}}>📎 파일 첨부 (PDF / Word, 최대 10MB)</label>
+                      <input type="file" accept=".pdf,.doc,.docx" onChange={e=>{if(e.target.files[0]){handleDocUpload(docModal.item.code,e.target.files[0]);setDocModal(null);}}} style={{fontSize:12}}/>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-outline" onClick={()=>setDocModal(null)}>닫기</button>
+            </div>
           </div>
         </div>
       )}
@@ -1977,8 +2086,41 @@ function BomPage({bom,setBom,items,perm,showToast,tryDelete}) {
   );
 }
 
-function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick}) {
+function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,setIo,perm,showToast,tryDelete}) {
   const todayStr=new Date().toISOString().slice(0,10);
+  const [traceModal,setTraceModal]=useState(null);
+
+  const getTraceability=(lotCode)=>{
+    const inRec=io.find(r=>r.lot===lotCode&&r.type==="입고"&&r.note&&r.note.includes("작업지시서"));
+    if(!inRec) return null;
+    const match=inRec.note.match(/작업지시서\s+(\S+)/);
+    const woCode=match?match[1].replace("완료","").trim():null;
+    if(!woCode) return null;
+    const matRecs=io.filter(r=>r.type==="출고"&&r.destination==="P"&&r.note&&r.note.includes(woCode));
+    return {woCode, inRec, matRecs};
+  };
+
+  const openTrace=(l)=>{
+    const result=getTraceability(l.code);
+    setTraceModal({lot:l, result});
+  };
+
+  const del=(code)=>{
+    const lotObj=lots.find(l=>l.code===code);
+    if(!lotObj) return;
+    // 규칙1: 생산 투입 여부 체크
+    const usedInProd=io.some(r=>r.lot===code&&r.type==="출고"&&r.destination==="P");
+    if(usedInProd){showToast("❌ 생산에 투입된 LOT는 삭제할 수 없습니다.");return;}
+    // 규칙2: 같은 품목의 더 최신 LOT가 있으면 차례대로 삭제 필요
+    const newerLot=lots.find(l=>l.item===lotObj.item&&l.code!==code&&(l.mfg||"")>(lotObj.mfg||""));
+    if(newerLot){showToast(`❌ 차례대로 삭제해 주세요. 먼저 LOT [${newerLot.code}]를 삭제하세요.`);return;}
+    tryDelete([],()=>{
+      setLots(prev=>prev.filter(l=>l.code!==code));
+      setIo(prev=>prev.filter(r=>r.lot!==code));
+      showToast("LOT 및 관련 입출고 이력이 삭제되었습니다.");
+    },"LOT 삭제 불가");
+  };
+
   const [wh,setWh]=useState("전체");
   const [typeTab,setTypeTab]=useState("전체");
   const [baseDate,setBaseDate]=useState(todayStr);   // 기준일
@@ -2093,7 +2235,8 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick}) {
             <tr>
               <th>LOT번호</th><th>품목명</th><th>유형</th>
               <th style={{textAlign:"right"}}>{isHistorical?`${baseDate} 기준 수량`:"현재 수량"}</th>
-              <th>제조일</th><th>유효기간</th><th>창고</th><th>상태</th>
+              <th>제조일</th><th>유효기간</th><th>창고</th><th>상태</th><th>추적</th>
+              {perm?.canDelete&&<th></th>}
             </tr>
           </thead>
           <tbody>
@@ -2115,13 +2258,63 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick}) {
                   <td style={{color:l.status==="만료임박"?"#e67e22":l.status==="만료"?"#e74c3c":"#888",fontSize:12}}>{l.exp||"-"}</td>
                   <td style={{fontSize:12}}>{l.warehouse||"-"}</td>
                   <td><span className={`badge ${l.status==="정상"?"badge-green":l.status==="만료임박"?"badge-orange":l.status==="불량"?"badge-red":"badge-gray"}`}>{l.status}</span></td>
+                  <td>{(it?.type==="완제품"||it?.type==="반제품")&&<button className="btn btn-outline btn-sm" style={{color:"#7c3aed",borderColor:"#7c3aed",fontSize:11}} onClick={()=>openTrace(l)}>🔍 추적</button>}</td>
+                  {perm?.canDelete&&<td><button className="btn btn-danger btn-sm" onClick={()=>del(l.code)}>삭제</button></td>}
                 </tr>
               );
             })}
-            {!filteredLots.length&&<tr><td colSpan={8} className="empty">{hideZero?"수량 있는 LOT 없음 (0인 LOT는 숨김 처리됨)":"해당 조건의 LOT 없음"}</td></tr>}
+            {!filteredLots.length&&<tr><td colSpan={perm?.canDelete?10:9} className="empty">{hideZero?"수량 있는 LOT 없음 (0인 LOT는 숨김 처리됨)":"해당 조건의 LOT 없음"}</td></tr>}
           </tbody>
         </table>
       </div>
+      {traceModal&&(
+        <div className="overlay" onClick={()=>setTraceModal(null)}>
+          <div className="modal" style={{width:560}} onClick={e=>e.stopPropagation()}>
+            <div className="modal-head">
+              <span className="modal-title" style={{color:"#7c3aed"}}>🔍 LOT 추적 — {traceModal.lot.code}</span>
+              <button className="modal-close" onClick={()=>setTraceModal(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div style={{background:"#f5f3ff",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:13}}>
+                <b>{traceModal.lot.itemName}</b> · 수량 {fmt3(traceModal.lot.qty)}EA · 제조일 {traceModal.lot.mfg||"-"} · 창고 {traceModal.lot.warehouse||"-"}
+              </div>
+              {!traceModal.result&&(
+                <div style={{textAlign:"center",padding:"30px 0",color:"#888",fontSize:13}}>
+                  ℹ️ 작업지시서로 생산된 LOT가 아니거나 추적 정보가 없습니다.
+                </div>
+              )}
+              {traceModal.result&&(
+                <>
+                  <div style={{fontSize:13,fontWeight:600,color:"#555",marginBottom:8}}>📋 작업지시서: <span style={{color:"#2563eb"}}>{traceModal.result.woCode}</span></div>
+                  <div style={{fontSize:13,fontWeight:600,color:"#555",marginBottom:6}}>📦 투입된 원자재 LOT</div>
+                  {traceModal.result.matRecs.length===0&&<div style={{fontSize:12,color:"#aaa",padding:"8px 0"}}>투입 기록 없음 (수동 완료 처리된 경우)</div>}
+                  {traceModal.result.matRecs.length>0&&(
+                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                      <thead><tr style={{background:"#1a2236",color:"#fff"}}>
+                        <th style={{padding:"6px 10px",textAlign:"left"}}>품목명</th>
+                        <th style={{padding:"6px 10px",textAlign:"left"}}>LOT번호</th>
+                        <th style={{padding:"6px 10px",textAlign:"right"}}>출고수량</th>
+                        <th style={{padding:"6px 10px",textAlign:"left"}}>출고일</th>
+                      </tr></thead>
+                      <tbody>{traceModal.result.matRecs.map((r,i)=>(
+                        <tr key={i} style={{borderBottom:"1px solid #f0f0f0"}}>
+                          <td style={{padding:"6px 10px"}}>{r.itemName}</td>
+                          <td style={{padding:"6px 10px",fontFamily:"monospace",color:"#7c3aed"}}>{r.lot||"-"}</td>
+                          <td style={{padding:"6px 10px",textAlign:"right"}}>{fmt3(r.qty)}</td>
+                          <td style={{padding:"6px 10px",color:"#888"}}>{r.date}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  )}
+                </>
+              )}
+            </div>
+            <div className="modal-foot">
+              <button className="btn btn-outline" onClick={()=>setTraceModal(null)}>닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2456,9 +2649,9 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
           </div>
 
           <div className="field-row">
-            <div className="field"><label>수량</label><input type="number" value={form.qty} onChange={e=>setForm({...form,qty:+e.target.value})}/></div>
+            <div className="field"><label>수량</label><input type="number" value={form.qty||""} placeholder="0" onFocus={e=>e.target.select()} onChange={e=>setForm({...form,qty:e.target.value===''?0:+e.target.value})}/></div>
             <div className="field"><label>단위</label><select value={form.unit||"EA"} onChange={e=>setForm({...form,unit:e.target.value})}>{UNITS.map(u=><option key={u} value={u}>{u}</option>)}</select></div>
-            <div className="field"><label>단가 (원) <span style={{color:"#2563eb",fontSize:11}}>★ 품목 단가 자동 반영</span></label><input type="number" value={form.unitPrice||0} onChange={e=>setForm({...form,unitPrice:+e.target.value})}/></div>
+            <div className="field"><label>단가 (원) <span style={{color:"#2563eb",fontSize:11}}>★ 품목 단가 자동 반영</span></label><input type="number" value={form.unitPrice||""} placeholder="0" onFocus={e=>e.target.select()} onChange={e=>setForm({...form,unitPrice:e.target.value===''?0:+e.target.value})}/></div>
           </div>
           <div className="field-row">
             <div className="field"><label>공급업체</label><input value={form.supplier} onChange={e=>setForm({...form,supplier:e.target.value})}/></div>
@@ -2753,30 +2946,52 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
     if(startDate&&r.date<startDate) return false;
     if(endDate&&r.date>endDate) return false;
     const t=getItemType(r.item);
-    if(ioTab==="완제품") return t==="완제품"||t==="반제품";
+    const note=r.note||"";
+    const isQC=note.includes("품질검사");
+    const isRT=note.includes("보관샘플");
+    if(ioTab==="완제품") return (t==="완제품"||t==="반제품")&&!isQC&&!isRT;
     if(ioTab==="원자재") return t==="원자재";
     if(ioTab==="부자재") return t==="부자재";
+    if(ioTab==="품질검사") return (t==="완제품"||t==="반제품")&&isQC;
+    if(ioTab==="보관샘플") return (t==="완제품"||t==="반제품")&&isRT;
     return true;
   });
 
-  // 누적 재고량 계산 (품목별 초기재고 + 기간 이전 IO 포함)
+  // 누적 재고량 계산 (LOT별 개별 재고)
   const calcRunStock=(rows)=>{
-    // 각 품목의 베이스라인(IO 이전 초기재고) = items.stock - 전체 IO 합산
-    const baseline={},preNetMap={};
+    const lotKey=(item,lot)=>item+"__"+(lot||"");
+    const baseline={};
+    // LOT 있는 항목: lots 테이블 현재고 기준 역산
+    lots.forEach(l=>{
+      const k=lotKey(l.item,l.code);
+      const aIn=io.filter(r=>r.item===l.item&&(r.lot||"")===l.code&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
+      const aOut=io.filter(r=>r.item===l.item&&(r.lot||"")===l.code&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
+      baseline[k]=Math.max(0,(l.qty||0)-aIn+aOut);
+    });
+    // LOT 없는 항목: items.stock에서 lot 합산분 제외
     items.forEach(it=>{
-      const allIn=io.filter(r=>r.item===it.code&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
-      const allOut=io.filter(r=>r.item===it.code&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
-      baseline[it.code]=(it.stock||0)-allIn+allOut;
-      // 필터 시작일 이전 기록 합산 → 기간 개시잔고
-      const preIn=io.filter(r=>r.item===it.code&&r.type==="입고"&&(!startDate||r.date<startDate)).reduce((s,r)=>s+(r.qty||0),0);
-      const preOut=io.filter(r=>r.item===it.code&&r.type==="출고"&&(!startDate||r.date<startDate)).reduce((s,r)=>s+(r.qty||0),0);
-      preNetMap[it.code]=preIn-preOut;
+      const k=lotKey(it.code,"");
+      const lotTotal=lots.filter(l=>l.item===it.code).reduce((s,l)=>s+(l.qty||0),0);
+      const aIn=io.filter(r=>r.item===it.code&&!r.lot&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
+      const aOut=io.filter(r=>r.item===it.code&&!r.lot&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
+      baseline[k]=Math.max(0,Math.max(0,(it.stock||0)-lotTotal)-aIn+aOut);
+    });
+    // rows에만 있는 key 보충
+    rows.forEach(r=>{const k=lotKey(r.item,r.lot);if(baseline[k]===undefined)baseline[k]=0;});
+    // 기간 시작일 이전 IO 누적 → 기간 개시잔고
+    const preNetMap={};
+    Object.keys(baseline).forEach(k=>{
+      const [item,lot]=k.split("__");
+      const pIn=io.filter(r=>r.item===item&&(r.lot||"")===lot&&r.type==="입고"&&(startDate&&r.date<startDate)).reduce((s,r)=>s+(r.qty||0),0);
+      const pOut=io.filter(r=>r.item===item&&(r.lot||"")===lot&&r.type==="출고"&&(startDate&&r.date<startDate)).reduce((s,r)=>s+(r.qty||0),0);
+      preNetMap[k]=pIn-pOut;
     });
     const stock={};
     return rows.map(r=>{
-      if(stock[r.item]===undefined) stock[r.item]=(baseline[r.item]||0)+(preNetMap[r.item]||0);
-      stock[r.item]+=(r.type==="입고"?r.qty:-(r.qty||0));
-      return {...r,runStock:stock[r.item]};
+      const k=lotKey(r.item,r.lot);
+      if(stock[k]===undefined) stock[k]=(baseline[k]||0)+(preNetMap[k]||0);
+      stock[k]+=(r.type==="입고"?r.qty:-(r.qty||0));
+      return {...r,runStock:stock[k]};
     });
   };
   const displayRows=calcRunStock([...filteredIo].sort((a,b)=>a.date.localeCompare(b.date)));
@@ -2787,54 +3002,121 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
     if(!lotCode) return null;
     const lot=lots.find(l=>l.code===lotCode);
     if(!lot) return null;
-    const out=io.filter(r=>r.lot===lotCode&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
-    return lot.qty - out;
+    return lot.qty||0;
   };
 
   const doSave=()=>{
     if(!form.item){showToast("품목을 선택해주세요");return;}
+
     if(editIdx!==null){
+      // 수정 모드: 원본 역산 후 새값 적용 (이중 차감 방지)
+      const orig=io[editIdx];
+      // Step1: 원본 효과 역산
+      const origAdj=orig.type==="입고"?-(orig.qty||0):+(orig.qty||0);
+      let newItems=items.map(it=>it.code===orig.item?{...it,stock:(it.stock||0)+origAdj}:it);
+      let newLots=lots;
+      if(orig.lot) newLots=newLots.map(l=>l.code===orig.lot?{...l,qty:Math.max(0,(l.qty||0)+origAdj)}:l);
+      // Step2: 새 form 효과 적용
+      const newAdj=form.type==="입고"?+(form.qty||0):-(form.qty||0);
+      newItems=newItems.map(it=>it.code===form.item?{...it,stock:(it.stock||0)+newAdj,...(form.type==="입고"&&form.unitPrice>0?{price:form.unitPrice}:{})}:it);
+      if(form.lot){
+        const exists=newLots.find(l=>l.code===form.lot);
+        if(exists) newLots=newLots.map(l=>l.code===form.lot?{...l,qty:Math.max(0,(l.qty||0)+newAdj)}:l);
+        else if(form.type==="입고") newLots=[...newLots,{code:form.lot,item:form.item,itemName:form.itemName||"",qty:form.qty,mfg:form.date||"",exp:"",status:"정상",warehouse:""}];
+      }
+      setItems(newItems);
+      setLots(newLots);
       setIo(io.map((r,i)=>i===editIdx?{...form}:r));
-    } else {
+    } else if(form.type==="입고"){
+      // 신규 입고
       setIo([...io,{...form}]);
-    }
-    if(form.type==="입고"){
-      // 입고: 품목 재고 증가 + 단가 업데이트만 (LOT 수량은 LOT관리에서 별도 관리)
       setItems(items.map(i=>i.code===form.item?{...i,stock:(i.stock||0)+form.qty,...(form.unitPrice>0?{price:form.unitPrice}:{})}:i));
+      if(form.lot){
+        setLots(prev=>{
+          const exists=prev.find(l=>l.code===form.lot);
+          if(exists) return prev.map(l=>l.code===form.lot?{...l,qty:(l.qty||0)+form.qty}:l);
+          return [...prev,{code:form.lot,item:form.item,itemName:form.itemName||"",qty:form.qty,mfg:form.date||"",exp:"",status:"정상",warehouse:""}];
+        });
+      }
     } else if(form.type==="출고"){
-      // 출고: 품목 재고 감소 + 해당 LOT 수량 감소
+      // 신규 출고
       setItems(items.map(i=>i.code===form.item?{...i,stock:(i.stock||0)-form.qty}:i));
       if(form.lot){
-        // 지정 LOT에서 차감
+        setIo([...io,{...form}]);
         setLots(lots.map(l=>l.code===form.lot?{...l,qty:Math.max(0,(l.qty||0)-form.qty)}:l));
       } else {
-        // LOT 미지정 시 제조일 오래된 순(FIFO)으로 차감
+        // LOT 미지정: FIFO → lot별 IO 기록 생성
         let remain=form.qty;
         const fifo=[...lots].filter(l=>l.item===form.item&&(l.qty||0)>0).sort((a,b)=>(a.mfg||"").localeCompare(b.mfg||""));
+        const ioRecs=[];
         const deduct={};
-        for(const l of fifo){if(remain<=0)break;const sub=Math.min(l.qty||0,remain);deduct[l.code]=sub;remain-=sub;}
-        setLots(lots.map(l=>deduct[l.code]!=null?{...l,qty:(l.qty||0)-deduct[l.code]}:l));
+        for(const l of fifo){
+          if(remain<=0) break;
+          const sub=Math.min(l.qty||0,remain);
+          ioRecs.push({...form,qty:sub,lot:l.code});
+          deduct[l.code]=sub;
+          remain-=sub;
+        }
+        if(remain>0) ioRecs.push({...form,qty:remain,lot:""});
+        setIo(prev=>[...prev,...ioRecs]);
+        setLots(lots.map(l=>deduct[l.code]!=null?{...l,qty:Math.max(0,(l.qty||0)-deduct[l.code])}:l));
       }
     }
     showToast("저장되었습니다.");
-    setModal(false);setWarnNeg(null);setEditIdx(null);
+    setModal(false);setEditIdx(null);
   };
   const openEdit=(r,idx)=>{setForm({...r});setCodeInput(r.item||"");setEditIdx(idx);setModal(true);};
 
   const save=()=>{
     if(!form.item){showToast("품목을 선택해주세요");return;}
     if(form.type==="출고"){
+      // 편집 모드에서는 원본 출고분을 복원한 뒤 체크 (too-strict 방지)
+      const orig=editIdx!==null?io[editIdx]:null;
+      const origItemAdj=(orig&&orig.type==="출고"&&orig.item===form.item)?(orig.qty||0):0;
+      const origLotAdj=(orig&&orig.type==="출고"&&orig.lot===form.lot)?(orig.qty||0):0;
       const it=items.find(i=>i.code===form.item);
-      const curStock=it?it.stock:0;
-      if(curStock-form.qty<0){
-        alert(`❌ 재고 부족으로 출고할 수 없습니다.\n\n품목: ${form.itemName}\n현재 재고: ${fmt3(curStock)} ${form.unit||""}\n출고 요청: ${fmt3(form.qty)} ${form.unit||""}\n부족량: ${fmt3(form.qty-curStock)} ${form.unit||""}`);
+      const effectiveStock=(it?it.stock:0)+origItemAdj;
+      if(effectiveStock-form.qty<0){
+        alert(`❌ 재고 부족으로 출고할 수 없습니다.\n\n품목: ${form.itemName}\n가용 재고: ${fmt3(effectiveStock)} ${form.unit||""}\n출고 요청: ${fmt3(form.qty)} ${form.unit||""}\n부족량: ${fmt3(form.qty-effectiveStock)} ${form.unit||""}`);
         return;
+      }
+      if(form.lot){
+        const lotObj=lots.find(l=>l.code===form.lot);
+        const effectiveLotQty=(lotObj?lotObj.qty:0)+origLotAdj;
+        if(effectiveLotQty-form.qty<0){
+          alert(`❌ LOT 재고 부족으로 출고할 수 없습니다.\n\nLOT: ${form.lot}\n가용 LOT 재고: ${fmt3(effectiveLotQty)} ${form.unit||""}\n출고 요청: ${fmt3(form.qty)} ${form.unit||""}\n부족량: ${fmt3(form.qty-effectiveLotQty)} ${form.unit||""}`);
+          return;
+        }
+      } else {
+        // 편집 모드: 원본 lot 복원분 포함한 FIFO 합계
+        const origLotForFifo=(orig&&orig.type==="출고"&&orig.lot&&orig.item===form.item)?(orig.qty||0):0;
+        const fifoTotal=lots.filter(l=>l.item===form.item&&(l.qty||0)>0).reduce((s,l)=>s+(l.qty||0),0)+origLotForFifo;
+        if(fifoTotal-form.qty<0){
+          alert(`❌ LOT 재고 부족으로 출고할 수 없습니다.\n\n품목: ${form.itemName}\n가용 LOT 합계: ${fmt3(fifoTotal)} ${form.unit||""}\n출고 요청: ${fmt3(form.qty)} ${form.unit||""}\n부족량: ${fmt3(form.qty-fifoTotal)} ${form.unit||""}`);
+          return;
+        }
       }
     }
     doSave();
   };
 
-  const bulkDel=()=>{const n=sel.size;if(!window.confirm(`선택한 ${n}개를 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`))return;setIo(io.filter((_,i)=>!sel.has(i)));setSel(new Set());showToast(`${n}개 삭제되었습니다.`);};
+  const bulkDel=()=>{
+    const n=sel.size;
+    if(!window.confirm(`선택한 ${n}개를 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`))return;
+    const toDelete=io.filter((_,i)=>sel.has(i));
+    let updItems=[...items];
+    let updLots=[...lots];
+    for(const r of toDelete){
+      const adj=r.type==="입고"?-(r.qty||0):+(r.qty||0);
+      updItems=updItems.map(it=>it.code===r.item?{...it,stock:Math.max(0,(it.stock||0)+adj)}:it);
+      if(r.lot) updLots=updLots.map(l=>l.code===r.lot?{...l,qty:Math.max(0,(l.qty||0)+adj)}:l);
+    }
+    setItems(updItems);
+    setLots(updLots);
+    setIo(io.filter((_,i)=>!sel.has(i)));
+    setSel(new Set());
+    showToast(`${n}개 삭제되었습니다.`);
+  };
   const selLot=form.lot?lots.find(l=>l.code===form.lot):null;
   const selLotRem=form.lot?lotRemaining(form.lot):null;
   const itemLots=lots.filter(l=>l.item===form.item);
@@ -3158,6 +3440,26 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
   // ── 인쇄 (원부자재 월간 그리드) ──
   const printIO=()=>{
     const isMatTab=(ioTab==="원자재"||ioTab==="부자재");
+    const f3=(n)=>{if(n===undefined||n===null||n===0||n==="")return"";const v=Math.round((+n)*1000)/1000;return isNaN(v)?"":v.toLocaleString("ko-KR",{maximumFractionDigits:3});};
+    if(!isMatTab){
+      // 완제품/반제품: downloadExcel과 동일한 세로 리스트 양식 (SOP-705-F08)
+      const toDate=s=>s?s.replace(/-/g,"."):"-";
+      const lastStock=displayRows.length>0?displayRows[displayRows.length-1].runStock??0:0;
+      const rowsPerPage=28;
+      const dataCount=displayRows.length<=rowsPerPage?rowsPerPage:displayRows.length;
+      const printRows=Array.from({length:dataCount},(_,i)=>{
+        const r=displayRows[i]||null;
+        const printNote=(r.note||"").includes("작업지시서")?"":r.note||"";
+        if(r) return `<tr><td>${i+1}</td><td>${toDate(r.date)}</td><td style="text-align:left">${r.lot||""}</td><td>${r.type}</td><td>${r.type==="입고"?f3(r.qty):""}</td><td>${r.type==="출고"?f3(r.qty):""}</td><td>${f3(r.runStock??0)}</td><td style="text-align:left">${r.destination||""}</td><td>${r.manager||""}</td><td>${r.approver||""}</td><td style="text-align:left">${printNote}</td></tr>`;
+        return `<tr><td style="color:#ccc">${i+1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
+      }).join("");
+      const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>완제품·반제품 입출고 관리대장</title><style>@page{size:A4 portrait;margin:19mm 18mm 12mm 18mm;}body{font-family:'나눔고딕','맑은 고딕',sans-serif;font-size:8pt;margin:0;}.title{text-align:center;font-size:13pt;font-weight:bold;border:1px solid #000;padding:7px 4px;margin-bottom:5px;}table{width:100%;border-collapse:collapse;table-layout:fixed;}th,td{border:1px solid #000;padding:2px 3px;text-align:center;font-size:7pt;line-height:1.4;overflow:hidden;word-break:break-all;}th{background:#d9d9d9;font-weight:bold;}tr{height:22pt;}.sum-row td{background:#d9d9d9;font-weight:bold;}.footer{display:flex;justify-content:space-between;font-size:7pt;color:#555;margin-top:4px;}thead{display:table-header-group;}tr{page-break-inside:avoid;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body><div class="title">완제품·반제품 입출고 관리대장</div><table><colgroup><col style="width:4%"><col style="width:10%"><col style="width:12%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:20%"><col style="width:6%"><col style="width:6%"><col style="width:17%"></colgroup><thead><tr><th>No.</th><th>일자</th><th>Lot No.</th><th>구분&#10;(입/출고)</th><th>입고량</th><th>출고량</th><th>재고량</th><th>출고처</th><th>담당자</th><th>확인자</th><th>비고</th></tr></thead><tbody>${printRows}</tbody><tfoot><tr class="sum-row"><td colspan="6" style="text-align:center">재고 수량</td><td>${f3(lastStock)}</td><td colspan="4"></td></tr></tfoot></table><div class="footer"><span>SOP-705-F08</span><span>Ver3.0(2026.04.01)</span><span>(주)아이메디텍</span></div></body></html>`;
+      const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+      const url=URL.createObjectURL(blob);
+      const win=window.open(url,"_blank","width=1000,height=800");
+      win.onload=()=>{win.focus();win.print();URL.revokeObjectURL(url);};
+      return;
+    }
     const year=isMatTab?ioYear:(startDate?new Date(startDate).getFullYear():new Date().getFullYear());
     const month=isMatTab?ioMonth:(startDate?new Date(startDate).getMonth()+1:new Date().getMonth()+1);
     const daysInMonth=new Date(year,month,0).getDate();
@@ -3241,9 +3543,6 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
       if(prevStock<=0&&totalIn===0&&totalOut===0) return null;
       return {warehouse:wh,itemName:grp.itemName,lot:grp.lot,prevStock,unit:it?it.unit||"":"",inD,outD,destD,totalIn,totalOut,curStock:prevStock+totalIn-totalOut};
     }).filter(Boolean);
-
-    // 소숫점 3자리 포맷터
-    const f3=(n)=>{if(n===undefined||n===null||n===0||n==="")return"";const v=Math.round((+n)*1000)/1000;return isNaN(v)?"":v.toLocaleString("ko-KR",{maximumFractionDigits:3});};
 
     const dayCols=dayNums.map(d=>`<th class="day">${d}</th>`).join("");
     const dataRows=rows.map(r=>`
@@ -3339,13 +3638,13 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
           {perm.canDelete&&sel.size>0&&<button className="btn btn-danger" onClick={bulkDel}>🗑 선택 삭제 ({sel.size})</button>}
           <button className="btn btn-outline" onClick={printIO}>🖨️ 인쇄</button>
           <button className="btn btn-outline" onClick={(ioTab==="원자재"||ioTab==="부자재")?downloadExcelMaterial:downloadExcel}>📥 엑셀 다운로드</button>
-          {perm.canCreate&&<button className="btn btn-primary" onClick={()=>{setForm({...emptyForm,date:today,manager:currentUser?.name||""});setCodeInput("");setModal(true);}}>+ 입출고 등록</button>}
+          {perm.canCreate&&<button className="btn btn-primary" onClick={()=>{setForm({...emptyForm,date:today,manager:currentUser?.name||""});setCodeInput("");setEditIdx(null);setModal(true);}}>+ 입출고 등록</button>}
         </div>
       </div>
 
-      {/* 탭: 전체 / 완제품(반제품포함) / 원자재 / 부자재 */}
+      {/* 탭: 전체 / 완제품·반제품 / 원자재 / 부자재 / 품질검사 / 보관샘플 */}
       <div className="tabs">
-        {[["전체","📋 전체"],["완제품","📦 완제품·반제품"],["원자재","🧪 원자재"],["부자재","🔩 부자재"]].map(([k,label])=>(
+        {[["전체","📋 전체"],["완제품","📦 완제품·반제품"],["원자재","🧪 원자재"],["부자재","🔩 부자재"],["품질검사","🔬 품질검사"],["보관샘플","🧪 보관샘플"]].map(([k,label])=>(
           <div key={k} className={`tab${ioTab===k?" active":""}`} onClick={()=>setIoTab(k)}>{label}</div>
         ))}
       </div>
@@ -3489,19 +3788,14 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
             <div style={{background:"#f0f9ff",borderRadius:8,padding:"10px 14px",fontSize:12,marginTop:4}}>
               <div style={{fontWeight:600,color:"#2563eb",marginBottom:4}}>📦 LOT 정보</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
-                <div><span style={{color:"#888"}}>초기수량: </span><b>{fmt3(selLot.qty)}</b></div>
-                <div><span style={{color:"#888"}}>사용량: </span><b>{fmt3(selLot.qty-(selLotRem??selLot.qty))}</b></div>
-                <div><span style={{color:selLotRem<=0?"#e74c3c":"#16a34a"}}>잔여수량: </span><b style={{color:selLotRem<=0?"#e74c3c":"#16a34a"}}>{fmt3(selLotRem??selLot.qty)}</b></div>
+                <div><span style={{color:"#888"}}>현재수량: </span><b>{fmt3(selLot.qty)}</b></div>
+                <div><span style={{color:"#888"}}>잔여수량: </span><b>{fmt3(selLotRem??selLot.qty)}</b></div>
               </div>
             </div>
           )}
           <div className="field-row" style={{marginTop:8}}>
             <div className="field">
-              <label>{form.type==="출고"?"사용출처":"입고구분"}</label>
-              <select value={form.destination||""} onChange={e=>setForm({...form,destination:e.target.value})}>
-                <option value="">선택</option>
-                {form.type==="출고"?<><option value="P">P — 생산</option><option value="Q">Q — 품질</option><option value="R">R — 연구</option><option value="E">E — 기타</option></>:<><option value="BUY">구매입고</option><option value="RTN">반품입고</option><option value="TRF">이월</option><option value="ETC">기타</option></>}
-              </select>
+              {(()=>{const isFinished=["완제품","반제품"].includes(getItemType(form.item));const isOutFinished=form.type==="출고"&&isFinished;return(<><label>{isOutFinished?"거래처":form.type==="출고"?"사용출처":"입고구분"}</label>{isOutFinished?<input placeholder="거래처명 직접 입력" value={form.destination||""} onChange={e=>setForm({...form,destination:e.target.value})}/>:<select value={form.destination||""} onChange={e=>setForm({...form,destination:e.target.value})}><option value="">선택</option>{form.type==="출고"?<><option value="P">P — 생산</option><option value="Q">Q — 품질</option><option value="R">R — 연구</option><option value="E">E — 기타</option></>:<><option value="BUY">구매입고</option><option value="RTN">반품입고</option><option value="TRF">이월</option><option value="ETC">기타</option></>}</select>}</>);})()}
             </div>
             <div className="field"><label>담당자</label><input value={form.manager||""} onChange={e=>setForm({...form,manager:e.target.value})}/></div>
             <div className="field"><label>확인자</label><input value={form.approver||""} onChange={e=>setForm({...form,approver:e.target.value})}/></div>
@@ -3518,13 +3812,13 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
   );
 }
 
-function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lots,setLots,io,setIo,warehouses,defectWarehouse,goodWarehouse,currentUser,perm,showToast,tryDelete,checkOrderLinks}) {
+function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lots,setLots,io,setIo,warehouses,defectWarehouse,goodWarehouse,currentUser,perm,showToast,tryDelete,checkOrderLinks,mfgDocs}) {
   const [activeTab,setActiveTab]=useState("list");
   const [sel,setSel]=useState(new Set());
   const [viewWo,setViewWo]=useState(null);
   const [modal,setModal]=useState(null);
   const [completeModal,setCompleteModal]=useState(null);
-  const [compForm,setCompForm]=useState({doneDate:"",defectQty:0,processTimes:[]});
+  const [compForm,setCompForm]=useState({doneDate:"",defectQty:0,inspectQty:0,retainQty:0,processTimes:[]});
   const [form,setForm]=useState({code:"",product:"",productName:"",orderQty:0,lot:"",processes:[],materials:[],status:"대기",date:"",factoryCode:""});
   const [startDate,setStartDate]=useState("");
   const [endDate,setEndDate]=useState("");
@@ -3546,6 +3840,18 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
   const toggleSel=(code)=>setSel(prev=>{const s=new Set(prev);s.has(code)?s.delete(code):s.add(code);return s;});
   const SBadge=({s})=><span className={`badge ${s==="완료"?"badge-green":s==="진행중"?"badge-blue":s==="대기"?"badge-gray":"badge-red"}`}>{s}</span>;
 
+  const openMfgDoc=(productCode)=>{
+    const doc=mfgDocs&&mfgDocs[productCode];
+    if(!doc){alert("등록된 제조지시서가 없습니다.\n품목 관리에서 먼저 첨부해주세요.");return;}
+    const win=window.open("","_blank");
+    if(doc.fileType==="application/pdf"||doc.filename.endsWith(".pdf")){
+      win.document.write(`<html><body style="margin:0"><iframe src="${doc.data}" style="width:100%;height:100vh;border:none"></iframe></body></html>`);
+    } else {
+      const a=win.document.createElement("a");
+      a.href=doc.data; a.download=doc.filename; a.click(); win.close();
+    }
+  };
+
   const selectProduct=(productCode)=>{
     const prd=items.find(i=>i.code===productCode);
     const itemProcCodes=prd?.processes||[];
@@ -3554,7 +3860,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
   };
 
   const openAdd=()=>{
-    const _today=new Date();const _ymd=String(_today.getFullYear()).slice(2)+String(_today.getMonth()+1).padStart(2,"0")+String(_today.getDate()).padStart(2,"0");const _seq=String((orders.filter(o=>o.code.startsWith("I"+_ymd)).length)+1).padStart(3,"0");const _newCode="I"+_ymd+_seq;
+    const _today=new Date();const _ymd=String(_today.getFullYear()).slice(2)+String(_today.getMonth()+1).padStart(2,"0")+String(_today.getDate()).padStart(2,"0");const _sameDayNums=orders.filter(o=>o.code.startsWith("I"+_ymd)).map(o=>parseInt(o.code.slice(-3))).filter(n=>!isNaN(n));const _seq=String((_sameDayNums.length>0?Math.max(..._sameDayNums):0)+1).padStart(3,"0");const _newCode="I"+_ymd+_seq;
     setForm({code:_newCode,product:"",productName:"",orderQty:0,lot:"",warehouse:goodWarehouse?.name||"",processes:[],materials:[],status:"대기",date:new Date().toISOString().slice(0,10),factoryCode:factories[0]?.code||""});
     setProdCodeInput("");setModal("add");
   };
@@ -3576,11 +3882,11 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
       const ex=existingTimes.find(t=>t.code===p.code);
       return{code:p.code,name:p.name,hours:ex?ex.hours:0};
     });
-    setCompForm({doneDate:order.doneDate||new Date().toISOString().slice(0,10),defectQty:order.defectQty||0,processTimes:pts});
+    setCompForm({doneDate:order.doneDate||new Date().toISOString().slice(0,10),defectQty:order.defectQty||0,inspectQty:order.inspectQty||0,retainQty:order.retainQty||0,processTimes:pts});
     setCompleteModal(order);
   };
 
-  const handleComplete=(order,doneDate,defectQty,isReComplete=false)=>{
+  const handleComplete=(order,doneDate,defectQty,isReComplete=false,inspectQty=0,retainQty=0)=>{
     // 자재 출고: 이미 수동 출고된 수량을 제외하고 나머지만 자동 출고
     // 재완료(isReComplete=true)일 때는 자재 출고도 건너뜀 (이미 이전 완료 시 처리됨)
     if(!isReComplete){
@@ -3588,41 +3894,79 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
       if(bomMats.length>0&&order.orderQty>0){
         const ioRecs=[];
         const stockUpdates={};
+        const lotDeductions={}; // {itemCode: {lotCode: qty}}
         bomMats.forEach(m=>{
           const need=m.qty*order.orderQty;
-          // 이미 이 WO에 대해 출고된 수량
           const alreadyDone=(io||[]).filter(r=>r.type==="출고"&&r.item===m.code&&r.note&&r.note.includes(order.code)).reduce((s,r)=>s+(r.qty||0),0);
-          const remaining=need-alreadyDone;
+          let remaining=need-alreadyDone;
           if(remaining>0){
-            ioRecs.push({date:doneDate,type:"출고",item:m.code,itemName:m.name,qty:remaining,unitPrice:items.find(i=>i.code===m.code)?.price||0,lot:"",destination:"P",manager:"",approver:"",note:"작업지시서 "+order.code+" 투입(완료자동)"});
+            // FIFO: 제조일 오래된 LOT부터 차감
+            const availLots=lots.filter(l=>l.item===m.code&&(l.qty||0)>0)
+              .sort((a,b)=>(a.mfg||"").localeCompare(b.mfg||""));
+            let leftover=remaining;
+            availLots.forEach(l=>{
+              if(leftover<=0) return;
+              const take=Math.min(l.qty,leftover);
+              ioRecs.push({date:doneDate,type:"출고",item:m.code,itemName:m.name,qty:take,unitPrice:items.find(i=>i.code===m.code)?.price||0,lot:l.code,destination:"P",manager:"",approver:"",note:"작업지시서 "+order.code+" 투입(완료자동)"});
+              if(!lotDeductions[m.code]) lotDeductions[m.code]={};
+              lotDeductions[m.code][l.code]=(lotDeductions[m.code][l.code]||0)+take;
+              leftover-=take;
+            });
+            // LOT 재고 부족 시 나머지는 lot 미지정으로 처리
+            if(leftover>0){
+              ioRecs.push({date:doneDate,type:"출고",item:m.code,itemName:m.name,qty:leftover,unitPrice:items.find(i=>i.code===m.code)?.price||0,lot:"",destination:"P",manager:"",approver:"",note:"작업지시서 "+order.code+" 투입(완료자동)"});
+            }
             stockUpdates[m.code]=(stockUpdates[m.code]||0)+remaining;
           }
         });
         if(ioRecs.length>0){
           setItems(prev=>prev.map(it=>stockUpdates[it.code]!=null?{...it,stock:Math.max(0,it.stock-stockUpdates[it.code])}:it));
           setIo(prev=>[...ioRecs,...prev]);
+          setLots(prev=>prev.map(l=>{
+            const deduct=lotDeductions[l.item]?.[l.code]||0;
+            return deduct>0?{...l,qty:Math.max(0,(l.qty||0)-deduct)}:l;
+          }));
         }
       }
-      const goodQty=(order.orderQty||0)-(defectQty||0);
+      const mainLotCode=order.lot||"LOT"+Date.now();
+      const goodQty=(order.orderQty||0)-(defectQty||0)-(inspectQty||0)-(retainQty||0);
+      const totalGoodQty=goodQty+(inspectQty||0)+(retainQty||0); // 불량 제외 전체 (QC·보관 포함)
+      if(totalGoodQty>0){
+        setLots(prev=>[...prev,{code:mainLotCode,item:order.product,itemName:order.productName,qty:totalGoodQty,mfg:doneDate,exp:"",status:"정상",warehouse:order.warehouse||goodWarehouse.name}]);
+        setItems(prev=>prev.map(it=>it.code===order.product?{...it,stock:it.stock+totalGoodQty}:it));
+      }
       if(goodQty>0){
-        const glot={code:order.lot||"LOT"+Date.now(),item:order.product,itemName:order.productName,qty:goodQty,mfg:doneDate,exp:"",status:"정상",warehouse:order.warehouse||goodWarehouse.name};
-        setLots(prev=>[...prev,glot]);
-        setItems(prev=>prev.map(it=>it.code===order.product?{...it,stock:it.stock+goodQty}:it));
-        setIo(prev=>[{date:doneDate,type:"입고",item:order.product,itemName:order.productName,qty:goodQty,unitPrice:items.find(i=>i.code===order.product)?.price||0,lot:glot.code,note:`작업지시서 ${order.code} 완료`},...prev]);
+        setIo(prev=>[{date:doneDate,type:"입고",item:order.product,itemName:order.productName,qty:goodQty,unitPrice:items.find(i=>i.code===order.product)?.price||0,lot:mainLotCode,note:`작업지시서 ${order.code} 완료`},...prev]);
       }
       if((defectQty||0)>0){
-        setLots(prev=>[...prev,{code:"DEF"+Date.now(),item:order.product,itemName:order.productName,qty:defectQty,mfg:doneDate,exp:"",status:"불량",warehouse:defectWarehouse.name}]);
+        setLots(prev=>[...prev,{code:"DEF_"+order.code+"_"+Date.now(),item:order.product,itemName:order.productName,qty:defectQty,mfg:doneDate,exp:"",status:"불량",warehouse:defectWarehouse.name}]);
+      }
+      if((inspectQty||0)>0){
+        setIo(prev=>[{date:doneDate,type:"입고",item:order.product,itemName:order.productName,qty:inspectQty,unitPrice:items.find(i=>i.code===order.product)?.price||0,lot:mainLotCode,note:`품질검사 — WO ${order.code}`},...prev]);
+      }
+      if((retainQty||0)>0){
+        setIo(prev=>[{date:doneDate,type:"입고",item:order.product,itemName:order.productName,qty:retainQty,unitPrice:items.find(i=>i.code===order.product)?.price||0,lot:mainLotCode,note:`보관샘플 — WO ${order.code}`},...prev]);
       }
     }
   };
 
   const saveComplete=()=>{
     if(!compForm.doneDate){showToast("완료일을 입력해주세요");return;}
-    const isReComplete=completeModal.status==="완료"; // 이미 완료된 WO를 재완료하는 경우
-    const updated={...completeModal,status:"완료",defectQty:compForm.defectQty,doneDate:compForm.doneDate,processTimes:compForm.processTimes,worker:currentUser?.name||completeModal.worker||""};
-    handleComplete(completeModal,compForm.doneDate,compForm.defectQty,isReComplete);
-    setOrders(orders.map(o=>o.code===completeModal.code?updated:o));
-    showToast(isReComplete?"완료 정보 수정 완료 (입고 중복 방지)":"완료 처리 — 자재 차감·LOT 생성 완료");
+    const isReComplete=completeModal.status==="완료";
+    if(isReComplete){
+      // 재완료: 수량 변경 시 재고/LOT 반영 불가 → 경고
+      const qtyChanged=(completeModal.defectQty||0)!==compForm.defectQty||(completeModal.inspectQty||0)!==compForm.inspectQty||(completeModal.retainQty||0)!==compForm.retainQty;
+      if(qtyChanged&&!window.confirm("⚠️ 이미 완료된 작업지시서입니다.\n\n수량 변경은 재고/LOT에 반영되지 않습니다.\n완료일·공정시간만 수정됩니다.\n\n계속하시겠습니까?")) return;
+      // 재완료: 날짜·공정시간만 수정, 수량은 원본 유지
+      const updated={...completeModal,doneDate:compForm.doneDate,processTimes:compForm.processTimes,worker:currentUser?.name||completeModal.worker||""};
+      setOrders(orders.map(o=>o.code===completeModal.code?updated:o));
+      showToast("완료일·공정시간이 수정되었습니다 (재고 변경 없음)");
+    } else {
+      const updated={...completeModal,status:"완료",defectQty:compForm.defectQty,inspectQty:compForm.inspectQty,retainQty:compForm.retainQty,doneDate:compForm.doneDate,processTimes:compForm.processTimes,worker:currentUser?.name||completeModal.worker||""};
+      handleComplete(completeModal,compForm.doneDate,compForm.defectQty,false,compForm.inspectQty,compForm.retainQty);
+      setOrders(orders.map(o=>o.code===completeModal.code?updated:o));
+      showToast("완료 처리 — 자재 차감·LOT 생성 완료");
+    }
     setCompleteModal(null);setViewWo(null);
   };
 
@@ -3752,7 +4096,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
         return;
       }
     }
-    setCompForm({doneDate:new Date().toISOString().slice(0,10),defectQty:workOrder.defectQty||0,processTimes:workProcTimes});
+    setCompForm({doneDate:new Date().toISOString().slice(0,10),defectQty:workOrder.defectQty||0,inspectQty:workOrder.inspectQty||0,retainQty:workOrder.retainQty||0,processTimes:workProcTimes});
     setCompleteModal(workOrder);
   };
 
@@ -3818,7 +4162,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
         <table>
           <thead><tr>
             <th style={{width:36,textAlign:"center"}}>선택</th>
-            <th>지시번호</th><th>완제품</th><th style={{textAlign:"right"}}>지시수량</th>
+            <th>지시번호</th><th>완제품</th><th style={{textAlign:"right"}}>지시수량</th><th style={{textAlign:"right"}}>완료수량</th><th style={{textAlign:"right"}}>불량수량</th><th style={{textAlign:"right"}}>검사수량</th><th style={{textAlign:"right"}}>보관샘플</th>
             <th>공장</th><th>작업자</th><th>지시일</th><th>완료일</th><th>상태</th><th>LOT</th><th>관리</th>
           </tr></thead>
           <tbody>{filteredOrders.map(o=>(
@@ -3829,6 +4173,10 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
               <td><b style={{color:"#2563eb"}}>{o.code}</b></td>
               <td>{o.productName}</td>
               <td style={{textAlign:"right"}}>{o.orderQty} EA</td>
+              <td style={{textAlign:"right",color:o.status==="완료"?"#16a34a":"#aaa",fontWeight:o.status==="완료"?600:400}}>{o.status==="완료"?`${Math.max(0,(o.orderQty||0)-(o.defectQty||0)-(o.inspectQty||0))} EA`:"-"}</td>
+              <td style={{textAlign:"right",color:(o.defectQty||0)>0?"#e74c3c":"#aaa",fontWeight:(o.defectQty||0)>0?600:400}}>{o.status==="완료"?`${o.defectQty||0} EA`:"-"}</td>
+              <td style={{textAlign:"right",color:(o.inspectQty||0)>0?"#7c3aed":"#aaa",fontWeight:(o.inspectQty||0)>0?600:400}}>{o.status==="완료"?`${o.inspectQty||0} EA`:"-"}</td>
+              <td style={{textAlign:"right",color:(o.retainQty||0)>0?"#0369a1":"#aaa",fontWeight:(o.retainQty||0)>0?600:400}}>{o.status==="완료"?`${o.retainQty||0} EA`:"-"}</td>
               <td>{factories.find(f=>f.code===o.factoryCode)?.name||"-"}</td>
               <td style={{fontSize:12,color:o.worker?"#16a34a":"#aaa",fontWeight:o.worker?600:400}}>{o.worker||"-"}</td>
               <td>{o.date}</td>
@@ -3836,6 +4184,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
               <td><SBadge s={o.status}/></td>
               <td style={{fontSize:11,color:"#888"}}>{o.lot||"-"}</td>
               <td style={{display:"flex",gap:4,flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
+                {mfgDocs&&mfgDocs[o.product]&&<button className="btn btn-outline btn-sm" style={{color:"#7c3aed",borderColor:"#7c3aed",fontSize:11}} onClick={()=>openMfgDoc(o.product)}>📄 지시서</button>}
                 {perm.canEdit&&o.status!=="완료"&&o.status!=="취소"&&(
                   <button className="btn btn-sm" style={{background:"#16a34a",color:"#fff",border:"none",padding:"4px 8px",borderRadius:4,cursor:"pointer",fontSize:12}}
                     onClick={()=>{selectWorkWo(o.code);setActiveTab("work");}}>⚙️ 작업입력</button>
@@ -3847,7 +4196,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
                 {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(o.code)}>삭제</button>}
               </td>
             </tr>
-          ))}{!filteredOrders.length&&<tr><td colSpan={11} className="empty">{orders.length?"해당 기간에 작업지시 없음":"작업지시 없음"}</td></tr>}</tbody>
+          ))}{!filteredOrders.length&&<tr><td colSpan={13} className="empty">{orders.length?"해당 기간에 작업지시 없음":"작업지시 없음"}</td></tr>}</tbody>
         </table>
       </div>}
 
@@ -4101,9 +4450,27 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
               </div>
               <div className="field-row">
                 <div className="field"><label>완료일 *</label><input type="date" value={compForm.doneDate} onChange={e=>setCompForm(f=>({...f,doneDate:e.target.value}))}/></div>
-                <div className="field"><label>불량수량 (EA)</label><input type="number" value={compForm.defectQty} onChange={e=>setCompForm(f=>({...f,defectQty:+e.target.value}))}/></div>
+                <div className="field"><label>불량수량 (EA)</label><input type="number" min="0" value={compForm.defectQty} onChange={e=>setCompForm(f=>({...f,defectQty:+e.target.value}))}/></div>
               </div>
-              {compForm.defectQty>0&&<div style={{background:"#fef2f2",borderRadius:6,padding:"6px 12px",fontSize:12,color:"#e74c3c",marginBottom:8}}>⚠️ 불량 {compForm.defectQty}EA → {defectWarehouse.name}으로 LOT 이동 · 양품: {Math.max(0,(completeModal.orderQty||0)-compForm.defectQty)}EA</div>}
+              <div className="field-row">
+                <div className="field">
+                  <label>품질검사 수량 (EA) <span style={{color:"#888",fontWeight:400,fontSize:11}}>— 검사 샘플</span></label>
+                  <input type="number" min="0" value={compForm.inspectQty} onChange={e=>setCompForm(f=>({...f,inspectQty:+e.target.value}))}/>
+                </div>
+                <div className="field">
+                  <label>보관샘플 수량 (EA) <span style={{color:"#888",fontWeight:400,fontSize:11}}>— 보관용 샘플</span></label>
+                  <input type="number" min="0" value={compForm.retainQty} onChange={e=>setCompForm(f=>({...f,retainQty:+e.target.value}))}/>
+                </div>
+              </div>
+              {(compForm.defectQty>0||compForm.inspectQty>0||compForm.retainQty>0)&&(()=>{
+                const goodQty=Math.max(0,(completeModal.orderQty||0)-compForm.defectQty-compForm.inspectQty-compForm.retainQty);
+                return <div style={{background:"#f8f9fb",borderRadius:6,padding:"8px 12px",fontSize:12,marginBottom:8,lineHeight:1.7}}>
+                  {compForm.defectQty>0&&<div style={{color:"#e74c3c"}}>⚠️ 불량 {compForm.defectQty}EA → {defectWarehouse.name} LOT 이동</div>}
+                  {compForm.inspectQty>0&&<div style={{color:"#7c3aed"}}>🔬 품질검사 {compForm.inspectQty}EA → 작업지시 LOT로 입고</div>}
+                  {compForm.retainQty>0&&<div style={{color:"#0369a1"}}>📦 보관샘플 {compForm.retainQty}EA → 작업지시 LOT로 입고</div>}
+                  <div style={{color:"#16a34a",fontWeight:600}}>✅ 양품 입고: {goodQty}EA</div>
+                </div>;
+              })()}
               {compForm.processTimes.length>0&&(
                 <div>
                   <label style={{fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:6}}>⚙️ 공정별 실제 소요시간</label>
@@ -5076,6 +5443,209 @@ function FactoryPage({factories, setFactories, perm, showToast}) {
             <div className="modal-foot"><button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button><button className="btn btn-primary" onClick={save}>저장</button></div>
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function ShipmentPage({shipments,setShipments,items,setItems,lots,setLots,io,setIo,currentUser,perm,showToast,downloadCSV}) {
+  const todayStr=new Date().toISOString().slice(0,10);
+  const [modal,setModal]=useState(null);
+  const [form,setForm]=useState({code:"",date:todayStr,customer:"",item:"",itemName:"",lot:"",qty:0,unitPrice:0,note:"",manager:""});
+  const [codeInput,setCodeInput]=useState("");
+  const [sel,setSel]=useState(new Set());
+  const [startDate,setStartDate]=useState("");
+  const [endDate,setEndDate]=useState("");
+  const [filterCustomer,setFilterCustomer]=useState("");
+  const dateStyle={border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12};
+
+  const finishedItems=items.filter(i=>i.type==="완제품"||i.type==="반제품");
+  const toggleSel=(code)=>setSel(prev=>{const s=new Set(prev);s.has(code)?s.delete(code):s.add(code);return s;});
+
+  const filtered=shipments.filter(s=>{
+    if(startDate&&s.date<startDate) return false;
+    if(endDate&&s.date>endDate) return false;
+    if(filterCustomer&&!s.customer.includes(filterCustomer)) return false;
+    return true;
+  });
+
+  const customers=[...new Set(shipments.map(s=>s.customer).filter(Boolean))];
+  const availableLots=lots.filter(l=>l.item===form.item&&l.qty>0&&l.status!=="불량");
+
+  const openAdd=()=>{
+    const _today=new Date();const _ymd=String(_today.getFullYear()).slice(2)+String(_today.getMonth()+1).padStart(2,"0")+String(_today.getDate()).padStart(2,"0");
+    const _seq=String((shipments.filter(s=>s.code.startsWith("SH"+_ymd)).length)+1).padStart(3,"0");
+    setForm({code:"SH"+_ymd+_seq,date:todayStr,customer:"",item:"",itemName:"",lot:"",qty:0,unitPrice:0,note:"",manager:currentUser?.name||""});
+    setCodeInput("");setModal("add");
+  };
+
+  const pickItem=(code)=>{
+    const it=finishedItems.find(i=>i.code===code);
+    if(it){setForm(f=>({...f,item:it.code,itemName:it.name,unitPrice:it.price||0,lot:""}));}
+  };
+
+  const save=()=>{
+    if(!form.item){showToast("품목을 선택해주세요");return;}
+    if(!form.customer.trim()){showToast("거래처를 입력해주세요");return;}
+    if(form.qty<=0){showToast("수량을 입력해주세요");return;}
+    if(modal==="add"){
+      // 재고 차감
+      const lotObj=lots.find(l=>l.code===form.lot&&l.item===form.item);
+      if(form.lot&&lotObj){
+        if(lotObj.qty<form.qty){showToast(`❌ LOT 재고 부족 (현재 ${fmt3(lotObj.qty)})`);return;}
+        setLots(prev=>prev.map(l=>l.code===form.lot?{...l,qty:l.qty-form.qty}:l));
+      }
+      setItems(prev=>prev.map(i=>i.code===form.item?{...i,stock:Math.max(0,i.stock-form.qty)}:i));
+      setIo(prev=>[{date:form.date,type:"출고",item:form.item,itemName:form.itemName,qty:form.qty,unitPrice:form.unitPrice,lot:form.lot,destination:"S",manager:form.manager,approver:"",note:`출하 ${form.code} ${form.customer}`},...prev]);
+      setShipments(prev=>[form,...prev]);
+    } else {
+      setShipments(prev=>prev.map(s=>s.code===form.code?form:s));
+    }
+    showToast("저장되었습니다.");setModal(null);
+  };
+
+  const del=(code)=>{
+    if(!window.confirm("출하 기록을 삭제하시겠습니까?\n관련 입출고 이력도 삭제됩니다.")) return;
+    const s=shipments.find(x=>x.code===code);
+    if(s){
+      // 재고 복원
+      setItems(prev=>prev.map(i=>i.code===s.item?{...i,stock:i.stock+s.qty}:i));
+      if(s.lot) setLots(prev=>prev.map(l=>l.code===s.lot?{...l,qty:l.qty+s.qty}:l));
+      setIo(prev=>prev.filter(r=>!r.note||!r.note.includes(s.code)));
+    }
+    setShipments(prev=>prev.filter(x=>x.code!==code));
+    showToast("삭제되었습니다.");
+  };
+
+  const bulkDel=()=>{
+    if(!window.confirm(`선택한 ${sel.size}개를 삭제하시겠습니까?`)) return;
+    [...sel].forEach(code=>del(code));
+    setSel(new Set());
+  };
+
+  const totalQty=filtered.reduce((s,x)=>s+(x.qty||0),0);
+  const totalAmt=filtered.reduce((s,x)=>s+((x.qty||0)*(x.unitPrice||0)),0);
+
+  return (
+    <div>
+      <div className="page-header">
+        <div><div className="page-title">출하 관리</div><div className="page-sub">완제품 출하 등록 — 출하 시 재고 자동 차감</div></div>
+        <div style={{display:"flex",gap:8}}>
+          {perm.canDelete&&sel.size>0&&<button className="btn btn-danger" onClick={bulkDel}>🗑 선택 삭제 ({sel.size})</button>}
+          <button className="btn btn-outline" onClick={()=>downloadCSV(
+            ["출하번호","출하일","거래처","품목명","LOT","수량","단가","금액","담당자","비고"],
+            filtered.map(s=>[s.code,s.date,s.customer,s.itemName,s.lot,s.qty,s.unitPrice,(s.qty||0)*(s.unitPrice||0),s.manager,s.note])
+          ,"출하현황.csv")}>📥 엑셀 다운로드</button>
+          {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ 출하 등록</button>}
+        </div>
+      </div>
+
+      {/* 필터 바 */}
+      <div style={{background:"#fff",borderRadius:10,padding:"10px 16px",boxShadow:"0 1px 3px rgba(0,0,0,0.07)",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <span style={{fontSize:13,fontWeight:600,color:"#555"}}>출하일</span>
+        <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={dateStyle}/>
+        <span style={{fontSize:12,color:"#aaa"}}>~</span>
+        <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={dateStyle}/>
+        <button className="btn btn-outline btn-sm" onClick={()=>{setStartDate(todayStr);setEndDate(todayStr);}}>오늘</button>
+        <button className="btn btn-outline btn-sm" onClick={()=>{setStartDate("");setEndDate("");}}>전체</button>
+        <input placeholder="거래처 검색" value={filterCustomer} onChange={e=>setFilterCustomer(e.target.value)} style={{...dateStyle,width:140}}/>
+      </div>
+
+      {/* 요약 카드 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:14}}>
+        {[["총 출하 건수",`${filtered.length} 건`],["총 출하 수량",`${fmt3(totalQty)} EA`],["총 출하 금액",`${totalAmt.toLocaleString()} 원`]].map(([k,v])=>(
+          <div key={k} className="card"><div className="card-label">{k}</div><div className="card-val" style={{fontSize:18}}>{v}</div></div>
+        ))}
+      </div>
+
+      <div className="panel">
+        <div className="panel-top">
+          <b>🚛 출하 목록</b>
+          <span style={{fontSize:12,color:"#aaa"}}>{filtered.length}건</span>
+        </div>
+        <table>
+          <thead><tr>
+            <th style={{width:36,textAlign:"center"}}>선택</th>
+            <th>출하번호</th><th>출하일</th><th>거래처</th><th>품목명</th>
+            <th>LOT</th><th style={{textAlign:"right"}}>수량</th><th style={{textAlign:"right"}}>단가</th><th style={{textAlign:"right"}}>금액</th>
+            <th>담당자</th><th>비고</th><th>관리</th>
+          </tr></thead>
+          <tbody>
+            {filtered.map(s=>(
+              <tr key={s.code}>
+                <td style={{textAlign:"center"}}><input type="checkbox" checked={sel.has(s.code)} onChange={()=>toggleSel(s.code)} style={{cursor:"pointer"}}/></td>
+                <td><b style={{color:"#2563eb",fontSize:12}}>{s.code}</b></td>
+                <td style={{fontSize:12}}>{s.date}</td>
+                <td style={{fontWeight:600}}>{s.customer}</td>
+                <td>{s.itemName}</td>
+                <td style={{fontSize:11,color:"#7c3aed",fontFamily:"monospace"}}>{s.lot||"-"}</td>
+                <td style={{textAlign:"right",fontWeight:700}}>{fmt3(s.qty)}</td>
+                <td style={{textAlign:"right",fontSize:12,color:"#888"}}>{(s.unitPrice||0).toLocaleString()}</td>
+                <td style={{textAlign:"right",fontWeight:600,color:"#2563eb"}}>{((s.qty||0)*(s.unitPrice||0)).toLocaleString()}</td>
+                <td style={{fontSize:12,color:"#888"}}>{s.manager||"-"}</td>
+                <td style={{fontSize:12,color:"#888"}}>{s.note||"-"}</td>
+                <td style={{display:"flex",gap:4}}>
+                  {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({...s});setCodeInput(s.item||"");setModal("edit");}}>수정</button>}
+                  {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(s.code)}>삭제</button>}
+                </td>
+              </tr>
+            ))}
+            {!filtered.length&&<tr><td colSpan={12} className="empty">{shipments.length?"해당 조건의 출하 없음":"출하 기록 없음"}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      {modal&&(
+        <div className="overlay"><div className="modal" style={{width:580}} onClick={e=>e.stopPropagation()}>
+          <div className="modal-head">
+            <span className="modal-title">출하 {modal==="add"?"등록":"수정"}</span>
+            <button className="modal-close" onClick={()=>setModal(null)}>✕</button>
+          </div>
+          <div className="modal-body">
+            <div className="field-row">
+              <div className="field"><label>출하번호</label><input value={form.code} disabled/></div>
+              <div className="field"><label>출하일 *</label><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/></div>
+            </div>
+            <div className="field"><label>거래처 *</label>
+              <input value={form.customer} onChange={e=>setForm(f=>({...f,customer:e.target.value}))} placeholder="거래처명 입력" list="customer-list"/>
+              <datalist id="customer-list">{customers.map(c=><option key={c} value={c}/>)}</datalist>
+            </div>
+            <div className="field" style={{position:"relative"}}>
+              <label>완제품 *</label>
+              <input value={codeInput} onChange={e=>{setCodeInput(e.target.value);const it=finishedItems.find(i=>i.code===e.target.value);if(it) pickItem(it.code);else setForm(f=>({...f,item:"",itemName:""}));}} placeholder="품목코드 또는 제품명" autoComplete="off"/>
+              {codeInput&&!form.item&&(()=>{
+                const hits=finishedItems.filter(i=>i.code.toLowerCase().includes(codeInput.toLowerCase())||i.name.toLowerCase().includes(codeInput.toLowerCase()));
+                return hits.length>0?(
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #2563eb",borderRadius:6,boxShadow:"0 4px 12px rgba(0,0,0,0.12)",zIndex:300,maxHeight:180,overflowY:"auto"}}>
+                    {hits.map(i=>(
+                      <div key={i.code} onClick={()=>{pickItem(i.code);setCodeInput(i.code);}} style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #f0f0f0",fontSize:13}}
+                        onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                        <b>{i.code}</b> — {i.name} <span style={{fontSize:11,color:"#888"}}>(재고 {fmt3(i.stock)})</span>
+                      </div>
+                    ))}
+                  </div>):null;
+              })()}
+            </div>
+            <div className="field-row">
+              <div className="field"><label>LOT 선택</label>
+                <select value={form.lot} onChange={e=>setForm(f=>({...f,lot:e.target.value}))}>
+                  <option value="">LOT 없이 출하</option>
+                  {availableLots.map(l=><option key={l.code} value={l.code}>{l.code} (재고 {fmt3(l.qty)})</option>)}
+                </select>
+              </div>
+              <div className="field"><label>수량 *</label><input type="number" value={form.qty} onChange={e=>setForm(f=>({...f,qty:+e.target.value}))}/></div>
+            </div>
+            <div className="field-row">
+              <div className="field"><label>단가</label><input type="number" value={form.unitPrice} onChange={e=>setForm(f=>({...f,unitPrice:+e.target.value}))}/></div>
+              <div className="field"><label>담당자</label><input value={form.manager} onChange={e=>setForm(f=>({...f,manager:e.target.value}))}/></div>
+            </div>
+            <div className="field"><label>비고</label><input value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))}/></div>
+          </div>
+          <div className="modal-foot">
+            <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
+            <button className="btn btn-primary" onClick={save}>저장</button>
+          </div>
+        </div></div>
       )}
     </div>
   );
