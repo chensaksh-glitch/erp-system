@@ -880,20 +880,18 @@ function TransferPage({transfers,setTransfers,items,lots,setLots,io,setIo,wareho
       manager: currentUser?.name||""
     };
 
-    // 도착 LOT 코드 결정 (동기적으로 계산)
-    const srcLot = lots.find(l=>l.code===form.lot);
+    // 도착 LOT 코드 = 원본 LOT 번호 그대로 (접미사 없음, 창고로만 구분)
+    const srcLot = lots.find(l=>l.code===form.lot && l.warehouse===form.fromWarehouse) || lots.find(l=>l.code===form.lot);
     const existDest = lots.find(l=>l.item===form.item && l.code===form.lot && l.warehouse===form.toWarehouse);
-    const mvCode = form.lot+"_MV_"+form.toWarehouse;
-    const existMv = lots.find(l=>l.code===mvCode);
-    const destLotCode = existDest ? existDest.code : mvCode;
+    const destLotCode = form.lot;
 
-    // LOT 창고 업데이트: qty만큼 출발창고 LOT 차감 → 도착창고에 기존 LOT 합산 or 신규 생성
+    // LOT 창고 업데이트: 출발창고 LOT 차감 → 도착창고 동일 LOT 합산 or 신규 생성 ((코드+창고)로 식별)
     setLots(prev => {
       const updated = prev.map(l=>
-        l.code===form.lot && l.warehouse===form.fromWarehouse ? {...l, qty:l.qty-qty} :
-        l.code===destLotCode ? {...l, qty:(l.qty||0)+qty} : l
+        l.code===form.lot && l.warehouse===form.fromWarehouse ? {...l, qty:(l.qty||0)-qty} :
+        l.code===form.lot && l.warehouse===form.toWarehouse ? {...l, qty:(l.qty||0)+qty} : l
       );
-      if(existDest || existMv) return updated;
+      if(existDest) return updated;
       return [...updated, {...srcLot, code:destLotCode, qty, warehouse:form.toWarehouse}];
     });
 
@@ -908,20 +906,25 @@ function TransferPage({transfers,setTransfers,items,lots,setLots,io,setIo,wareho
   };
 
   const _revertTransfer=(t)=>{
+    // 도착 코드: 신규=원본 LOT 번호(t.lot), 구버전(_MV_ 데이터)=접미사 코드
+    const destCode=t._destLotCode||(t.lot+"_MV_"+t.toWarehouse);
+    const destIsSuffixed=destCode!==t.lot; // 구버전 여부
     // IO 역추적 삭제 (_transferId 우선, 없으면 note 패턴으로 매칭)
     setIo(prev=>prev.filter(r=>
       r._transferId ? r._transferId!==t.id :
       !(r.item===t.item && r.qty===t.qty && (r.note||"").includes("창고이동") &&
-        ((r.lot===t.lot&&r.type==="출고")||(r.lot===(t._destLotCode||t.lot+"_MV_"+t.toWarehouse)&&r.type==="입고")))
+        ((r.lot===t.lot&&r.type==="출고")||(r.lot===destCode&&r.type==="입고")))
     ));
     // LOT 수량 복구
-    const destCode=t._destLotCode||t.lot+"_MV_"+t.toWarehouse;
     setLots(prev=>{
+      // 출발창고 LOT 복구
       const updated=prev.map(l=>l.code===t.lot&&(l.warehouse===t.fromWarehouse||!l.warehouse)?{...l,qty:(l.qty||0)+t.qty}:l);
-      const destLot=updated.find(l=>l.code===destCode);
+      // 도착 LOT 차감: 구버전은 코드로, 신규는 (코드+도착창고)로 식별
+      const match=l=>destIsSuffixed?l.code===destCode:(l.code===t.lot&&l.warehouse===t.toWarehouse);
+      const destLot=updated.find(match);
       if(!destLot) return updated;
-      if((destLot.qty||0)<=t.qty) return updated.filter(l=>l.code!==destCode);
-      return updated.map(l=>l.code===destCode?{...l,qty:(l.qty||0)-t.qty}:l);
+      if((destLot.qty||0)<=t.qty) return updated.filter(l=>!match(l));
+      return updated.map(l=>match(l)?{...l,qty:(l.qty||0)-t.qty}:l);
     });
   };
 
@@ -2147,8 +2150,8 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
     const it=items.find(x=>x.code===l.item);
     if(it?.type!=="완제품"&&it?.type!=="반제품") return raw;
     const cutoff=date||todayStr;
-    const qcNet=Math.max(0,(io||[]).filter(r=>r.lot===l.code&&(r.note||"").includes("품질검사")&&r.date<=cutoff).reduce((s,r)=>s+(r.type==="입고"?r.qty:-(r.qty||0)),0));
-    const rtNet=Math.max(0,(io||[]).filter(r=>r.lot===l.code&&(r.note||"").includes("보관샘플")&&r.date<=cutoff).reduce((s,r)=>s+(r.type==="입고"?r.qty:-(r.qty||0)),0));
+    const qcNet=Math.max(0,(io||[]).filter(r=>r.lot===l.code&&(r.note||"").includes("품질검사")&&r.date<=cutoff).reduce((s,r)=>s+(r.type==="입고"?(r.qty||0):-(r.qty||0)),0));
+    const rtNet=Math.max(0,(io||[]).filter(r=>r.lot===l.code&&(r.note||"").includes("보관샘플")&&r.date<=cutoff).reduce((s,r)=>s+(r.type==="입고"?(r.qty||0):-(r.qty||0)),0));
     return Math.max(0,raw-qcNet-rtNet);
   };
   // LOT 목록에 기준일 수량 추가
@@ -2984,30 +2987,59 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
       if(ioTab==="보관샘플") return (t==="완제품"||t==="반제품")&&isRT;
       return true;
     });
+    // ── 성능: tabIo/io를 단일 패스로 사전집계 (O(n²) → O(n)) ──
+    const aInMap={},aOutMap={},pInMap={},pOutMap={};
+    tabIo.forEach(r=>{
+      const k=lotKey(r.item,r.lot);
+      const q=r.qty||0;
+      if(r.type==="입고") aInMap[k]=(aInMap[k]||0)+q;
+      else if(r.type==="출고") aOutMap[k]=(aOutMap[k]||0)+q;
+      if(startDate&&r.date<startDate){
+        if(r.type==="입고") pInMap[k]=(pInMap[k]||0)+q;
+        else if(r.type==="출고") pOutMap[k]=(pOutMap[k]||0)+q;
+      }
+    });
+    // QC/보관샘플 순수량은 탭과 무관하게 전체 io 기준 (기존 동작 유지)
+    const qcNetMap={},rtNetMap={};
+    io.forEach(r=>{
+      const note=r.note||"";
+      const isQC=note.includes("품질검사"),isRT=note.includes("보관샘플");
+      if(!isQC&&!isRT) return;
+      const k=lotKey(r.item,r.lot);
+      const signed=r.type==="입고"?(r.qty||0):-(r.qty||0);
+      if(isQC) qcNetMap[k]=(qcNetMap[k]||0)+signed;
+      if(isRT) rtNetMap[k]=(rtNetMap[k]||0)+signed;
+    });
+    // 품목별 LOT 수량 합계 사전집계
+    const lotTotalMap={};
+    lots.forEach(l=>{lotTotalMap[l.item]=(lotTotalMap[l.item]||0)+(l.qty||0);});
+    // (품목,코드) 기준 LOT 수량 합계 — 같은 LOT이 여러 창고에 있을 때 합산 (창고이동 부분이동 대응)
+    const lotKeyQty={},lotKeyCode={};
+    lots.forEach(l=>{const k=lotKey(l.item,l.code);lotKeyQty[k]=(lotKeyQty[k]||0)+(l.qty||0);lotKeyCode[k]=l.code;});
     // LOT 있는 항목: 탭별 IO 기준으로 역산 (완제품 탭에서 QC/RT 수량 제외)
-    lots.forEach(l=>{
-      const k=lotKey(l.item,l.code);
-      const aIn=tabIo.filter(r=>r.item===l.item&&(r.lot||"")===l.code&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
-      const aOut=tabIo.filter(r=>r.item===l.item&&(r.lot||"")===l.code&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
+    Object.keys(lotKeyQty).forEach(k=>{
+      const code=lotKeyCode[k];
+      const aIn=aInMap[k]||0;
+      const aOut=aOutMap[k]||0;
       // 완제품 탭: 동일 LOT 내 QC/RT 잔량을 lot.qty에서 차감 (기존 데이터 호환)
-      let effQty=l.qty||0;
+      let effQty=lotKeyQty[k];
       if(ioTab==="완제품"){
-        const qcRem=io.filter(r=>r.item===l.item&&(r.lot||"")===l.code&&(r.note||"").includes("품질검사")).reduce((s,r)=>s+(r.type==="입고"?r.qty:-(r.qty||0)),0);
-        const rtRem=io.filter(r=>r.item===l.item&&(r.lot||"")===l.code&&(r.note||"").includes("보관샘플")).reduce((s,r)=>s+(r.type==="입고"?r.qty:-(r.qty||0)),0);
+        const qcRem=qcNetMap[k]||0;
+        const rtRem=rtNetMap[k]||0;
         effQty=Math.max(0,effQty-Math.max(0,qcRem)-Math.max(0,rtRem));
-      } else if(ioTab==="품질검사"&&!l.code.endsWith("_QC")){
-        effQty=Math.max(0,io.filter(r=>r.item===l.item&&(r.lot||"")===l.code&&(r.note||"").includes("품질검사")).reduce((s,r)=>s+(r.type==="입고"?r.qty:-(r.qty||0)),0));
-      } else if(ioTab==="보관샘플"&&!l.code.endsWith("_RT")){
-        effQty=Math.max(0,io.filter(r=>r.item===l.item&&(r.lot||"")===l.code&&(r.note||"").includes("보관샘플")).reduce((s,r)=>s+(r.type==="입고"?r.qty:-(r.qty||0)),0));
+      } else if(ioTab==="품질검사"&&!code.endsWith("_QC")){
+        effQty=Math.max(0,qcNetMap[k]||0);
+      } else if(ioTab==="보관샘플"&&!code.endsWith("_RT")){
+        effQty=Math.max(0,rtNetMap[k]||0);
       }
       baseline[k]=Math.max(0,effQty-aIn+aOut);
     });
     // LOT 없는 항목: items.stock에서 lot 합산분 제외
     items.forEach(it=>{
       const k=lotKey(it.code,"");
-      const lotTotal=lots.filter(l=>l.item===it.code).reduce((s,l)=>s+(l.qty||0),0);
-      const aIn=tabIo.filter(r=>r.item===it.code&&!r.lot&&r.type==="입고").reduce((s,r)=>s+(r.qty||0),0);
-      const aOut=tabIo.filter(r=>r.item===it.code&&!r.lot&&r.type==="출고").reduce((s,r)=>s+(r.qty||0),0);
+      const lotTotal=lotTotalMap[it.code]||0;
+      const aIn=aInMap[k]||0;
+      const aOut=aOutMap[k]||0;
       baseline[k]=Math.max(0,Math.max(0,(it.stock||0)-lotTotal)-aIn+aOut);
     });
     // rows에만 있는 key 보충
@@ -3015,16 +3047,13 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
     // 기간 시작일 이전 IO 누적 → 기간 개시잔고 (탭 필터 적용)
     const preNetMap={};
     Object.keys(baseline).forEach(k=>{
-      const [item,lot]=k.split("__");
-      const pIn=tabIo.filter(r=>r.item===item&&(r.lot||"")===lot&&r.type==="입고"&&(startDate&&r.date<startDate)).reduce((s,r)=>s+(r.qty||0),0);
-      const pOut=tabIo.filter(r=>r.item===item&&(r.lot||"")===lot&&r.type==="출고"&&(startDate&&r.date<startDate)).reduce((s,r)=>s+(r.qty||0),0);
-      preNetMap[k]=pIn-pOut;
+      preNetMap[k]=(pInMap[k]||0)-(pOutMap[k]||0);
     });
     const stock={};
     return rows.map(r=>{
       const k=lotKey(r.item,r.lot);
       if(stock[k]===undefined) stock[k]=(baseline[k]||0)+(preNetMap[k]||0);
-      stock[k]+=(r.type==="입고"?r.qty:-(r.qty||0));
+      stock[k]+=(r.type==="입고"?(r.qty||0):-(r.qty||0));
       return {...r,runStock:stock[k]};
     });
   };
@@ -3496,8 +3525,10 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
       const dataCount=displayRows.length<=rowsPerPage?rowsPerPage:displayRows.length;
       const printRows=Array.from({length:dataCount},(_,i)=>{
         const r=displayRows[i]||null;
-        const printNote=(r.note||"").includes("작업지시서")?"":r.note||"";
-        if(r) return `<tr><td>${i+1}</td><td>${toDate(r.date)}</td><td style="text-align:left">${r.lot||""}</td><td>${r.type}</td><td>${r.type==="입고"?f3(r.qty):""}</td><td>${r.type==="출고"?f3(r.qty):""}</td><td>${f3(r.runStock??0)}</td><td style="text-align:left">${r.destination||""}</td><td>${r.manager||""}</td><td>${r.approver||""}</td><td style="text-align:left">${printNote}</td></tr>`;
+        if(r){
+          const printNote=(r.note||"").includes("작업지시서")?"":r.note||"";
+          return `<tr><td>${i+1}</td><td>${toDate(r.date)}</td><td style="text-align:left">${r.lot||""}</td><td>${r.type}</td><td>${r.type==="입고"?f3(r.qty):""}</td><td>${r.type==="출고"?f3(r.qty):""}</td><td>${f3(r.runStock??0)}</td><td style="text-align:left">${r.destination||""}</td><td>${r.manager||""}</td><td>${r.approver||""}</td><td style="text-align:left">${printNote}</td></tr>`;
+        }
         return `<tr><td style="color:#ccc">${i+1}</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>`;
       }).join("");
       const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>완제품·반제품 입출고 관리대장</title><style>@page{size:A4 portrait;margin:19mm 18mm 12mm 18mm;}body{font-family:'나눔고딕','맑은 고딕',sans-serif;font-size:8pt;margin:0;}.title{text-align:center;font-size:13pt;font-weight:bold;border:1px solid #000;padding:7px 4px;margin-bottom:5px;}table{width:100%;border-collapse:collapse;table-layout:fixed;}th,td{border:1px solid #000;padding:2px 3px;text-align:center;font-size:7pt;line-height:1.4;overflow:hidden;word-break:break-all;}th{background:#d9d9d9;font-weight:bold;}tr{height:22pt;}.sum-row td{background:#d9d9d9;font-weight:bold;}.footer{display:flex;justify-content:space-between;font-size:7pt;color:#555;margin-top:4px;}thead{display:table-header-group;}tr{page-break-inside:avoid;}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}</style></head><body><div class="title">완제품·반제품 입출고 관리대장</div><table><colgroup><col style="width:4%"><col style="width:10%"><col style="width:12%"><col style="width:7%"><col style="width:6%"><col style="width:6%"><col style="width:6%"><col style="width:20%"><col style="width:6%"><col style="width:6%"><col style="width:17%"></colgroup><thead><tr><th>No.</th><th>일자</th><th>Lot No.</th><th>구분&#10;(입/출고)</th><th>입고량</th><th>출고량</th><th>재고량</th><th>출고처</th><th>담당자</th><th>확인자</th><th>비고</th></tr></thead><tbody>${printRows}</tbody><tfoot><tr class="sum-row"><td colspan="6" style="text-align:center">재고 수량</td><td>${f3(lastStock)}</td><td colspan="4"></td></tr></tfoot></table><div class="footer"><span>SOP-705-F08</span><span>Ver3.0(2026.04.01)</span><span>(주)아이메디텍</span></div></body></html>`;
@@ -3976,7 +4007,8 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
         }
       }
       const mainLotCode=order.lot||"LOT"+Date.now();
-      const goodQty=(order.orderQty||0)-(defectQty||0)-(inspectQty||0)-(retainQty||0);
+      // 양품 = 지시 - 불량 - 검사 - 보관샘플 (음수 방지: 합계 초과는 saveComplete에서 이미 차단)
+      const goodQty=Math.max(0,(order.orderQty||0)-(defectQty||0)-(inspectQty||0)-(retainQty||0));
       const totalGoodQty=goodQty+(inspectQty||0)+(retainQty||0);
       if(totalGoodQty>0){
         setLots(prev=>[...prev,{code:mainLotCode,item:order.product,itemName:order.productName,qty:totalGoodQty,mfg:doneDate,exp:"",status:"정상",warehouse:order.warehouse||goodWarehouse.name}]);
@@ -3999,6 +4031,13 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
 
   const saveComplete=()=>{
     if(!compForm.doneDate){showToast("완료일을 입력해주세요");return;}
+    // 불량+검사+보관샘플 합계가 지시수량을 초과하면 차단 (양품 음수 → 재고 과다 집계 방지)
+    const _orderQty=completeModal.orderQty||0;
+    const _used=(compForm.defectQty||0)+(compForm.inspectQty||0)+(compForm.retainQty||0);
+    if(_used>_orderQty){
+      alert(`❌ 수량 합계가 지시수량을 초과합니다.\n\n지시수량: ${_orderQty}EA\n불량 ${compForm.defectQty||0} + 검사 ${compForm.inspectQty||0} + 보관샘플 ${compForm.retainQty||0} = ${_used}EA\n초과: ${_used-_orderQty}EA\n\n합계가 지시수량을 넘지 않도록 조정해주세요.`);
+      return;
+    }
     const isReComplete=completeModal.status==="완료";
     if(isReComplete){
       // 재완료: 수량 변경 시 재고/LOT 반영 불가 → 경고
