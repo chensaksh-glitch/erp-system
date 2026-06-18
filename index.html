@@ -3384,10 +3384,10 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
                   <td><span className={`badge ${typeBadge(it?.type||"")}`}>{it?.type||"-"}</span></td>
                   <td><b style={{fontFamily:"monospace",color:"#2f6df0",fontSize:12}}>{l.code}</b></td>
                   <td style={{textAlign:"right",fontWeight:700,color:l._qty<=0?"#e74c3c":l._qty<(it?.minStock||0)?"#e67e22":"inherit"}}>
-                    {fmt3(l._qty)}
+                    {fmt3(l._qty)}<span style={{fontSize:11,color:"var(--muted)",fontWeight:500,marginLeft:3}}>{it?.unit||"EA"}</span>
                     {qtyChanged&&<span style={{fontSize:10,color:"#888",marginLeft:5}}>(현재 {fmt3(l.qty)})</span>}
                   </td>
-                  <td style={{textAlign:"right",fontSize:12,color:"var(--muted)"}}>{it?.minStock?fmt3(it.minStock):"-"}</td>
+                  <td style={{textAlign:"right",fontSize:12,color:"var(--muted)"}}>{it?.minStock?<>{fmt3(it.minStock)}<span style={{marginLeft:3}}>{it?.unit||"EA"}</span></>:"-"}</td>
                   <td><StockLevel cur={l._qty} safe={it?.minStock||0}/></td>
                   <td style={{fontSize:12,color:"#888"}}>{l.mfg||"-"}</td>
                   <td style={{color:l.status==="만료임박"?"#e67e22":l.status==="만료"?"#e74c3c":"#888",fontSize:12}}>{l.exp||"-"}</td>
@@ -3483,8 +3483,8 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
                       <td><b style={{fontFamily:"monospace",color:"#1b2333",fontSize:12}}>{l.item}</b></td>
                       <td style={{cursor:onItemClick?"pointer":"default",color:onItemClick?"#2f6df0":"inherit",fontWeight:600}} onClick={()=>onItemClick&&it&&onItemClick(it)}>{l.itemName}</td>
                       <td><b style={{fontFamily:"monospace",color:"#2f6df0",fontSize:12}}>{l.code}</b></td>
-                      <td style={{textAlign:"right",fontWeight:700}}>{fmt3(l._qty)}</td>
-                      <td style={{textAlign:"right",fontSize:12,color:"var(--muted)"}}>{it?.minStock?fmt3(it.minStock):"-"}</td>
+                      <td style={{textAlign:"right",fontWeight:700}}>{fmt3(l._qty)}<span style={{fontSize:11,color:"var(--muted)",fontWeight:500,marginLeft:3}}>{it?.unit||"EA"}</span></td>
+                      <td style={{textAlign:"right",fontSize:12,color:"var(--muted)"}}>{it?.minStock?<>{fmt3(it.minStock)}<span style={{marginLeft:3}}>{it?.unit||"EA"}</span></>:"-"}</td>
                       <td><StockLevel cur={l._qty} safe={it?.minStock||0}/></td>
                       <td style={{fontSize:12}}>{l.warehouse||"-"}</td>
                       <td><span className={`badge ${stTone}`}>{ss}</span></td>
@@ -3776,21 +3776,22 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
     showToast(`${entry.itemName} 입고 처리 완료 — 재고현황에 즉시 반영되었습니다.`);
   };
 
-  // 날짜+상태 필터 (인라인 3중복 정리)
+  // 날짜 범위 필터 (KPI·목록 공통 기준)
+  const inDateRange=(i)=>{const d=i.incomingDate||i.eta||"";if(startDate&&d<startDate)return false;if(endDate&&d>endDate)return false;return true;};
+  // 날짜+상태+검색 필터 (목록 표시용)
   const visible=incoming.filter(i=>{
-    const d=i.incomingDate||i.eta||"";
-    if(startDate&&d<startDate)return false;
-    if(endDate&&d>endDate)return false;
+    if(!inDateRange(i))return false;
     if(statusF==="대기"&&i.status==="완료")return false;
     if(statusF==="완료"&&i.status!=="완료")return false;
     if(q&&!(`${i.itemName||""} ${i.item||""} ${i.lot||""} ${i.supplier||""}`.toLowerCase().includes(q.toLowerCase())))return false;
     return true;
   });
-  // KPI 요약 (전체 입고예정 기준 실데이터)
-  const kPending=incoming.filter(i=>i.status!=="완료").length;
-  const kToday=incoming.filter(i=>(i.incomingDate||i.eta||"")===today&&i.status!=="완료").length;
-  const kDone=incoming.filter(i=>i.status==="완료").length;
-  const kPendQty=incoming.filter(i=>i.status!=="완료").reduce((s,i)=>s+(i.qty||0),0);
+  // KPI 요약 — 현재 날짜 범위 기준(상태/검색과 무관). 목록과 카운트가 일치하도록
+  const dateScoped=incoming.filter(inDateRange);
+  const kPending=dateScoped.filter(i=>i.status!=="완료").length;
+  const kToday=dateScoped.filter(i=>(i.incomingDate||i.eta||"")===today&&i.status!=="완료").length;
+  const kDone=dateScoped.filter(i=>i.status==="완료").length;
+  const kPendQty=dateScoped.filter(i=>i.status!=="완료").reduce((s,i)=>s+(i.qty||0),0);
 
   return (
     <div>
@@ -3845,10 +3846,10 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
         </div>
       </div>
       <div className="kpis" style={{gridTemplateColumns:"repeat(4,1fr)"}}>
-        <div className="kpi"><div className="kpi-chip blue">🚚</div><div className="kpi-label">입고 예정</div><div className="kpi-val">{kPending}<span className="kpi-unit">건</span></div><div className="kpi-trend"><span className="t-note">미처리 합계</span></div></div>
+        <div className="kpi"><div className="kpi-chip blue">🚚</div><div className="kpi-label">입고 예정</div><div className="kpi-val">{kPending}<span className="kpi-unit">건</span></div><div className="kpi-trend"><span className="t-note">선택 기간 · 미처리</span></div></div>
         <div className="kpi"><div className="kpi-chip amber">📅</div><div className="kpi-label">오늘 도착</div><div className="kpi-val">{kToday}<span className="kpi-unit">건</span></div><div className="kpi-trend"><span className="t-note">{today} 예정</span></div></div>
-        <div className="kpi"><div className="kpi-chip green">✅</div><div className="kpi-label">입고 완료</div><div className="kpi-val">{kDone}<span className="kpi-unit">건</span></div><div className="kpi-trend"><span className="t-note">처리 완료</span></div></div>
-        <div className="kpi"><div className="kpi-chip violet">📦</div><div className="kpi-label">예정 수량</div><div className="kpi-val">{fmt3(kPendQty)}</div><div className="kpi-trend"><span className="t-note">미처리 수량 합계</span></div></div>
+        <div className="kpi"><div className="kpi-chip green">✅</div><div className="kpi-label">입고 완료</div><div className="kpi-val">{kDone}<span className="kpi-unit">건</span></div><div className="kpi-trend"><span className="t-note">선택 기간 · 완료</span></div></div>
+        <div className="kpi"><div className="kpi-chip violet">📦</div><div className="kpi-label">예정 수량</div><div className="kpi-val">{fmt3(kPendQty)}</div><div className="kpi-trend"><span className="t-note">선택 기간 · 미처리</span></div></div>
       </div>
       <div className="panel">
         <div className="panel-top">
