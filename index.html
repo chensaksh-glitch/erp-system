@@ -2055,6 +2055,16 @@ function downloadTemplate(headers, exampleRow, filename) {
   URL.revokeObjectURL(url);
 }
 
+// CSV 파일을 인코딩 자동 감지로 읽는다 (UTF-8 우선, 깨지면 EUC-KR로 재시도, BOM 제거)
+async function readCsvFile(f){
+  const buf = await f.arrayBuffer();
+  let text = new TextDecoder("utf-8").decode(buf);
+  if(text.includes(" ")){
+    try{ text = new TextDecoder("euc-kr").decode(buf); }catch(e){ /* euc-kr 미지원 시 UTF-8 유지 */ }
+  }
+  return text.replace(/^﻿/,""); // 선두 BOM 제거
+}
+
 function UploadBtn({onUpload, label="📂 업로드"}) {
   const ref = React.useRef(null);
   return (
@@ -2062,7 +2072,7 @@ function UploadBtn({onUpload, label="📂 업로드"}) {
       <button className="btn btn-outline" onClick={()=>ref.current&&ref.current.click()}>{label}</button>
       <input ref={ref} type="file" accept=".csv" style={{display:"none"}} onChange={async e=>{
         const f=e.target.files[0]; if(!f) return; e.target.value="";
-        const text = await f.text();
+        const text = await readCsvFile(f);
         onUpload(text);
       }}/>
     </>
@@ -2548,7 +2558,7 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
             <UploadBtn label="📂 CSV 업로드" onUpload={(text)=>{
               const {headers,rows}=parseCsvRows(text);
               const hi=(name)=>headers.findIndex(h=>h===name||h.replace(/\s/g,"")===name);
-              const iCode=hi("코드"); const iName=hi("품목명"); const iType=hi("유형");
+              const iCode=hi("코드")>=0?hi("코드"):hi("품목코드"); const iName=hi("품목명"); const iType=hi("유형");
               const iUnit=hi("단위"); const iSpec=hi("규격"); const iCap=hi("용량");
               const iStock=hi("현재고"); const iMin=hi("최소재고"); const iPrice=hi("단가");
               if(iCode<0||iName<0){showToast("❌ 코드, 품목명 컬럼이 필요합니다");return;}
