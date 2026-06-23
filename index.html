@@ -769,7 +769,7 @@ function App() {
         if(error){console.error('DB 로드 오류:',error);setDbLoaded(true);return;}
         const store={};
         (data||[]).forEach(row=>{store[row.key]=row.value;});
-        if(store.items)    setItems(store.items);
+        if(store.items)    setItems(store.items.map(it=>it.type==="제품"?{...it,type:"완제품"}:it)); // 레거시 유형 "제품"→"완제품" 정규화
         if(store.warehouses) setWarehouses(store.warehouses);
         if(store.processes)  setProcesses(store.processes);
         if(store.bom)      setBom(store.bom);
@@ -906,7 +906,7 @@ function App() {
 
   const doRestore = async (file) => {
     try {
-      const text = await file.text();
+      const text = (await file.text()).replace(/^﻿/,""); // 선두 BOM 제거 후 파싱
       const data = JSON.parse(text);
       if(!data.version || !data.items) { alert("올바른 백업 파일이 아닙니다."); return; }
       // Supabase에 모두 저장
@@ -915,7 +915,7 @@ function App() {
         if(data[key] !== undefined) await syncDB(key, data[key]);
       }
       // React state도 업데이트
-      if(data.items)        setItems(data.items);
+      if(data.items)        setItems(data.items.map(it=>it.type==="제품"?{...it,type:"완제품"}:it)); // 유형 "제품"→"완제품" 정규화
       if(data.warehouses)   setWarehouses(data.warehouses);
       if(data.processes)    setProcesses(data.processes);
       if(data.bom)          setBom(data.bom);
@@ -1022,7 +1022,7 @@ function App() {
 
   const pages = {
     dashboard: <Dashboard items={items} lots={lots} orders={orders} incoming={incoming} setPage={setPage} dataMB={dataMB} onItemClick={setDetailItem} io={io} perm={perm} />,
-    items: <ItemsPage items={items} setItems={setItems} warehouses={warehouses} processes={processes} perm={perm} showToast={showToast} tryDelete={tryDelete} checkItemLinks={checkItemLinks} downloadCSV={downloadCSV} onItemClick={setDetailItem} mfgDocs={mfgDocs} setMfgDocs={setMfgDocs} saveMfgDoc={saveMfgDoc} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
+    items: <ItemsPage items={items} setItems={setItems} bom={bom} setBom={setBom} warehouses={warehouses} processes={processes} perm={perm} showToast={showToast} tryDelete={tryDelete} checkItemLinks={checkItemLinks} downloadCSV={downloadCSV} onItemClick={setDetailItem} mfgDocs={mfgDocs} setMfgDocs={setMfgDocs} saveMfgDoc={saveMfgDoc} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
     warehouse: <WarehousePage warehouses={warehouses} setWarehouses={setWarehouses} lots={lots} perm={perm} showToast={showToast} tryDelete={tryDelete} checkWarehouseLinks={checkWarehouseLinks} />,
     process: <ProcessPage processes={processes} setProcesses={setProcesses} perm={perm} showToast={showToast} tryDelete={tryDelete} checkProcessLinks={checkProcessLinks} />,
     bom: <BomPage bom={bom} setBom={setBom} items={items} perm={perm} showToast={showToast} tryDelete={tryDelete} />,
@@ -2492,8 +2492,9 @@ async function openMfgDocIn(win, doc){
   const a=win.document.createElement("a");a.href=doc.data;a.download=fname;a.click();win.close();
 }
 
-function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete,checkItemLinks,downloadCSV,onItemClick,mfgDocs,setMfgDocs,saveMfgDoc,navSearch,onNavConsumed}) {
+function ItemsPage({items,setItems,bom,setBom,warehouses,processes,perm,showToast,tryDelete,checkItemLinks,downloadCSV,onItemClick,mfgDocs,setMfgDocs,saveMfgDoc,navSearch,onNavConsumed}) {
   const [q,setQ]=useState(""); const [modal,setModal]=useState(null);
+  const [bomModal,setBomModal]=useState(null);   // BOM 편집 대상 품목(완제품·반제품)
   const [form,setForm]=useState({code:"",name:"",type:"완제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0,processes:[]});
   const [selected,setSelected]=useState(new Set());
   const [view,setView]=useState(0);          // 0=테이블형, 1=마스터-상세형
@@ -2548,30 +2549,33 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
             if(blocked){showToast("연계 데이터가 있는 품목이 포함되어 있습니다.");return;}
             setItems(items.filter(i=>!selected.has(i.code)));setSelected(new Set());showToast(`${codes.length}개 삭제되었습니다.`);
           }}>🗑 선택 삭제 ({selected.size})</button>}
-          <button className="btn btn-outline" onClick={()=>downloadCSV(["코드","품목명","유형","규격","단위","용량","재고","최소재고","창고"],items.map(i=>[i.code,i.name,i.type,i.spec||"",i.unit,i.capacity,i.stock,i.minStock,i.warehouse]),"품목목록.csv")}>📥 목록 다운로드</button>
+          <button className="btn btn-outline" onClick={()=>downloadCSV(["품목코드","품목명","품목구분","규격","단위","용량","재고","최소재고","창고"],items.map(i=>[i.code,i.name,i.type,i.spec||"",i.unit,i.capacity,i.stock,i.minStock,i.warehouse]),"품목목록.csv")}>📥 목록 다운로드</button>
           {perm.canAdmin&&<>
             <button className="btn btn-outline" onClick={()=>downloadTemplate(
-              ["코드","품목명","유형","단위","규격","용량","현재고","최소재고","단가"],
+              ["품목코드","품목명","품목구분","단위","규격","용량","현재고","최소재고","단가"],
               ["IMPC-001","원자재A","원자재","EA","규격A","","0","10","0"],
               "품목_업로드양식.csv"
             )}>📋 양식 다운로드</button>
             <UploadBtn label="📂 CSV 업로드" onUpload={(text)=>{
               const {headers,rows}=parseCsvRows(text);
               const hi=(name)=>headers.findIndex(h=>h===name||h.replace(/\s/g,"")===name);
-              const iCode=hi("코드")>=0?hi("코드"):hi("품목코드"); const iName=hi("품목명"); const iType=hi("유형");
+              const iCode=hi("코드")>=0?hi("코드"):hi("품목코드"); const iName=hi("품목명");
+              const iType=hi("유형")>=0?hi("유형"):hi("품목구분");
               const iUnit=hi("단위"); const iSpec=hi("규격"); const iCap=hi("용량");
               const iStock=hi("현재고"); const iMin=hi("최소재고"); const iPrice=hi("단가");
-              if(iCode<0||iName<0){showToast("❌ 코드, 품목명 컬럼이 필요합니다");return;}
-              let added=0, skipped=0;
+              if(iCode<0||iName<0){showToast("❌ 품목코드, 품목명 컬럼이 필요합니다");return;}
+              let added=0;
+              const skips=[]; // {row, code, reason}
               const newItems=[...items];
-              rows.forEach(r=>{
+              rows.forEach((r,idx)=>{
+                const ln=idx+2; // 헤더 1줄 + 1-base
                 const code=(r[iCode]||"").trim();
                 const name=(r[iName]||"").trim();
-                if(!code||!name){skipped++;return;}
-                if(newItems.find(i=>i.code===code)){skipped++;return;}
+                if(!code||!name){skips.push(`${ln}행: 품목코드/품목명 누락`);return;}
+                if(newItems.find(i=>i.code===code)){skips.push(`${ln}행: 중복 품목코드(${code})`);return;}
                 newItems.push({
                   code, name,
-                  type: iType>=0?(r[iType]||"원자재"):"원자재",
+                  type: (()=>{const t=iType>=0?(r[iType]||"원자재"):"원자재";return t==="제품"?"완제품":t;})(), // "제품"→"완제품" 정규화
                   unit: iUnit>=0?(r[iUnit]||"EA"):"EA",
                   spec: iSpec>=0?(r[iSpec]||""):"",
                   capacity: iCap>=0?(r[iCap]||""):"",
@@ -2583,7 +2587,11 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
                 added++;
               });
               setItems(newItems);
-              showToast(`✅ ${added}개 추가 완료 (중복/오류 ${skipped}건 건너뜀)`);
+              showToast(`✅ ${added}개 추가 완료${skips.length?` (건너뜀 ${skips.length}건)`:""}`);
+              if(skips.length){
+                const preview=skips.slice(0,15).join("\n");
+                alert(`⚠️ ${skips.length}건을 건너뛰었습니다.\n\n${preview}${skips.length>15?`\n…외 ${skips.length-15}건`:""}`);
+              }
             }}/>
           </>}
           {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ 품목 등록</button>}
@@ -2618,7 +2626,7 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
                 <td>{i.warehouse||"-"}</td>
                 <td style={{fontSize:11,color:"#2f6df0"}}>{(i.processes||[]).length>0?(i.processes||[]).map(pc=>processes.find(p=>p.code===pc)?.name||pc).join(", "):"-"}</td>
                 <td>
-                  {(i.type==="완제품"||i.type==="반제품")
+                  {(i.type==="완제품"||i.type==="제품"||i.type==="반제품")
                     ? (mfgDocs&&mfgDocs[i.code]
                         ? <button className="btn btn-outline btn-sm" style={{color:"#7c3aed",borderColor:"#7c3aed",fontSize:11}} onClick={()=>setDocModal({item:i})}>📄 보기</button>
                         : <button className="btn btn-outline btn-sm" style={{fontSize:11}} onClick={()=>setDocModal({item:i})}>+ 첨부</button>)
@@ -2627,6 +2635,7 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
                 </td>
                 <td style={{display:"flex",gap:4}}>
                   {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({...i,processes:i.processes||[]});setModal("edit");}}>수정</button>}
+                  {(i.type==="완제품"||i.type==="제품"||i.type==="반제품")&&perm.canEdit&&(()=>{const has=bom.some(b=>b.product===i.code);return <button className="btn btn-outline btn-sm" style={{color:has?"#16a34a":"#2f6df0",borderColor:has?"#16a34a":"#2f6df0"}} onClick={()=>setBomModal(i)}>{has?"🧬 BOM ✓":"+ BOM"}</button>;})()}
                   {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(i.code)}>삭제</button>}
                 </td>
               </tr>
@@ -2673,7 +2682,8 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
                     </div>
                     <div style={{display:"flex",gap:8,flexShrink:0}}>
                       {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({...it,processes:it.processes||[]});setModal("edit");}}>✏️ 수정</button>}
-                      {(it.type==="완제품"||it.type==="반제품")&&<button className="btn btn-outline btn-sm" onClick={()=>setDocModal({item:it})}>📄 제조지시서</button>}
+                      {(it.type==="완제품"||it.type==="제품"||it.type==="반제품")&&perm.canEdit&&(()=>{const has=bom.some(b=>b.product===it.code);return <button className="btn btn-outline btn-sm" style={{color:has?"#16a34a":"#2f6df0",borderColor:has?"#16a34a":"#2f6df0"}} onClick={()=>setBomModal(it)}>🧬 BOM{has?" ✓":""}</button>;})()}
+                      {(it.type==="완제품"||it.type==="제품"||it.type==="반제품")&&<button className="btn btn-outline btn-sm" onClick={()=>setDocModal({item:it})}>📄 제조지시서</button>}
                       {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(it.code)}>삭제</button>}
                     </div>
                   </div>
@@ -2796,7 +2806,154 @@ function ItemsPage({items,setItems,warehouses,processes,perm,showToast,tryDelete
           </div>
         </div>
       )}
+      {bomModal&&<ItemBomModal item={bomModal} bom={bom} setBom={setBom} items={items} perm={perm} showToast={showToast} onClose={()=>setBomModal(null)}/>}
     </div>
+  );
+}
+
+// 품목관리에서 완제품·반제품의 BOM(자재명세서)을 바로 등록/수정하는 모달
+function ItemBomModal({item,bom,setBom,items,perm,showToast,onClose}) {
+  const existing=bom.find(b=>b.product===item.code);
+  const [materials,setMaterials]=useState(existing?existing.materials.map(m=>({...m})):[]);
+  const [matQtyInputs,setMatQtyInputs]=useState(existing?existing.materials.map(m=>String(m.qty||"")):[]);
+  const [qa,setQa]=useState("");                 // 빠른 추가 검색어
+  const [showPick,setShowPick]=useState(false);  // 목록에서 선택(체크박스) 패널
+  const [pickQ,setPickQ]=useState("");           // 체크박스 패널 필터
+  const [picked,setPicked]=useState(new Set());  // 체크된 자재코드
+  const [copyFrom,setCopyFrom]=useState("");     // 다른 품목 BOM 복사 대상
+  const allMats=items.filter(i=>(i.type==="원자재"||i.type==="부자재"||i.type==="반제품")&&i.code!==item.code);
+  const readOnly=!perm.canEdit;
+  const have=()=>new Set(materials.map(m=>m.code).filter(Boolean));
+  // 자재 여러 개를 한 번에 추가(중복 코드는 건너뜀)
+  const pushMats=(list)=>{
+    const h=have();
+    const add=list.filter(m=>!m.code||!h.has(m.code));
+    if(!add.length){showToast("추가할 새 자재가 없습니다");return 0;}
+    setMaterials([...materials,...add.map(m=>({code:m.code||"",name:m.name||"",qty:m.qty||1,unit:m.unit||"EA"}))]);
+    setMatQtyInputs([...matQtyInputs,...add.map(m=>String(m.qty||1))]);
+    return add.length;
+  };
+  const addOne=(mat)=>{ if(mat.code&&have().has(mat.code)){showToast("이미 추가된 자재입니다");return;} pushMats([mat]); setQa(""); };
+  const addCustomRow=()=>{ setMaterials([...materials,{code:"",name:"",qty:1,unit:"EA"}]); setMatQtyInputs([...matQtyInputs,"1"]); };
+  const addPicked=()=>{ const n=pushMats(allMats.filter(m=>picked.has(m.code))); if(n){setPicked(new Set());setShowPick(false);setPickQ("");showToast(`${n}개 자재를 추가했습니다`);} };
+  const doCopy=(prodCode)=>{ const src=bom.find(b=>b.product===prodCode); if(src){const n=pushMats(src.materials.map(m=>({...m}))); if(n)showToast(`${src.productName||prodCode}에서 ${n}개 복사했습니다`);} setCopyFrom(""); };
+  const togglePick=(code)=>setPicked(prev=>{const s=new Set(prev);s.has(code)?s.delete(code):s.add(code);return s;});
+  const setField=(idx,field,val)=>{setMaterials(ms=>{const a=[...ms];a[idx]={...a[idx],[field]:val};return a;});};
+  const delMat=(idx)=>{ setMaterials(materials.filter((_,i)=>i!==idx)); setMatQtyInputs(matQtyInputs.filter((_,i)=>i!==idx)); };
+  const save=()=>{
+    const cleaned=materials.filter(m=>(m.code||m.name)&&(+m.qty)>0);
+    if(cleaned.length===0){showToast("자재를 1개 이상 입력하고 소요량을 입력해주세요");return;}
+    const entry={code:existing?existing.code:"BOM"+Date.now(),product:item.code,productName:item.name,materials:cleaned};
+    setBom(existing?bom.map(b=>b.product===item.code?entry:b):[...bom,entry]);
+    showToast("✅ BOM이 저장되었습니다."); onClose();
+  };
+  const removeBom=()=>{
+    if(!existing)return;
+    if(!window.confirm(`'${item.name}'의 BOM을 삭제하시겠습니까?`))return;
+    setBom(bom.filter(b=>b.product!==item.code));
+    showToast("BOM이 삭제되었습니다."); onClose();
+  };
+  return (
+    <div className="overlay" onClick={onClose}><div className="modal" style={{width:620}} onClick={e=>e.stopPropagation()}>
+      <div className="modal-head"><span className="modal-title">🧬 BOM {existing?"수정":"등록"} — {item.name}</span><button className="modal-close" onClick={onClose}>✕</button></div>
+      <div className="modal-body">
+        <div style={{background:"#f6f8fc",border:"1px solid #e6ebf3",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#555"}}>
+          대상 품목: <b style={{color:"#2f6df0"}}>{item.code}</b> {item.name} <span className="badge badge-blue" style={{marginLeft:6,fontSize:10}}>{item.type}</span>
+          <span style={{marginLeft:8,color:"#999"}}>· 1 {item.unit} 생산에 필요한 자재</span>
+        </div>
+        {!readOnly&&(
+          <div style={{border:"1px solid #e6ebf3",borderRadius:8,padding:10,marginBottom:12,background:"#fafbfd"}}>
+            {/* ① 빠른 추가 검색창 */}
+            <div style={{position:"relative",marginBottom:8}}>
+              <input placeholder="🔍 자재 빠른 추가 — 코드/자재명 입력 후 클릭하면 바로 추가" value={qa}
+                onChange={e=>setQa(e.target.value)}
+                style={{width:"100%",border:"1px solid #ccd3df",borderRadius:6,padding:"7px 11px",fontSize:13}} autoComplete="off"/>
+              {qa&&(()=>{
+                const _q=qa.toLowerCase(); const h=have();
+                const hits=allMats.filter(m=>!h.has(m.code)&&(m.code.toLowerCase().includes(_q)||m.name.toLowerCase().includes(_q))).slice(0,30);
+                return (
+                  <div style={{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #2f6df0",borderRadius:6,boxShadow:"0 4px 12px rgba(0,0,0,0.12)",zIndex:300,maxHeight:220,overflowY:"auto"}}>
+                    {hits.length?hits.map(mat=>(
+                      <div key={mat.code} onClick={()=>addOne(mat)}
+                        style={{padding:"8px 12px",cursor:"pointer",borderBottom:"1px solid #f0f0f0",fontSize:13,display:"flex",alignItems:"center",justifyContent:"space-between"}}
+                        onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"} onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                        <span><span style={{fontFamily:"monospace",color:"#2f6df0",fontWeight:600}}>{mat.code}</span><span style={{marginLeft:8}}>{mat.name}</span><span className={`badge ${mat.type==="원자재"?"badge-green":mat.type==="반제품"?"badge-blue":"badge-yellow"}`} style={{marginLeft:6,fontSize:10}}>{mat.type}</span></span>
+                        <span style={{fontSize:11,color:"#999"}}>재고 {fmt3(mat.stock||0)}</span>
+                      </div>
+                    )):<div style={{padding:"8px 12px",fontSize:12,color:"#999"}}>검색 결과 없음 (이미 추가됐거나 없는 자재)</div>}
+                  </div>
+                );
+              })()}
+            </div>
+            {/* ② 다른 품목 BOM 복사 + ③ 목록에서 선택 + 직접입력 */}
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+              <select value={copyFrom} onChange={e=>{const v=e.target.value;if(v)doCopy(v);else setCopyFrom("");}}
+                style={{border:"1px solid #ccd3df",borderRadius:6,padding:"6px 9px",fontSize:12,maxWidth:280}}>
+                <option value="">📋 다른 품목 BOM 복사…</option>
+                {bom.filter(b=>b.product!==item.code&&b.materials&&b.materials.length).map(b=>(
+                  <option key={b.code} value={b.product}>{b.productName||b.product} (자재 {b.materials.length})</option>
+                ))}
+              </select>
+              <button className="btn btn-outline btn-sm" onClick={()=>setShowPick(s=>!s)}>{showPick?"▲ 목록 닫기":"☑ 목록에서 선택"}</button>
+              <button className="btn btn-outline btn-sm" onClick={addCustomRow}>✎ 직접입력 행</button>
+            </div>
+            {/* ③ 체크박스 다중선택 패널 */}
+            {showPick&&(
+              <div style={{marginTop:8,border:"1px solid #e0e0e0",borderRadius:6,background:"#fff"}}>
+                <div style={{padding:8,borderBottom:"1px solid #eee"}}>
+                  <input placeholder="자재 검색 필터..." value={pickQ} onChange={e=>setPickQ(e.target.value)}
+                    style={{width:"100%",border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12}}/>
+                </div>
+                <div style={{maxHeight:180,overflowY:"auto"}}>
+                  {(()=>{const _q=pickQ.toLowerCase();const h=have();const list=allMats.filter(m=>!h.has(m.code)&&(m.code.toLowerCase().includes(_q)||m.name.toLowerCase().includes(_q)));
+                    return list.length?list.map(m=>(
+                      <label key={m.code} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderBottom:"1px solid #f5f5f5",cursor:"pointer",fontSize:12}}>
+                        <input type="checkbox" checked={picked.has(m.code)} onChange={()=>togglePick(m.code)} style={{width:14,height:14}}/>
+                        <span style={{fontFamily:"monospace",color:"#2f6df0",fontWeight:600}}>{m.code}</span>
+                        <span style={{flex:1}}>{m.name}</span>
+                        <span className={`badge ${m.type==="원자재"?"badge-green":m.type==="반제품"?"badge-blue":"badge-yellow"}`} style={{fontSize:10}}>{m.type}</span>
+                      </label>
+                    )):<div style={{padding:"10px",fontSize:12,color:"#999"}}>추가할 자재가 없습니다</div>;
+                  })()}
+                </div>
+                <div style={{padding:8,borderTop:"1px solid #eee",textAlign:"right"}}>
+                  <button className="btn btn-primary btn-sm" disabled={picked.size===0} onClick={addPicked}>선택 {picked.size}개 추가</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+        <div style={{marginBottom:8,fontWeight:600,fontSize:13}}>자재 목록 <span style={{fontWeight:400,color:"#999",fontSize:12}}>({materials.length}건)</span></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 90px 60px 36px",gap:6,marginBottom:4,paddingBottom:4,borderBottom:"1px solid #eee"}}>
+          <span style={{fontSize:11,color:"#888",fontWeight:600}}>자재</span>
+          <span style={{fontSize:11,color:"#888",fontWeight:600,textAlign:"right"}}>소요량</span>
+          <span style={{fontSize:11,color:"#888",fontWeight:600}}>단위</span>
+          <span></span>
+        </div>
+        {materials.map((m,i)=>(
+          <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 90px 60px 36px",gap:6,marginBottom:8,alignItems:"center"}}>
+            {m.code
+              ? <div style={{fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={`${m.code} ${m.name}`}><span style={{fontFamily:"monospace",color:"#2f6df0",fontWeight:600}}>{m.code}</span> <span>{m.name}</span></div>
+              : <input placeholder="자재명 직접입력" value={m.name||""} disabled={readOnly} onChange={e=>setField(i,"name",e.target.value)} style={{border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12,width:"100%"}}/>}
+            <input type="text" inputMode="decimal" placeholder="0.000" value={matQtyInputs[i]||""} disabled={readOnly}
+              onChange={e=>{const v=e.target.value.replace(/[^0-9.]/g,"");const parts=v.split(".");if(parts.length<=2&&(parts[1]||"").length<=3){setMatQtyInputs(q=>{const n=[...q];n[i]=v;return n;});}}}
+              onBlur={()=>{const v=parseFloat(matQtyInputs[i]);const rounded=isNaN(v)?0:Math.round(v*1000)/1000;setMatQtyInputs(q=>{const n=[...q];n[i]=rounded===0?"":String(rounded);return n;});setField(i,"qty",rounded);}}
+              style={{border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12,textAlign:"right",width:"100%"}}/>
+            <input placeholder="단위" value={m.unit||""} disabled={readOnly} onChange={e=>setField(i,"unit",e.target.value)}
+              style={{border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12,width:"100%"}}/>
+            {!readOnly&&<button className="btn btn-danger btn-sm" onClick={()=>delMat(i)}>✕</button>}
+          </div>
+        ))}
+        {materials.length===0&&<div className="empty" style={{padding:"12px 0",textAlign:"left",color:"#aaa",fontSize:12}}>위에서 자재를 검색·선택하거나 다른 품목 BOM을 복사해 추가하세요.</div>}
+      </div>
+      <div className="modal-foot" style={{justifyContent:"space-between"}}>
+        <div>{existing&&perm.canDelete&&<button className="btn btn-danger" onClick={removeBom}>🗑 BOM 삭제</button>}</div>
+        <div style={{display:"flex",gap:8}}>
+          <button className="btn btn-outline" onClick={onClose}>취소</button>
+          {!readOnly&&<button className="btn btn-primary" onClick={save}>저장</button>}
+        </div>
+      </div>
+    </div></div>
   );
 }
 
