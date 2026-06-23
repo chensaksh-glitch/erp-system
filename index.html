@@ -259,6 +259,11 @@ tr:hover td { background: #fafbfc; }
 .badge-gray { background: #f2f5f8; color: var(--muted); border-color: var(--line); }
 .badge-orange { background: #fbf0db; color: var(--orange); border-color: #ecd5a3; }
 .badge-yellow { background: #fff8e1; color: #b8860b; border-color: #ecd9a0; }
+/* 인라인 품질상태 드롭다운 (배지형 select) — hover 시 편집 가능 단서 */
+.qc-sel-wrap { position: relative; display: inline-flex; align-items: center; }
+.qc-sel { appearance: none; -webkit-appearance: none; cursor: pointer; font-weight: 700; padding: 2px 18px 2px 9px; border-radius: 20px; text-align: left; transition: box-shadow .12s, filter .12s; }
+.qc-sel-wrap:hover .qc-sel { box-shadow: 0 0 0 2px var(--accent-soft); filter: brightness(0.98); }
+.qc-sel-arrow { position: absolute; right: 6px; font-size: 8px; pointer-events: none; opacity: 0.6; }
 
 /* BUTTONS — 납작, 그라데이션·떠오름 없음 */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 8px 15px; border-radius: 8px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; transition: background 0.13s, border-color 0.13s, color 0.13s; }
@@ -493,6 +498,15 @@ const initProcesses = [
 ];
 const UNITS = ["EA","PCS","SET","개","M","CM","MM","KG","G","MG","L","ML","CC","BOX","BAG","ROLL","SHEET","PACK","병","정","캡슐","바이알","앰플"];
 const fmt3 = (n) => { const v = Math.round((+n)*1000)/1000; return isNaN(v) ? "0" : v.toLocaleString("ko-KR",{maximumFractionDigits:3}); };
+
+// ── 품질상태(QC) 게이트 ── 입고/생산 LOT의 품질검사 흐름. lot.status(정상/불량/만료)와 별개 차원의 lot.qcStatus.
+// 입고 시 자동으로 "검사대기" → 검사 통과 시 "적합"이 되어야 가용재고로 집계됨.
+const QC_STATES = ["검사대기","검사중","적합","보류","부적합","폐기"];
+// 유효 품질상태: qcStatus 미지정(레거시) 데이터는 status 불량→부적합, 그 외→적합으로 간주(하위호환)
+const effQc = (l) => l.qcStatus || (l.status==="불량" ? "부적합" : "적합");
+// 가용재고 여부: "적합"만 사용 가능. 그 외(검사대기/검사중/보류/부적합/폐기)는 수량은 보이되 가용에서 제외
+const qcAvailable = (l) => effQc(l)==="적합";
+const qcBadge = (s) => ({"적합":"badge-green","검사대기":"badge-blue","검사중":"badge-orange","보류":"badge-gray","부적합":"badge-red","폐기":"badge-gray"}[s]||"badge-gray");
 
 const initOrdersLedger = [
   { no:1, date:"2026-04-01", receiver:"김승현", client:"인터큐어/대한민국", orderNo:"IO2604001", product:"Tigertriever", spec:"0.0021", desc:"TIGERTRIEVER 제품 납품", qty:2, dueDate:"2026-04-01", paymentTerms:"N/A", requirements:"N/A", customerReq:"이상없음", feasible:"O", deliveryDate:"2026-04-02", note:"제품", taxInvoice:"발행" },
@@ -956,6 +970,8 @@ function App() {
   const checkOrderLinks = (code) => { return []; };
   const defectWarehouse = warehouses.find(w=>w.type==="불량품창고") || {name:"불량창고"};
   const goodWarehouse   = warehouses.find(w=>w.type==="완제품창고") || {name:"창고1"};
+  const inspectWarehouse= warehouses.find(w=>w.type==="검사창고") || null;     // 없으면 완제품창고로 폴백(레거시)
+  const retainWarehouse = warehouses.find(w=>w.type==="보관샘플창고") || null;  // 없으면 완제품창고로 폴백(레거시)
 
   const tryDelete = (reasons, onConfirm, title="삭제 불가") => {
     if(reasons.length>0) {
@@ -1010,13 +1026,13 @@ function App() {
     warehouse: <WarehousePage warehouses={warehouses} setWarehouses={setWarehouses} lots={lots} perm={perm} showToast={showToast} tryDelete={tryDelete} checkWarehouseLinks={checkWarehouseLinks} />,
     process: <ProcessPage processes={processes} setProcesses={setProcesses} perm={perm} showToast={showToast} tryDelete={tryDelete} checkProcessLinks={checkProcessLinks} />,
     bom: <BomPage bom={bom} setBom={setBom} items={items} perm={perm} showToast={showToast} tryDelete={tryDelete} />,
-    stock: <StockPage items={items} lots={lots} io={io} warehouses={warehouses} downloadCSV={downloadCSV} onItemClick={setDetailItem} setLots={setLots} setIo={setIo} perm={perm} showToast={showToast} tryDelete={tryDelete} />,
+    stock: <StockPage items={items} lots={lots} io={io} warehouses={warehouses} inspectWarehouse={inspectWarehouse} retainWarehouse={retainWarehouse} downloadCSV={downloadCSV} onItemClick={setDetailItem} setLots={setLots} setIo={setIo} perm={perm} showToast={showToast} tryDelete={tryDelete} />,
     lot: <LotPage lots={lots} setLots={setLots} items={items} warehouses={warehouses} perm={perm} showToast={showToast} tryDelete={tryDelete} downloadCSV={downloadCSV} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
     incoming: <IncomingPage incoming={incoming} setIncoming={setIncoming} items={items} setItems={setItems} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} perm={perm} showToast={showToast} tryDelete={tryDelete} currentUser={currentUser} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
     io: <IOPage io={io} setIo={setIo} items={items} setItems={setItems} lots={lots} setLots={setLots} perm={perm} showToast={showToast} downloadCSV={downloadCSV} onItemClick={setDetailItem} currentUser={currentUser} />,
     transfer: <TransferPage transfers={transfers} setTransfers={setTransfers} items={items} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} downloadCSV={downloadCSV} />,
     ordersLedger: <OrdersLedgerPage ordersLedger={ordersLedger} setOrdersLedger={setOrdersLedger} items={items} currentUser={currentUser} perm={perm} showToast={showToast} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
-    orders: <OrdersPage orders={orders} setOrders={setOrders} items={items} setItems={setItems} bom={bom} processes={processes} factories={factories} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} defectWarehouse={defectWarehouse} goodWarehouse={goodWarehouse} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} checkOrderLinks={checkOrderLinks} mfgDocs={mfgDocs} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
+    orders: <OrdersPage orders={orders} setOrders={setOrders} items={items} setItems={setItems} bom={bom} processes={processes} factories={factories} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} defectWarehouse={defectWarehouse} goodWarehouse={goodWarehouse} inspectWarehouse={inspectWarehouse} retainWarehouse={retainWarehouse} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} checkOrderLinks={checkOrderLinks} mfgDocs={mfgDocs} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
     cost: perm.canViewPrice ? <CostPage costBom={costBom} setCostBom={setCostBom} factories={factories} bom={bom} items={items} processes={processes} costMaster={costMaster} setCostMaster={setCostMaster} orders={orders} io={io} stdCosts={stdCosts} setStdCosts={setStdCosts} currentUser={currentUser} perm={perm} showToast={showToast} downloadCSV={downloadCSV} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>접근 권한 없음</div><div style={{color:"#888",marginTop:8}}>원가 정보는 관리자만 열람할 수 있습니다</div></div>,
     factory: perm.canViewPrice ? <FactoryPage factories={factories} setFactories={setFactories} perm={perm} showToast={showToast} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700}}>접근 권한 없음</div></div>,
     users: <UserPage users={users} setUsers={setUsers} currentUser={currentUser} showToast={showToast} />,
@@ -2798,7 +2814,7 @@ function WarehousePage({warehouses,setWarehouses,lots=[],perm,showToast,tryDelet
   };
   // 창고별 품목 수 (실데이터: 잔량>0 LOT의 고유 품목 수)
   const itemCount=(name)=>{const s=new Set();lots.forEach(l=>{if(l.warehouse===name&&(l.qty||0)>0)s.add(l.item||l.itemName||l.code);});return s.size;};
-  const badgeCls=(t)=>t==="완제품창고"?"badge-blue":t==="불량품창고"?"badge-red":"badge-green";
+  const badgeCls=(t)=>t==="완제품창고"?"badge-blue":t==="불량품창고"?"badge-red":t==="검사창고"?"badge-orange":t==="보관샘플창고"?"badge-yellow":"badge-green";
   const filtered=warehouses.filter(w=>{
     const _q=q.trim().toLowerCase();
     if(_q&&!(`${w.code} ${w.name} ${w.location||""}`.toLowerCase().includes(_q)))return false;
@@ -2821,7 +2837,7 @@ function WarehousePage({warehouses,setWarehouses,lots=[],perm,showToast,tryDelet
       <div className="kbar" style={{background:"#fff",border:"1px solid var(--line)",marginBottom:view==="card"?12:0,borderRadius:view==="card"?12:"12px 12px 0 0"}}>
         <div className="kbar-search">🔍<input placeholder="창고코드 · 창고명 · 위치 검색" value={q} onChange={e=>setQ(e.target.value)}/></div>
         <select className="kbar-sel" value={typeF} onChange={e=>setTypeF(e.target.value)}>
-          <option value="">유형: 전체</option><option>완제품창고</option><option>자재창고</option><option>불량품창고</option>
+          <option value="">유형: 전체</option><option>완제품창고</option><option>자재창고</option><option>불량품창고</option><option>검사창고</option><option>보관샘플창고</option>
         </select>
         <span style={{marginLeft:"auto",fontSize:12,color:"var(--muted)"}}>창고 {filtered.length}곳</span>
       </div>
@@ -2867,7 +2883,7 @@ function WarehousePage({warehouses,setWarehouses,lots=[],perm,showToast,tryDelet
         <div className="modal-head"><span className="modal-title">{modal==="add"?"창고 등록":"창고 수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
         <div className="modal-body">
           <div className="field-row"><div className="field"><label>창고코드 *</label><input value={form.code} onChange={e=>setForm({...form,code:e.target.value})} disabled={modal==="edit"}/></div><div className="field"><label>창고명 *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div></div>
-          <div className="field-row"><div className="field"><label>유형</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}><option>완제품창고</option><option>자재창고</option><option>불량품창고</option></select></div><div className="field"><label>위치</label><input value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/></div></div>
+          <div className="field-row"><div className="field"><label>유형</label><select value={form.type} onChange={e=>setForm({...form,type:e.target.value})}><option>완제품창고</option><option>자재창고</option><option>불량품창고</option><option>검사창고</option><option>보관샘플창고</option></select></div><div className="field"><label>위치</label><input value={form.location} onChange={e=>setForm({...form,location:e.target.value})}/></div></div>
           <div className="field"><label>비고</label><input value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/></div>
         </div>
         <div className="modal-foot"><button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button><button className="btn btn-primary" onClick={save}>저장</button></div>
@@ -3114,7 +3130,7 @@ function BomPage({bom,setBom,items,perm,showToast,tryDelete}) {
   );
 }
 
-function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,setIo,perm,showToast,tryDelete}) {
+function StockPage({items,lots,io,warehouses,inspectWarehouse,retainWarehouse,downloadCSV,onItemClick,setLots,setIo,perm,showToast,tryDelete}) {
   const todayStr=new Date().toISOString().slice(0,10);
   const [traceModal,setTraceModal]=useState(null);
 
@@ -3159,11 +3175,13 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
   const [hideZero,setHideZero]=useState(true);        // 수량 0 숨기기
   const [q,setQ]=useState("");                        // 품목코드·품목명 검색
   const [statusF,setStatusF]=useState("전체");        // 상태 필터
+  const [qcF,setQcF]=useState("전체");                 // 품질상태 필터 (테이블뷰)
   const [lowOnly,setLowOnly]=useState(false);         // 부족만 보기
   const [view,setView]=useState("table");             // 보기: table | card
   const [cWh,setCWh]=useState(()=>new Set());          // 카드뷰 창고 다중필터
   const [cType,setCType]=useState(()=>new Set());      // 카드뷰 분류 다중필터
   const [cStatus,setCStatus]=useState(()=>new Set());  // 카드뷰 안전상태 다중필터
+  const [cQc,setCQc]=useState(()=>new Set());          // 카드뷰 품질상태 다중필터
   const [cardLayout,setCardLayout]=useState("grid");   // 카드뷰 레이아웃: grid | list
   const dateStyle={border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12,cursor:"pointer"};
   const selStyle={height:36,border:"1px solid var(--line)",borderRadius:8,padding:"0 10px",fontSize:13,color:"var(--ink)",background:"#fff",cursor:"pointer",fontFamily:"inherit"};
@@ -3183,17 +3201,24 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
   };
 
   // 완제품/반제품 LOT: 품질검사·보관샘플 수량 제외한 양품만 표시
+  // (검사/보관이 별도 창고로 물리 분리된 신규 데이터는 해당 창고 행은 그대로 표시, 양품 행은 중복차감 방지)
+  const _inspWhName=inspectWarehouse?.name, _retWhName=retainWarehouse?.name;
   const calcAdjQtyAt=(l,date)=>{
     const raw=calcLotQtyAt(l,date);
     const it=items.find(x=>x.code===l.item);
     if(it?.type!=="완제품"&&it?.type!=="반제품") return raw;
+    // 검사창고/보관샘플창고 행은 그 수량(검사/보관 잔량) 그대로 표시
+    if((_inspWhName&&l.warehouse===_inspWhName)||(_retWhName&&l.warehouse===_retWhName)) return raw;
     const cutoff=date||todayStr;
     const qcNet=Math.max(0,(io||[]).filter(r=>r.lot===l.code&&(r.note||"").includes("품질검사")&&r.date<=cutoff).reduce((s,r)=>s+(r.type==="입고"?(r.qty||0):-(r.qty||0)),0));
     const rtNet=Math.max(0,(io||[]).filter(r=>r.lot===l.code&&(r.note||"").includes("보관샘플")&&r.date<=cutoff).reduce((s,r)=>s+(r.type==="입고"?(r.qty||0):-(r.qty||0)),0));
-    return Math.max(0,raw-qcNet-rtNet);
+    // 같은 코드가 검사/보관 창고에 물리 분리돼 있으면 그만큼은 이미 빠져 있어 중복 차감 방지 (레거시는 phys=0 → 전액 차감)
+    const physInspect=_inspWhName?lots.filter(x=>x.code===l.code&&x.item===l.item&&x.warehouse===_inspWhName&&x.status!=="불량").reduce((s,x)=>s+(x.qty||0),0):0;
+    const physRetain =_retWhName?lots.filter(x=>x.code===l.code&&x.item===l.item&&x.warehouse===_retWhName&&x.status!=="불량").reduce((s,x)=>s+(x.qty||0),0):0;
+    return Math.max(0,raw-Math.max(0,qcNet-physInspect)-Math.max(0,rtNet-physRetain));
   };
   // LOT 목록에 기준일 수량 추가
-  const lotsWithQty=lots.map(l=>({...l,_qty:calcAdjQtyAt(l,baseDate)}));
+  const lotsWithQty=lots.map(l=>({...l,_qty:calcAdjQtyAt(l,baseDate),_qc:effQc(l),_avail:qcAvailable(l)}));
 
   // 창고 필터
   const whFiltered=wh==="전체"?lotsWithQty:lotsWithQty.filter(l=>l.warehouse===wh);
@@ -3224,6 +3249,7 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
     .filter(l=>!hideZero||l._qty>0)                   // 수량 0 숨기기
     .filter(matchSearch)                              // 품목코드·품목명 검색
     .filter(l=>statusF==="전체"||l.status===statusF)  // 상태
+    .filter(l=>qcF==="전체"||l._qc===qcF)             // 품질상태
     .filter(l=>!lowOnly||isLow(l));                   // 부족만 보기
 
   const typeTabs=[
@@ -3240,8 +3266,13 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
   const whSummary=warehouses.map(w=>{
     const rows=applyType(lotsWithQty.filter(l=>l.warehouse===w.name),typeTab)
       .filter(l=>(!baseDate||!l.mfg||l.mfg<=baseDate)&&inMfgRange(l)&&l._qty>0);
-    return {name:w.name, items:new Set(rows.map(r=>r.item)).size, qty:rows.reduce((s,r)=>s+r._qty,0)};
+    // 가용(적합)만 합산, 검사대기/검사중/보류 등 비가용 수량은 별도 표시
+    return {name:w.name, items:new Set(rows.map(r=>r.item)).size,
+      qty:rows.filter(r=>r._avail).reduce((s,r)=>s+r._qty,0),
+      locked:rows.filter(r=>!r._avail).reduce((s,r)=>s+r._qty,0)};
   });
+  // 전체 검사대기 수량(현재 필터 기준) — 상단 안내용
+  const totalWaitQty=lotsWithQty.filter(l=>(!baseDate||!l.mfg||l.mfg<=baseDate)&&inMfgRange(l)&&l._qty>0&&l._qc==="검사대기").reduce((s,l)=>s+l._qty,0);
 
   // ── 카드뷰: 안전재고 기반 상태(정상/경고/부족) + 좌측 다중필터 ──
   const safetyStatus=(l)=>{const it=items.find(x=>x.code===l.item);const safe=it?.minStock||0;if(safe<=0)return "정상";if(l._qty<safe)return "부족";if(l._qty<safe*1.1)return "경고";return "정상";};
@@ -3255,7 +3286,8 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
     .filter(matchSearch)
     .filter(l=>cWh.size===0||cWh.has(l.warehouse))
     .filter(l=>cType.size===0||[...cType].some(t=>matchType(l,t)))
-    .filter(l=>cStatus.size===0||cStatus.has(safetyStatus(l)));
+    .filter(l=>cStatus.size===0||cStatus.has(safetyStatus(l)))
+    .filter(l=>cQc.size===0||cQc.has(l._qc));
 
   // 재고수준 바 (현재고 vs 안전재고, 안전재고 마커 포함)
   const StockLevel=({cur,safe})=>{
@@ -3287,11 +3319,20 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
             <button className={`seg-btn${view==="card"?" is-on":""}`} onClick={()=>setView("card")}>필터 + 카드</button>
           </div>
           <button className="btn btn-outline" onClick={()=>downloadCSV(
-            ["LOT번호","품목코드","품목명","유형","수량","제조일","유효기간","창고","상태"],
-            filteredLots.map(l=>{const it=items.find(x=>x.code===l.item);return[l.code,l.item,l.itemName,it?.type||"",l._qty,l.mfg,l.exp,l.warehouse,l.status];})
+            ["LOT번호","품목코드","품목명","유형","수량","제조일","유효기간","창고","상태","품질상태"],
+            filteredLots.map(l=>{const it=items.find(x=>x.code===l.item);return[l.code,l.item,l.itemName,it?.type||"",l._qty,l.mfg,l.exp,l.warehouse,l.status,l._qc];})
             ,"LOT현황.csv")}>📥 엑셀 다운로드</button>
         </div>
       </div>
+
+      {/* 검사대기 안내 배너 — 입고 후 품질검사 전 재고가 있으면 표시 */}
+      {totalWaitQty>0&&<div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 16px",marginBottom:12,background:"#fff7ec",border:"1px solid #f0d9a8",borderRadius:10,fontSize:13}}>
+        <span style={{fontSize:16}}>🔬</span>
+        <span style={{color:"#92600c",fontWeight:600}}>품질검사 대기 재고 {fmt3(totalWaitQty)} EA</span>
+        <span style={{color:"#a07a32"}}>— 검사 통과(적합) 전까지 가용재고에서 제외됩니다.</span>
+        <button className="btn btn-sm" style={{marginLeft:"auto",background:"#fff",border:"1px solid #e0b96a",color:"#92600c"}}
+          onClick={()=>{ if(view==="table"){setQcF("검사대기");} else {setCQc(new Set(["검사대기"]));} }}>검사대기만 보기</button>
+      </div>}
 
       {/* 창고 요약 카드 (스크린샷 상단 배치) — 테이블 보기에서만 */}
       {view==="table"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(210px,1fr))",gap:13,marginBottom:14}}>
@@ -3302,7 +3343,10 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
               <div style={{fontWeight:700,fontSize:13,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{w.name}</div>
               <div style={{fontSize:12,color:"var(--muted)"}}>{w.items}개 품목</div>
             </div>
-            <div style={{marginLeft:"auto",fontSize:19,fontWeight:800,whiteSpace:"nowrap"}}>{fmt3(w.qty)}<span style={{fontSize:11,color:"var(--muted)",fontWeight:500,marginLeft:2}}>EA</span></div>
+            <div style={{marginLeft:"auto",textAlign:"right",whiteSpace:"nowrap"}}>
+              <div style={{fontSize:19,fontWeight:800,lineHeight:1.1}}>{fmt3(w.qty)}<span style={{fontSize:11,color:"var(--muted)",fontWeight:500,marginLeft:2}}>EA</span></div>
+              <div style={{fontSize:10,color:"var(--faint)",fontWeight:600,marginTop:1}}>가용 재고{w.locked>0&&<span style={{color:"#c47d12"}}> · 🔬 검사대기 {fmt3(w.locked)}</span>}</div>
+            </div>
           </div>
         ))}
       </div>}
@@ -3347,6 +3391,9 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
         <select value={statusF} onChange={e=>setStatusF(e.target.value)} style={selStyle}>
           <option value="전체">상태: 전체</option><option value="정상">정상</option><option value="만료임박">만료임박</option><option value="만료">만료</option><option value="불량">불량</option>
         </select>
+        <select value={qcF} onChange={e=>setQcF(e.target.value)} style={selStyle}>
+          <option value="전체">품질: 전체</option>{QC_STATES.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
         <button onClick={()=>setLowOnly(v=>!v)} className="btn btn-sm"
           style={lowOnly?{background:"var(--accent-soft)",color:"var(--accent)",border:"1px solid var(--accent)"}:{background:"#fff",color:"var(--muted)",border:"1px solid var(--line)"}}>⚠ 부족만 보기</button>
         <span style={{marginLeft:"auto",fontSize:12,color:"var(--faint)"}}>{filteredLots.length}건</span>
@@ -3367,7 +3414,7 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
               <th>품목코드</th><th>품목명</th><th>유형</th><th>LOT번호</th>
               <th style={{textAlign:"right"}}>{isHistorical?`${baseDate} 기준고`:"현재고"}</th>
               <th style={{textAlign:"right"}}>안전재고</th><th style={{width:120}}>재고수준</th>
-              <th>제조일</th><th>유효기간</th><th>창고</th><th>상태</th><th>추적</th>
+              <th>제조일</th><th>유효기간</th><th>창고</th><th>상태 / 품질</th><th>추적</th>
               {perm?.canDelete&&<th></th>}
             </tr>
           </thead>
@@ -3385,6 +3432,7 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
                   <td><b style={{fontFamily:"monospace",color:"#2f6df0",fontSize:12}}>{l.code}</b></td>
                   <td style={{textAlign:"right",fontWeight:700,color:l._qty<=0?"#e74c3c":l._qty<(it?.minStock||0)?"#e67e22":"inherit"}}>
                     {fmt3(l._qty)}<span style={{fontSize:11,color:"var(--muted)",fontWeight:500,marginLeft:3}}>{it?.unit||"EA"}</span>
+                    {!l._avail&&l._qty>0&&<span style={{fontSize:10,color:"#c47d12",marginLeft:5,fontWeight:600}}>🔒 가용제외</span>}
                     {qtyChanged&&<span style={{fontSize:10,color:"#888",marginLeft:5}}>(현재 {fmt3(l.qty)})</span>}
                   </td>
                   <td style={{textAlign:"right",fontSize:12,color:"var(--muted)"}}>{it?.minStock?<>{fmt3(it.minStock)}<span style={{marginLeft:3}}>{it?.unit||"EA"}</span></>:"-"}</td>
@@ -3392,7 +3440,7 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
                   <td style={{fontSize:12,color:"#888"}}>{l.mfg||"-"}</td>
                   <td style={{color:l.status==="만료임박"?"#e67e22":l.status==="만료"?"#e74c3c":"#888",fontSize:12}}>{l.exp||"-"}</td>
                   <td style={{fontSize:12}}>{l.warehouse||"-"}</td>
-                  <td><span className={`badge ${l.status==="정상"?"badge-green":l.status==="만료임박"?"badge-orange":l.status==="불량"?"badge-red":"badge-gray"}`}>{l.status}</span></td>
+                  <td><div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}><span className={`badge ${l.status==="정상"?"badge-green":l.status==="만료임박"?"badge-orange":l.status==="불량"?"badge-red":"badge-gray"}`}>{l.status}</span>{!l._avail&&<span className={`badge ${qcBadge(l._qc)}`}>{l._qc}</span>}</div></td>
                   <td>{(it?.type==="완제품"||it?.type==="반제품")&&<button className="btn btn-outline btn-sm" style={{color:"#7c3aed",borderColor:"#7c3aed",fontSize:11}} onClick={()=>openTrace(l)}>🔍 추적</button>}</td>
                   {perm?.canDelete&&<td><button className="btn btn-danger btn-sm" onClick={()=>del(l.code)}>삭제</button></td>}
                 </tr>
@@ -3421,12 +3469,18 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
             ))}
           </div>
           <div className="stk-fgroup">
-            <div className="stk-flabel">상태</div>
+            <div className="stk-flabel">안전상태</div>
             {["정상","경고","부족"].map(st=>(
               <label key={st} className="stk-fitem"><input type="checkbox" checked={cStatus.has(st)} onChange={()=>toggleSet(setCStatus)(st)}/><span className="stk-fname">{st}</span></label>
             ))}
           </div>
-          <div style={{padding:"4px 12px 12px"}}><button className="btn btn-outline btn-sm" style={{width:"100%"}} onClick={()=>{setCWh(new Set());setCType(new Set());setCStatus(new Set());setQ("");}}>필터 초기화</button></div>
+          <div className="stk-fgroup">
+            <div className="stk-flabel">품질상태</div>
+            {QC_STATES.map(st=>(
+              <label key={st} className="stk-fitem"><input type="checkbox" checked={cQc.has(st)} onChange={()=>toggleSet(setCQc)(st)}/><span className="stk-fname">{st}</span></label>
+            ))}
+          </div>
+          <div style={{padding:"4px 12px 12px"}}><button className="btn btn-outline btn-sm" style={{width:"100%"}} onClick={()=>{setCWh(new Set());setCType(new Set());setCStatus(new Set());setCQc(new Set());setQ("");}}>필터 초기화</button></div>
         </aside>
         <div>
           <div className="stk-cardbar">
@@ -3437,8 +3491,8 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
                 <button className={`seg-btn${cardLayout==="list"?" is-on":""}`} onClick={()=>setCardLayout("list")} title="목록">≣</button>
               </div>
               <button className="btn btn-outline btn-sm" onClick={()=>downloadCSV(
-                ["LOT번호","품목코드","품목명","유형","수량","제조일","유효기간","창고","상태"],
-                cardLots.map(l=>{const it=items.find(x=>x.code===l.item);return[l.code,l.item,l.itemName,it?.type||"",l._qty,l.mfg,l.exp,l.warehouse,safetyStatus(l)];})
+                ["LOT번호","품목코드","품목명","유형","수량","제조일","유효기간","창고","안전상태","품질상태"],
+                cardLots.map(l=>{const it=items.find(x=>x.code===l.item);return[l.code,l.item,l.itemName,it?.type||"",l._qty,l.mfg,l.exp,l.warehouse,safetyStatus(l),l._qc];})
                 ,"LOT현황.csv")}>📥 내보내기</button>
             </div>
           </div>
@@ -3450,15 +3504,19 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
               const stTone=ss==="정상"?"badge-green":ss==="경고"?"badge-orange":"badge-red";
               return(
                 <div key={i} style={{background:"#fff",border:"1px solid var(--line)",borderRadius:12,boxShadow:"var(--shadow)",padding:14,display:"flex",flexDirection:"column",gap:4}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:2}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:2,gap:4}}>
                     <span style={{width:30,height:30,display:"grid",placeItems:"center",borderRadius:8,background:"var(--line-soft)",border:"1px solid var(--line)",fontSize:15}}>📦</span>
-                    <span className={`badge ${stTone}`}>{ss}</span>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"flex-end"}}>
+                      {!l._avail&&<span className={`badge ${qcBadge(l._qc)}`}>{l._qc}</span>}
+                      <span className={`badge ${stTone}`}>{ss}</span>
+                    </div>
                   </div>
                   <div style={{fontWeight:700,fontSize:14,cursor:onItemClick?"pointer":"default",color:onItemClick?"#2f6df0":"inherit"}} onClick={()=>onItemClick&&it&&onItemClick(it)}>{l.itemName}</div>
                   <div style={{fontFamily:"monospace",fontSize:12,color:"var(--muted)"}}>{l.item} · {l.code}</div>
                   <div style={{display:"flex",alignItems:"baseline",gap:6,margin:"6px 0 2px"}}>
-                    <b style={{fontSize:22,fontWeight:800,color:l._qty<=0?"#e74c3c":l._qty<(it?.minStock||0)?"#e67e22":"inherit"}}>{fmt3(l._qty)}</b>
+                    <b style={{fontSize:22,fontWeight:800,color:!l._avail?"#c47d12":l._qty<=0?"#e74c3c":l._qty<(it?.minStock||0)?"#e67e22":"inherit"}}>{fmt3(l._qty)}</b>
                     <span style={{fontSize:12,color:"var(--muted)"}}>{it?.unit||"EA"}</span>
+                    {!l._avail&&l._qty>0&&<span style={{fontSize:10,color:"#c47d12",fontWeight:700,marginLeft:"auto"}}>🔒 가용제외</span>}
                   </div>
                   <StockLevel cur={l._qty} safe={it?.minStock||0}/>
                   <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"var(--muted)",marginTop:6}}>
@@ -3472,7 +3530,7 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
           ):(
           <div className="panel">
             <table>
-              <thead><tr><th>품목코드</th><th>품목명</th><th>LOT번호</th><th style={{textAlign:"right"}}>현재고</th><th style={{textAlign:"right"}}>안전재고</th><th style={{width:120}}>재고수준</th><th>창고</th><th>상태</th></tr></thead>
+              <thead><tr><th>품목코드</th><th>품목명</th><th>LOT번호</th><th style={{textAlign:"right"}}>현재고</th><th style={{textAlign:"right"}}>안전재고</th><th style={{width:120}}>재고수준</th><th>창고</th><th>안전상태</th><th>품질상태</th></tr></thead>
               <tbody>
                 {cardLots.map((l,i)=>{
                   const it=items.find(x=>x.code===l.item);
@@ -3488,10 +3546,11 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
                       <td><StockLevel cur={l._qty} safe={it?.minStock||0}/></td>
                       <td style={{fontSize:12}}>{l.warehouse||"-"}</td>
                       <td><span className={`badge ${stTone}`}>{ss}</span></td>
+                      <td><span className={`badge ${qcBadge(l._qc)}`}>{l._qc}</span></td>
                     </tr>
                   );
                 })}
-                {!cardLots.length&&<tr><td colSpan={8} className="empty">{hideZero?"수량 있는 LOT 없음 (0인 LOT는 숨김 처리됨)":"해당 조건의 LOT 없음"}</td></tr>}
+                {!cardLots.length&&<tr><td colSpan={9} className="empty">{hideZero?"수량 있는 LOT 없음 (0인 LOT는 숨김 처리됨)":"해당 조건의 LOT 없음"}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -3554,7 +3613,8 @@ function StockPage({items,lots,io,warehouses,downloadCSV,onItemClick,setLots,set
 function LotPage({lots,setLots,items,warehouses,perm,showToast,tryDelete,downloadCSV,navSearch,onNavConsumed}) {
   const [q,setQ]=useState(""); const [modal,setModal]=useState(null);
   useEffect(()=>{ if(navSearch&&navSearch.pg==="lot"){ setQ(navSearch.v); onNavConsumed&&onNavConsumed(); } },[navSearch]);
-  const [form,setForm]=useState({code:"",item:"",itemName:"",qty:0,mfg:"",exp:"",status:"정상",warehouse:""});
+  const [form,setForm]=useState({code:"",item:"",itemName:"",qty:0,mfg:"",exp:"",status:"정상",qcStatus:"적합",warehouse:""});
+  const [qcF,setQcF]=useState("");
   const [sel,setSel]=useState(new Set());
   const [startDate,setStartDate]=useState("");
   const [endDate,setEndDate]=useState("");
@@ -3574,14 +3634,17 @@ function LotPage({lots,setLots,items,warehouses,perm,showToast,tryDelete,downloa
     if(startDate&&l.mfg&&l.mfg<startDate) return false;
     if(endDate&&l.mfg&&l.mfg>endDate) return false;
     if(expF&&expInfo(l).key!==expF) return false;
+    if(qcF&&effQc(l)!==qcF) return false;
     return true;
   });
   const liveLots=lots.filter(l=>(l.qty||0)>0);
+  const kQcWait=liveLots.filter(l=>effQc(l)==="검사대기").length;
   const kSoon=liveLots.filter(l=>expInfo(l).key==="soon").length;
   const kExpired=liveLots.filter(l=>expInfo(l).key==="expired").length;
   const kValid=liveLots.length-kSoon-kExpired;
   const toggleSel=(code)=>setSel(prev=>{const s=new Set(prev);s.has(code)?s.delete(code):s.add(code);return s;});
-  const openAdd=()=>{setForm({code:"LOT"+Date.now(),item:"",itemName:"",qty:0,mfg:"",exp:"",status:"정상",warehouse:""});setModal("add");};
+  const openAdd=()=>{setForm({code:"LOT"+Date.now(),item:"",itemName:"",qty:0,mfg:"",exp:"",status:"정상",qcStatus:"적합",warehouse:""});setModal("add");};
+  const setQc=(code,val)=>setLots(lots.map(l=>l.code===code?{...l,qcStatus:val}:l));
   const save=()=>{if(!form.item){showToast("품목을 선택해주세요");return;}if(modal==="add"){setLots([...lots,form]);}else{setLots(lots.map(l=>l.code===form.code?form:l));}showToast("저장되었습니다."); setModal(null);};
   const del=(code)=>{tryDelete([],()=>{setLots(lots.filter(l=>l.code!==code));showToast("삭제되었습니다.");},"LOT 삭제 불가");};
   const bulkDel=()=>{const n=sel.size;if(!window.confirm(`선택한 ${n}개를 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`))return;setLots(lots.filter(l=>!sel.has(l.code)));setSel(new Set());showToast(`${n}개 삭제되었습니다.`);};
@@ -3620,6 +3683,7 @@ function LotPage({lots,setLots,items,warehouses,perm,showToast,tryDelete,downloa
                   mfg:iMfg>=0?(r[iMfg]||""):"",
                   exp:iExp>=0?(r[iExp]||""):"",
                   status:"정상",
+                  qcStatus:"적합",
                   warehouse:iWh>=0?(r[iWh]||""):""
                 });
                 added++;
@@ -3655,7 +3719,13 @@ function LotPage({lots,setLots,items,warehouses,perm,showToast,tryDelete,downloa
       </div>
       <div className="panel">
         <div className="panel-top">
-          <input placeholder="LOT번호/품목명 검색" value={q} onChange={e=>setQ(e.target.value)}/>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <input placeholder="LOT번호/품목명 검색" value={q} onChange={e=>setQ(e.target.value)}/>
+            <select value={qcF} onChange={e=>setQcF(e.target.value)} style={{height:34,border:"1px solid var(--line)",borderRadius:8,padding:"0 10px",fontSize:13,background:"#fff",cursor:"pointer"}}>
+              <option value="">품질상태: 전체</option>{QC_STATES.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+            {kQcWait>0&&<button className="btn btn-sm" onClick={()=>setQcF(qcF==="검사대기"?"":"검사대기")} style={qcF==="검사대기"?{background:"var(--accent-soft)",color:"var(--accent)",border:"1px solid var(--accent)"}:{background:"var(--accent-soft)",color:"var(--accent)",border:"1px solid #bcd4fb"}}>🔬 검사대기 {kQcWait}</button>}
+          </div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
             {expF&&<button className="btn btn-outline btn-sm" onClick={()=>setExpF("")} style={{color:"var(--accent)",borderColor:"var(--accent)"}}>유효성: {expF==="valid"?"유효":expF==="soon"?"임박":expF==="expired"?"만료":expF} ✕</button>}
             <span style={{fontSize:12,color:"#666"}}>제조일</span>
@@ -3667,7 +3737,7 @@ function LotPage({lots,setLots,items,warehouses,perm,showToast,tryDelete,downloa
             <span style={{fontSize:12,color:"#aaa"}}>{filtered.length}건</span>
           </div>
         </div>
-        <table><thead><tr><th style={{width:36,textAlign:"center"}}>선택</th><th>LOT번호</th><th>품목코드</th><th>품목명</th><th style={{textAlign:"right"}}>잔량</th><th>제조일</th><th>유효기간</th><th>유효성</th><th>창고</th><th>상태</th><th>관리</th></tr></thead>
+        <table><thead><tr><th style={{width:36,textAlign:"center"}}>선택</th><th>LOT번호</th><th>품목코드</th><th>품목명</th><th style={{textAlign:"right"}}>잔량</th><th>제조일</th><th>유효기간</th><th>유효성</th><th>창고</th><th>상태</th><th>품질상태</th><th>관리</th></tr></thead>
         <tbody>{filtered.map(l=>{
           const ex=expInfo(l);
           return(
@@ -3677,10 +3747,16 @@ function LotPage({lots,setLots,items,warehouses,perm,showToast,tryDelete,downloa
             <td>{ex.tone?<span className={`badge ${ex.tone}`}>{ex.label}</span>:<span style={{color:"var(--faint)",fontSize:12}}>-</span>}</td>
             <td>{l.warehouse}</td>
             <td><span className={`badge ${l.status==="정상"?"badge-green":l.status==="만료임박"?"badge-orange":"badge-red"}`}>{l.status}</span></td>
+            <td>{perm.canEdit
+              ? <span className="qc-sel-wrap" title="클릭하여 품질상태 변경">
+                  <select value={effQc(l)} onChange={e=>setQc(l.code,e.target.value)} className={`badge qc-sel ${qcBadge(effQc(l))}`}>{QC_STATES.map(s=><option key={s} value={s} style={{background:"#fff",color:"#333"}}>{s}</option>)}</select>
+                  <span className="qc-sel-arrow">▼</span>
+                </span>
+              : <span className={`badge ${qcBadge(effQc(l))}`}>{effQc(l)}</span>}</td>
             <td style={{display:"flex",gap:4}}>{perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({...l});setModal("edit");}}>수정</button>}{perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(l.code)}>삭제</button>}</td>
           </tr>
           );
-        })}{!filtered.length&&<tr><td colSpan={11} className="empty">검색 결과 없음</td></tr>}</tbody></table>
+        })}{!filtered.length&&<tr><td colSpan={12} className="empty">검색 결과 없음</td></tr>}</tbody></table>
       </div>
       {modal&&(<div className="overlay"><div className="modal" onClick={e=>e.stopPropagation()}>
         <div className="modal-head"><span className="modal-title">LOT {modal==="add"?"등록":"수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
@@ -3689,7 +3765,8 @@ function LotPage({lots,setLots,items,warehouses,perm,showToast,tryDelete,downloa
           <div className="field"><label>품목 *</label><select value={form.item} onChange={e=>{const it=items.find(i=>i.code===e.target.value);setForm({...form,item:e.target.value,itemName:it?it.name:""});}}><option value="">선택</option>{items.map(i=><option key={i.code} value={i.code}>{i.name}</option>)}</select></div>
           <div className="field-row"><div className="field"><label>수량</label><input type="number" value={form.qty} onChange={e=>setForm({...form,qty:+e.target.value})}/></div><div className="field"><label>창고</label><select value={form.warehouse} onChange={e=>setForm({...form,warehouse:e.target.value})}><option value="">선택</option>{warehouses.map(w=><option key={w.code}>{w.name}</option>)}</select></div></div>
           <div className="field-row"><div className="field"><label>제조일</label><input type="date" value={form.mfg} onChange={e=>setForm({...form,mfg:e.target.value})}/></div><div className="field"><label>유효기간</label><input type="date" value={form.exp} onChange={e=>setForm({...form,exp:e.target.value})}/></div></div>
-          <div className="field"><label>상태</label><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option>정상</option><option>만료임박</option><option>만료</option><option>불량</option></select></div>
+          <div className="field-row"><div className="field"><label>상태</label><select value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option>정상</option><option>만료임박</option><option>만료</option><option>불량</option></select></div><div className="field"><label>품질상태 (검사)</label><select value={form.qcStatus||"적합"} onChange={e=>setForm({...form,qcStatus:e.target.value})}>{QC_STATES.map(s=><option key={s} value={s}>{s}</option>)}</select></div></div>
+          <div style={{fontSize:11,color:"var(--muted)",marginTop:-2}}>※ 품질상태가 <b>적합</b>일 때만 가용재고로 집계됩니다. 입고 직후 기본값은 검사대기입니다.</div>
         </div>
         <div className="modal-foot"><button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button><button className="btn btn-primary" onClick={save}>저장</button></div>
       </div></div>)}
@@ -3765,7 +3842,7 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
       setLots(prev=>{
         const exists=prev.find(l=>l.code===entry.lot);
         if(!exists){
-          return [...prev,{code:entry.lot,item:entry.item,itemName:entry.itemName,qty:entry.qty,mfg:entry.incomingDate,exp:"",status:"정상",warehouse:entry.warehouse||""}];
+          return [...prev,{code:entry.lot,item:entry.item,itemName:entry.itemName,qty:entry.qty,mfg:entry.incomingDate,exp:"",status:"정상",qcStatus:"검사대기",warehouse:entry.warehouse||""}];
         } else {
           return prev.map(l=>l.code===entry.lot?{...l,qty:(l.qty||0)+entry.qty}:l);
         }
@@ -4376,7 +4453,7 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
       if(form.lot){
         const exists=newLots.find(l=>l.code===form.lot);
         if(exists) newLots=newLots.map(l=>l.code===form.lot?{...l,qty:Math.max(0,(l.qty||0)+newAdj)}:l);
-        else if(form.type==="입고") newLots=[...newLots,{code:form.lot,item:form.item,itemName:form.itemName||"",qty:form.qty,mfg:form.date||"",exp:"",status:"정상",warehouse:""}];
+        else if(form.type==="입고") newLots=[...newLots,{code:form.lot,item:form.item,itemName:form.itemName||"",qty:form.qty,mfg:form.date||"",exp:"",status:"정상",qcStatus:"검사대기",warehouse:""}];
       }
       setItems(newItems);
       setLots(newLots);
@@ -4389,7 +4466,7 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
         setLots(prev=>{
           const exists=prev.find(l=>l.code===form.lot);
           if(exists) return prev.map(l=>l.code===form.lot?{...l,qty:(l.qty||0)+form.qty}:l);
-          return [...prev,{code:form.lot,item:form.item,itemName:form.itemName||"",qty:form.qty,mfg:form.date||"",exp:"",status:"정상",warehouse:""}];
+          return [...prev,{code:form.lot,item:form.item,itemName:form.itemName||"",qty:form.qty,mfg:form.date||"",exp:"",status:"정상",qcStatus:"검사대기",warehouse:""}];
         });
       }
     } else if(form.type==="출고"){
@@ -4449,6 +4526,13 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
           alert(`❌ LOT 재고 부족으로 출고할 수 없습니다.\n\n품목: ${form.itemName}\n가용 LOT 합계: ${fmt3(fifoTotal)} ${form.unit||""}\n출고 요청: ${fmt3(form.qty)} ${form.unit||""}\n부족량: ${fmt3(form.qty-fifoTotal)} ${form.unit||""}`);
           return;
         }
+      }
+      // QC 게이트(경고): 검사 미통과(비적합) LOT이 출고에 포함되면 확인. 승인하면 진행
+      {
+        const _hit=[];
+        if(form.lot){ const l=lots.find(x=>x.code===form.lot); if(l&&!qcAvailable(l)) _hit.push(l); }
+        else { let _rem=form.qty; const _fifo=[...lots].filter(l=>l.item===form.item&&(l.qty||0)>0).sort((a,b)=>(a.mfg||"").localeCompare(b.mfg||"")); for(const l of _fifo){ if(_rem<=0)break; const t=Math.min(l.qty||0,_rem); if(!qcAvailable(l)) _hit.push(l); _rem-=t; } }
+        if(_hit.length>0){ const _msg=_hit.map(l=>`• ${l.code} — ${effQc(l)}`).join("\n"); if(!window.confirm(`⚠️ 품질검사를 통과하지 않은 LOT이 출고에 포함됩니다:\n\n${_msg}\n\n그래도 출고하시겠습니까?`)) return; }
       }
     }
     doSave();
@@ -5213,7 +5297,7 @@ function MatPicker({code,items,onPick,onType,style}){
   );
 }
 
-function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lots,setLots,io,setIo,warehouses,defectWarehouse,goodWarehouse,currentUser,perm,showToast,tryDelete,checkOrderLinks,mfgDocs,navSearch,onNavConsumed}) {
+function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lots,setLots,io,setIo,warehouses,defectWarehouse,goodWarehouse,inspectWarehouse,retainWarehouse,currentUser,perm,showToast,tryDelete,checkOrderLinks,mfgDocs,navSearch,onNavConsumed}) {
   const [activeTab,setActiveTab]=useState("list");
   const [sel,setSel]=useState(new Set());
   const [viewWo,setViewWo]=useState(null);
@@ -5356,9 +5440,17 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
       // 양품 = 지시 - 불량 - 검사 - 보관샘플 (음수 방지: 합계 초과는 saveComplete에서 이미 차단)
       const goodQty=Math.max(0,(order.orderQty||0)-(defectQty||0)-(inspectQty||0)-(retainQty||0));
       const totalGoodQty=goodQty+(inspectQty||0)+(retainQty||0);
+      // 양품/검사/보관 LOT 행 분리 — 같은 LOT 번호, 각 창고로. 검사/보관 창고 미등록 시 완제품창고에 합산(레거시 동작)
       if(totalGoodQty>0){
-        setLots(prev=>[...prev,{code:mainLotCode,item:order.product,itemName:order.productName,qty:totalGoodQty,mfg:doneDate,exp:"",status:"정상",warehouse:order.warehouse||goodWarehouse.name}]);
         setItems(prev=>prev.map(it=>it.code===order.product?{...it,stock:it.stock+totalGoodQty}:it));
+        const _goodWh=order.warehouse||goodWarehouse.name;
+        const _hasInsp=!!inspectWarehouse, _hasRet=!!retainWarehouse;
+        const _goodRowQty=goodQty+(_hasInsp?0:(inspectQty||0))+(_hasRet?0:(retainQty||0));
+        const _newLots=[];
+        if(_goodRowQty>0) _newLots.push({code:mainLotCode,item:order.product,itemName:order.productName,qty:_goodRowQty,mfg:doneDate,exp:"",status:"정상",warehouse:_goodWh});
+        if(_hasInsp&&(inspectQty||0)>0) _newLots.push({code:mainLotCode,item:order.product,itemName:order.productName,qty:inspectQty,mfg:doneDate,exp:"",status:"정상",warehouse:inspectWarehouse.name});
+        if(_hasRet&&(retainQty||0)>0) _newLots.push({code:mainLotCode,item:order.product,itemName:order.productName,qty:retainQty,mfg:doneDate,exp:"",status:"정상",warehouse:retainWarehouse.name});
+        if(_newLots.length>0) setLots(prev=>[...prev,..._newLots]);
       }
       if(goodQty>0){
         setIo(prev=>[...prev,{date:doneDate,type:"입고",item:order.product,itemName:order.productName,qty:goodQty,unitPrice:items.find(i=>i.code===order.product)?.price||0,lot:mainLotCode,note:`작업지시서 ${order.code} 완료`}]);
@@ -5407,7 +5499,8 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
     // → 단일 창고 LOT만 보면 이동분을 "출하·소비"로 오판하므로 전 창고 합산으로 판정.
     const normalLotsAll=_lots.filter(l=>l.code===mainLotCode&&l.item===prodCode&&l.status==="정상");
     const curNormalTotal=normalLotsAll.reduce((s,l)=>s+(l.qty||0),0);
-    const normalWarehouses=[...new Set(normalLotsAll.map(l=>l.warehouse))];
+    const _designatedWh=new Set([inspectWarehouse?.name,retainWarehouse?.name].filter(Boolean));
+    const normalWarehouses=[...new Set(normalLotsAll.filter(l=>!_designatedWh.has(l.warehouse)).map(l=>l.warehouse))];  // 양품(비검사/보관) 창고만 — 검사/보관 분리는 설계상 허용
     if(oNormalLotQty>0&&curNormalTotal<oNormalLotQty){
       alert(`❌ 재완료 불가\n\n생산된 완제품 LOT(${mainLotCode})이 이미 출하·소비되었습니다.\n생성수량 ${oNormalLotQty}EA 중 현재 ${curNormalTotal}EA만 남아 되돌릴 수 없습니다.\n\n출하 내역을 먼저 취소한 뒤 다시 시도해주세요.`);
       return false;
@@ -5466,8 +5559,13 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
     const goodQty=Math.max(0,orderQty-nDefect-nInspect-nRetain);
     const totalGoodQty=goodQty+nInspect+nRetain;
     if(totalGoodQty>0){
-      _lots=[..._lots,{code:mainLotCode,item:prodCode,itemName:completeModal.productName,qty:totalGoodQty,mfg:doneDate,exp:"",status:"정상",warehouse:completeModal.warehouse||goodWarehouse.name}];
       _items=_items.map(it=>it.code===prodCode?{...it,stock:(it.stock||0)+totalGoodQty}:it);
+      const _goodWh=completeModal.warehouse||goodWarehouse.name;
+      const _hasInsp=!!inspectWarehouse, _hasRet=!!retainWarehouse;
+      const _goodRowQty=goodQty+(_hasInsp?0:nInspect)+(_hasRet?0:nRetain);
+      if(_goodRowQty>0) _lots=[..._lots,{code:mainLotCode,item:prodCode,itemName:completeModal.productName,qty:_goodRowQty,mfg:doneDate,exp:"",status:"정상",warehouse:_goodWh}];
+      if(_hasInsp&&nInspect>0) _lots=[..._lots,{code:mainLotCode,item:prodCode,itemName:completeModal.productName,qty:nInspect,mfg:doneDate,exp:"",status:"정상",warehouse:inspectWarehouse.name}];
+      if(_hasRet&&nRetain>0) _lots=[..._lots,{code:mainLotCode,item:prodCode,itemName:completeModal.productName,qty:nRetain,mfg:doneDate,exp:"",status:"정상",warehouse:retainWarehouse.name}];
     }
     if(goodQty>0){
       _io=[..._io,{date:doneDate,type:"입고",item:prodCode,itemName:completeModal.productName,qty:goodQty,unitPrice:priceOf(prodCode),lot:mainLotCode,note:`작업지시서 ${code} 완료`}];
@@ -5512,7 +5610,8 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
     // 생산 정상 LOT은 창고이동(#25)으로 같은 코드가 여러 창고에 분할 존재 가능 → 전 창고 합산으로 판정
     const normalLotsAll=mainLotCode?_lots.filter(l=>l.code===mainLotCode&&l.item===prodCode&&l.status==="정상"):[];
     const curNormalTotal=normalLotsAll.reduce((s,l)=>s+(l.qty||0),0);
-    const normalWarehouses=[...new Set(normalLotsAll.map(l=>l.warehouse))];
+    const _designatedWh=new Set([inspectWarehouse?.name,retainWarehouse?.name].filter(Boolean));
+    const normalWarehouses=[...new Set(normalLotsAll.filter(l=>!_designatedWh.has(l.warehouse)).map(l=>l.warehouse))];  // 양품(비검사/보관) 창고만 — 검사/보관 분리는 설계상 허용
     if(oNormalLotQty>0&&curNormalTotal<oNormalLotQty){
       alert(`❌ 완료 취소 불가\n\n생산된 완제품 LOT(${mainLotCode})이 이미 출하·소비되었습니다.\n생성수량 ${oNormalLotQty}EA 중 현재 ${curNormalTotal}EA만 남아 되돌릴 수 없습니다.\n\n출하 내역을 먼저 취소한 뒤 다시 시도해주세요.`);
       return;
@@ -5555,6 +5654,20 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
     if(_used>_orderQty){
       alert(`❌ 수량 합계가 지시수량을 초과합니다.\n\n지시수량: ${_orderQty}EA\n불량 ${compForm.defectQty||0} + 검사 ${compForm.inspectQty||0} + 보관샘플 ${compForm.retainQty||0} = ${_used}EA\n초과: ${_used-_orderQty}EA\n\n합계가 지시수량을 넘지 않도록 조정해주세요.`);
       return;
+    }
+    // QC 게이트(경고): 검사 미통과(비적합) 자재가 생산 투입(FIFO)에 소비되면 확인. 승인하면 진행
+    {
+      const _ord=completeModal;
+      const _bom=_ord.materials?.length>0?_ord.materials:(bom.find(b=>b.product===_ord.product)?.materials||[]);
+      const _hit=[];
+      _bom.forEach(m=>{
+        const need=(m.qty||0)*(_ord.orderQty||0);
+        const done=(io||[]).filter(r=>r.type==="출고"&&r.item===m.code&&r.note&&r.note.includes(_ord.code)).reduce((s,r)=>s+(r.qty||0),0);
+        let rem=need-done; if(rem<=0)return;
+        const _fifo=lots.filter(l=>l.item===m.code&&(l.qty||0)>0).sort((a,b)=>(a.mfg||"").localeCompare(b.mfg||""));
+        for(const l of _fifo){ if(rem<=0)break; const t=Math.min(l.qty||0,rem); if(!qcAvailable(l)&&!_hit.find(h=>h.code===l.code)) _hit.push(l); rem-=t; }
+      });
+      if(_hit.length>0){ const _msg=_hit.map(l=>`• ${l.itemName||l.item} / ${l.code} — ${effQc(l)}`).join("\n"); if(!window.confirm(`⚠️ 품질검사를 통과하지 않은 자재가 생산에 투입됩니다:\n\n${_msg}\n\n그래도 완료 처리하시겠습니까?`)) return; }
     }
     const isReComplete=completeModal.status==="완료";
     if(isReComplete){
