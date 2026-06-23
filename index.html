@@ -2500,9 +2500,12 @@ function ItemsPage({items,setItems,bom,setBom,warehouses,processes,perm,showToas
   const [view,setView]=useState(0);          // 0=테이블형, 1=마스터-상세형
   const [selItem,setSelItem]=useState(null);  // 마스터-상세형 선택 품목코드
   const [docModal,setDocModal]=useState(null); // {item}
+  const [typeFilter,setTypeFilter]=useState("전체"); // 품목 유형 필터
   // 전체검색에서 품목 클릭 시 그 품목코드로 필터 (1회 소비)
   useEffect(()=>{ if(navSearch&&navSearch.pg==="items"){ setQ(navSearch.v); setSelItem(navSearch.v); onNavConsumed&&onNavConsumed(); } },[navSearch]);
-  const filtered=items.filter(i=>i.name.includes(q)||i.code.includes(q));
+  const matchType=(t)=>typeFilter==="전체"||t===typeFilter||(typeFilter==="완제품"&&t==="제품");
+  const typeCounts=items.reduce((a,i)=>{a[i.type]=(a[i.type]||0)+1;return a;},{});
+  const filtered=items.filter(i=>(i.name.includes(q)||i.code.includes(q))&&matchType(i.type));
   const toggleSel=(code)=>setSelected(prev=>{const s=new Set(prev);s.has(code)?s.delete(code):s.add(code);return s;});
   const toggleProc=(code)=>setForm(f=>{const ps=f.processes||[];return{...f,processes:ps.includes(code)?ps.filter(c=>c!==code):[...ps,code]};});
 
@@ -2596,6 +2599,15 @@ function ItemsPage({items,setItems,bom,setBom,warehouses,processes,perm,showToas
           </>}
           {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ 품목 등록</button>}
         </div>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+        {[["전체","전체"],["완제품","완제품"],["반제품","반제품"],["원자재","원자재"],["부자재","부자재"]].map(([k,label])=>{
+          const cnt=k==="전체"?items.length:(typeCounts[k]||0)+(k==="완제품"?(typeCounts["제품"]||0):0);
+          const on=typeFilter===k;
+          return <button key={k} onClick={()=>setTypeFilter(k)}
+            style={{border:`1px solid ${on?"#2f6df0":"#dfe3ea"}`,background:on?"#2f6df0":"#fff",color:on?"#fff":"#555",borderRadius:16,padding:"5px 13px",fontSize:12,fontWeight:on?700:500,cursor:"pointer"}}>
+            {label} <span style={{opacity:0.75}}>{cnt}</span></button>;
+        })}
       </div>
       {view===0 && (
       <div className="panel">
@@ -3162,6 +3174,7 @@ function BomPage({bom,setBom,items,perm,showToast,tryDelete}) {
   const [prodQ,setProdQ]=useState("");
   const [matQs,setMatQs]=useState([]);
   const [matQtyInputs,setMatQtyInputs]=useState([]); // raw string for qty input
+  const [multiView,setMultiView]=useState(false);    // 다단계 전개 보기 토글
   const toggleSel=(code)=>setSel(prev=>{const s=new Set(prev);s.has(code)?s.delete(code):s.add(code);return s;});
   const products=items.filter(i=>i.type==="완제품"||i.type==="반제품");
   const allMats=items.filter(i=>i.type==="원자재"||i.type==="부자재"||i.type==="반제품");
@@ -3179,12 +3192,68 @@ function BomPage({bom,setBom,items,perm,showToast,tryDelete}) {
   const del=(code)=>{tryDelete([],()=>{setBom(bom.filter(b=>b.code!==code));showToast("삭제되었습니다.");},"BOM 삭제 불가");};
   const bulkDel=()=>{const n=sel.size;if(!window.confirm(`선택한 ${n}개를 삭제하시겠습니까?\n삭제 후 복구할 수 없습니다.`))return;setBom(bom.filter(b=>!sel.has(b.code)));setSel(new Set());showToast(`${n}개 삭제되었습니다.`);};
   const calc=(b)=>{const q=matQty[b.code]||1;return b.materials.map(m=>({...m,totalQty:m.qty*q}));};
+  // 다단계 BOM 전개: 반제품 자재를 그 하위 BOM으로 재귀 펼쳐 최종 원자재 소요량 합산
+  const explode=(productCode,mult,acc,visited)=>{
+    const node=bom.find(x=>x.product===productCode);
+    if(!node)return;
+    node.materials.forEach(m=>{
+      const sub=bom.find(x=>x.product===m.code);
+      const it=items.find(i=>i.code===m.code);
+      if(it&&it.type==="반제품"&&sub&&!visited.has(m.code)){
+        explode(m.code,mult*m.qty,acc,new Set([...visited,m.code]));
+      }else{
+        const key=m.code||m.name;
+        if(!acc[key])acc[key]={code:m.code,name:m.name||(it?it.name:""),unit:m.unit||(it?it.unit:"")};
+        acc[key].qty=(acc[key].qty||0)+m.qty*mult;
+      }
+    });
+  };
+  const explodeList=(b,q)=>{const acc={};explode(b.product,q,acc,new Set([b.product]));return Object.values(acc).map(x=>({...x,qty:Math.round((x.qty||0)*1000)/1000}));};
+  const hasSemi=(b)=>b.materials.some(m=>{const it=items.find(i=>i.code===m.code);return it&&it.type==="반제품"&&bom.some(x=>x.product===m.code);});
   return (
     <div>
       <div className="page-header">
         <div><div className="crumb">MedERP <span>›</span> <b>BOM (자재명세서)</b></div><div className="page-title">BOM (자재명세서)</div><div className="page-sub">완제품 1개 생산에 필요한 자재 목록</div></div>
-        <div style={{display:"flex",gap:8}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           {perm.canDelete&&sel.size>0&&<button className="btn btn-danger" onClick={bulkDel}>🗑 선택 삭제 ({sel.size})</button>}
+          {perm.canCreate&&<>
+            <button className="btn btn-outline" onClick={()=>downloadTemplate(
+              ["품목코드","자재코드","소요량","단위"],
+              ["P0011","RM-001","2.5","EA"],
+              "BOM_업로드양식.csv"
+            )}>📋 양식 다운로드</button>
+            <UploadBtn label="📂 BOM 업로드" onUpload={(text)=>{
+              const {headers,rows}=parseCsvRows(text);
+              const hi=(name)=>headers.findIndex(h=>h===name||h.replace(/\s/g,"")===name);
+              const iProd=hi("품목코드")>=0?hi("품목코드"):hi("코드");
+              const iMat=hi("자재코드"); const iQty=hi("소요량")>=0?hi("소요량"):hi("수량"); const iUnit=hi("단위");
+              if(iProd<0||iMat<0){showToast("❌ 품목코드, 자재코드 컬럼이 필요합니다");return;}
+              const grouped={}; const skips=[];
+              rows.forEach((r,idx)=>{
+                const ln=idx+2;
+                const pc=(r[iProd]||"").trim(); const mc=(r[iMat]||"").trim();
+                if(!pc||!mc){skips.push(`${ln}행: 품목코드/자재코드 누락`);return;}
+                const prod=items.find(i=>i.code===pc);
+                if(!prod){skips.push(`${ln}행: 없는 품목코드(${pc})`);return;}
+                if(!(prod.type==="완제품"||prod.type==="제품"||prod.type==="반제품")){skips.push(`${ln}행: ${pc}는 완제품/반제품이 아님`);return;}
+                const mat=items.find(i=>i.code===mc);
+                const qty=Math.round((parseFloat(r[iQty])||0)*1000)/1000;
+                (grouped[pc]=grouped[pc]||[]).push({code:mc,name:mat?mat.name:"",qty,unit:iUnit>=0&&r[iUnit]?r[iUnit].trim():(mat?mat.unit:"EA")});
+              });
+              const prodCodes=Object.keys(grouped);
+              if(!prodCodes.length){showToast("❌ 등록할 BOM이 없습니다");if(skips.length)alert(skips.slice(0,15).join("\n"));return;}
+              const next=[...bom];
+              prodCodes.forEach(pc=>{
+                const prod=items.find(i=>i.code===pc);
+                const entry={code:(bom.find(b=>b.product===pc)?.code)||"BOM"+Date.now()+pc,product:pc,productName:prod?prod.name:"",materials:grouped[pc]};
+                const ix=next.findIndex(b=>b.product===pc);
+                if(ix>=0)next[ix]=entry;else next.push(entry);
+              });
+              setBom(next);
+              showToast(`✅ ${prodCodes.length}개 품목 BOM 등록/갱신${skips.length?` (건너뜀 ${skips.length}건)`:""}`);
+              if(skips.length)alert(`⚠️ ${skips.length}건 건너뜀\n\n${skips.slice(0,15).join("\n")}${skips.length>15?`\n…외 ${skips.length-15}건`:""}`);
+            }}/>
+          </>}
           {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ BOM 등록</button>}
         </div>
       </div>
@@ -3202,13 +3271,24 @@ function BomPage({bom,setBom,items,perm,showToast,tryDelete}) {
           </div>
           {exp===b.code&&(
             <div className="bom-body">
-              <div style={{display:"flex",alignItems:"center",gap:8,margin:"10px 0 8px"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,margin:"10px 0 8px",flexWrap:"wrap"}}>
                 <label style={{fontSize:12,color:"#666"}}>생산 수량:</label>
                 <input type="number" min={1} style={{width:70,border:"1px solid #ddd",borderRadius:5,padding:"4px 8px",fontSize:13}} value={matQty[b.code]||1} onChange={e=>setMatQty({...matQty,[b.code]:+e.target.value})}/>
                 <span style={{fontSize:12,color:"#aaa"}}>EA 기준 자재 소요량</span>
+                {hasSemi(b)&&<label style={{fontSize:12,color:"#2f6df0",display:"flex",alignItems:"center",gap:4,cursor:"pointer",marginLeft:8}}>
+                  <input type="checkbox" checked={multiView} onChange={e=>setMultiView(e.target.checked)}/> 🔍 다단계 전개(반제품까지 펼치기)
+                </label>}
               </div>
-              <table><thead><tr><th>자재코드</th><th>자재명</th><th>단위 소요량</th><th>단위</th><th>총 소요량</th></tr></thead>
-              <tbody>{calc(b).map((m,i)=><tr key={i}><td>{m.code}</td><td>{m.name}</td><td>{fmt3(m.qty)}</td><td>{m.unit}</td><td style={{fontWeight:700,color:"#2f6df0"}}>{fmt3(m.totalQty)}</td></tr>)}</tbody></table>
+              {!multiView?(
+                <table><thead><tr><th>자재코드</th><th>자재명</th><th>단위 소요량</th><th>단위</th><th>총 소요량</th></tr></thead>
+                <tbody>{calc(b).map((m,i)=>{const it=items.find(x=>x.code===m.code);const semi=it&&it.type==="반제품"&&bom.some(x=>x.product===m.code);return <tr key={i}><td>{m.code}</td><td>{m.name}{semi&&<span className="badge badge-blue" style={{marginLeft:6,fontSize:10}}>반제품</span>}</td><td>{fmt3(m.qty)}</td><td>{m.unit}</td><td style={{fontWeight:700,color:"#2f6df0"}}>{fmt3(m.totalQty)}</td></tr>;})}</tbody></table>
+              ):(
+                <div>
+                  <div style={{fontSize:12,color:"#666",margin:"2px 0 6px"}}>📐 최종 원자재 소요량 (반제품을 하위 BOM으로 전개)</div>
+                  <table><thead><tr><th>자재코드</th><th>자재명</th><th>단위</th><th>총 소요량</th><th>현재고</th></tr></thead>
+                  <tbody>{explodeList(b,matQty[b.code]||1).map((m,i)=>{const mat=items.find(x=>x.code===m.code);const ok=mat&&mat.stock>=m.qty;return <tr key={i}><td>{m.code}</td><td>{m.name}</td><td>{m.unit}</td><td style={{fontWeight:700,color:"#2f6df0"}}>{fmt3(m.qty)}</td><td style={{textAlign:"right",color:mat?(ok?"#27ae60":"#e74c3c"):"#aaa",fontWeight:600}}>{mat?fmt3(mat.stock):"?"}</td></tr>;})}</tbody></table>
+                </div>
+              )}
             </div>
           )}
         </div>
