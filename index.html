@@ -350,8 +350,29 @@ tr:hover td { background: #fafbfc; }
 
 <script>
 // ── 버전 관리 ──
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "2.0.0";
 const CHANGELOG = [
+  {
+    version: "2.0.0",
+    date: "2026-07-12",
+    label: "보안 · 식약처 연동 · 성능",
+    changes: [
+      "🔐 이메일 로그인 전환 (Supabase Auth) · 여러 직원 동시 사용",
+      "🛡️ DB 접근 제어 강화 (로그인 사용자만 조회·수정 가능)",
+      "👥 사용자 관리 개편 (계정 추가 · 권한 변경 · 비밀번호 재설정)",
+      "🏥 식약처 UDI 연동 (표준코드 입력 시 품목정보 자동 채움)",
+      "📤 공급내역 보고 (사전검증 → 등록 → 제출 3단계)",
+      "🤝 거래처 관리 및 식약처 거래처 동기화",
+      "🧪 검사 · 보관샘플 창고 분리 (LOT 번호는 양품과 동일)",
+      "🔬 재고 품질상태(QC) 세분화 · 적합 재고만 가용 집계",
+      "📐 작업지시 수율(양품률) 자동 계산",
+      "🛒 구매 소요 · 발주 알림 (BOM 전개 기반 부족분 판정)",
+      "↩️ 작업지시 재완료 · 완료취소 (입출고 자동 되돌림)",
+      "🎨 전체 화면 디자인 리뉴얼 (MedERP 테마)",
+      "🔍 통합 검색 (Ctrl+K) · 검색 결과에서 해당 항목 바로 이동",
+      "⚡ 로딩 속도 개선 (사전 빌드 적용 · 10초 → 2초)",
+    ]
+  },
   {
     version: "1.0.0",
     date: "2026-05-28",
@@ -499,6 +520,12 @@ const initProcesses = [
 const UNITS = ["EA","PCS","SET","개","M","CM","MM","KG","G","MG","L","ML","CC","BOX","BAG","ROLL","SHEET","PACK","병","정","캡슐","바이알","앰플"];
 const fmt3 = (n) => { const v = Math.round((+n)*1000)/1000; return isNaN(v) ? "0" : v.toLocaleString("ko-KR",{maximumFractionDigits:3}); };
 
+// ── 작업지시 수율(양품률) ── (지시수량 - 불량) / 지시수량 × 100. 분석 페이지 양품률(aGoodRate)과 동일 정의.
+// 검사·보관샘플은 양품을 샘플로 돌린 것이라 손실이 아니므로 수율에서 차감하지 않는다. 지시수량 0/미완료면 null.
+const yieldOf = (orderQty, defectQty) => { const q = +orderQty || 0; if (q <= 0) return null; return +(((q - (+defectQty || 0)) / q) * 100).toFixed(1); };
+// 수율 색상: 95%+ 정상(초록) · 90%+ 주의(주황) · 그 미만 경고(빨강)
+const yieldColor = (y) => (y == null ? "#888" : y >= 95 ? "#16a34a" : y >= 90 ? "#e67e22" : "#e74c3c");
+
 // ── 품질상태(QC) 게이트 ── 입고/생산 LOT의 품질검사 흐름. lot.status(정상/불량/만료)와 별개 차원의 lot.qcStatus.
 // 입고 시 자동으로 "검사대기" → 검사 통과 시 "적합"이 되어야 가용재고로 집계됨.
 const QC_STATES = ["검사대기","검사중","적합","보류","부적합","폐기"];
@@ -507,6 +534,97 @@ const effQc = (l) => l.qcStatus || (l.status==="불량" ? "부적합" : "적합"
 // 가용재고 여부: "적합"만 사용 가능. 그 외(검사대기/검사중/보류/부적합/폐기)는 수량은 보이되 가용에서 제외
 const qcAvailable = (l) => effQc(l)==="적합";
 const qcBadge = (s) => ({"적합":"badge-green","검사대기":"badge-blue","검사중":"badge-orange","보류":"badge-gray","부적합":"badge-red","폐기":"badge-gray"}[s]||"badge-gray");
+
+// ── 식약처 의료기기 통합정보시스템(emedi) OpenAPI 중계 ──
+// 브라우저에서 emedi를 직접 못 부른다(CORS 차단 + ClientSecret 노출). Supabase Edge Function 경유.
+// 진짜 비밀(ClientId/ClientSecret)은 함수 env에만 있고, 아래 UDI_FN_KEY는 무단호출을 막는 최소 방어일 뿐
+// (브라우저 코드에 담기므로 사실상 공개값이다).
+const UDI_FN_URL = SUPABASE_URL + '/functions/v1/udi-report';
+const UDI_FN_KEY = '24578db5c7698213af5152cf6ca022d1dc0a9bd6b45dde2b';
+
+// 함수는 emedi 응답을 {status,data}로 감싸 돌려준다. 바깥 HTTP는 200이어도 inner status가 실패일 수 있다.
+async function udiCall(action, payload={}) {
+  const res = await fetch(UDI_FN_URL, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','x-udi-key':UDI_FN_KEY},
+    body: JSON.stringify({action, ...payload}),
+  });
+  let body=null;
+  try { body = await res.json(); } catch { throw new Error('식약처 응답을 해석할 수 없습니다.'); }
+  if (!res.ok) throw new Error(body?.message || `요청 실패 (HTTP ${res.status})`);
+  if (body && typeof body.status === 'number' && body.status !== 200) {
+    throw new Error(body?.data?.message || `식약처 API 오류 (HTTP ${body.status})`);
+  }
+  return body?.data !== undefined ? body.data : body;
+}
+
+// 직원 계정 관리(Supabase Auth) — user-admin Edge Function 호출. 로그인 세션 토큰을 자동 첨부.
+async function userAdminCall(action, payload={}) {
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session) throw new Error('로그인이 필요합니다.');
+  const res = await fetch(SUPABASE_URL+'/functions/v1/user-admin', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.access_token}`},
+    body:JSON.stringify({action, ...payload}),
+  });
+  const body = await res.json().catch(()=>null);
+  if(!res.ok) throw new Error(body?.message || `요청 실패 (HTTP ${res.status})`);
+  return body;
+}
+
+// 사업자번호 정규화(하이픈/공백 제거). ERP bizNo("310-31-02587")와 식약처 taxNo 매칭용.
+const normTax = (s) => String(s||"").replace(/[^0-9]/g,"");
+// 상호 정규화: 괄호/공백/"주식회사" 등 표기차 흡수 (사업자번호 없는 거래처의 폴백 매칭용)
+const normName = (s) => String(s||"").replace(/\(주\)|\(유\)|주식회사|유한회사/g,"").replace(/\s+/g,"").toLowerCase();
+// 식약처 grade("4") → ERP grade("4등급")
+const mfdsGrade = (g) => (g && /^[1-4]$/.test(String(g).trim())) ? `${String(g).trim()}등급` : (g||"");
+
+// 공급내역 보고 날짜 형식: suplyDate=YYYYMMDD, manufYm·useTmlmt=YYMMDD
+const ymd8 = (s) => String(s||"").replace(/\D/g,"").slice(0,8);
+const ymd6 = (s) => { const d=String(s||"").replace(/\D/g,""); return d.length>=8 ? d.slice(2,8) : (d.length===6 ? d : ""); };
+// 공급형태 코드(26장): 거래처 업종에서 유도. 1=제조·수입·판매(임대)에 공급, 2=의료기관, 3=약국·의약품도매
+const suplyTypeOf = (bcncType) => /의료기관/.test(bcncType||"") ? "2" : /약국|도매/.test(bcncType||"") ? "3" : "1";
+
+// 식약처 공급내역 보고자료 추가(26장) 입력 항목 — emedi 화면과 동일한 선택지
+// 공급구분(suplyFlagCode) 1~5
+const SUPPLY_FLAGS = ["출고","반품","폐기","임대","회수"];
+const SUPPLY_FLAG_CODE = {"출고":"1","반품":"2","폐기":"3","임대":"4","회수":"5"};
+// 공급형태(suplyTypeCode) 1~4 — 공급구분이 출고·임대일 때 필수
+const SUPPLY_TYPES = ["제조·수입·판매(임대)에 공급","의료기관에 공급","약국개설자·의약품도매상에 공급","견본품·기부용·군납용 등"];
+const SUPPLY_TYPE_CODE = {"제조·수입·판매(임대)에 공급":"1","의료기관에 공급":"2","약국개설자·의약품도매상에 공급":"3","견본품·기부용·군납용 등":"4"};
+// 전체 UDI 바코드 → DI/PI 분리. GS1 AI: (01)DI14 (11)제조YYMMDD (17)사용기한 (10)LOT (21)일련번호
+// 괄호 표기((01)...(11)...)와 괄호 없는 고정길이 표기 모두 지원.
+const parseUdiBarcode = (raw) => {
+  const s = String(raw||"").trim().replace(/\s+/g,"");
+  const out = { di:"", pi:"", mfgDate:"", exp:"", lot:"", serialNo:"" };
+  if (/\(\d{2}\)/.test(s)) {                     // 괄호 표기
+    const g = (ai) => { const m = s.match(new RegExp(`\\(${ai}\\)([^(]*)`)); return m ? m[1] : ""; };
+    out.di=g("01"); out.mfgDate=g("11"); out.exp=g("17"); out.lot=g("10"); out.serialNo=g("21");
+  } else {                                        // 괄호 없는 GS1 element string
+    let i=0;
+    while (i < s.length-1) {
+      const ai = s.substr(i,2); i+=2;
+      if (ai==="01") { out.di=s.substr(i,14); i+=14; }
+      else if (ai==="11") { out.mfgDate=s.substr(i,6); i+=6; }
+      else if (ai==="17") { out.exp=s.substr(i,6); i+=6; }
+      else if (ai==="10") { out.lot=s.substr(i); break; }   // 가변길이 → 나머지 전부
+      else if (ai==="21") { out.serialNo=s.substr(i); break; }
+      else break;
+    }
+  }
+  let pi="";
+  if (out.mfgDate) pi+=`(11)${out.mfgDate}`;
+  if (out.exp)     pi+=`(17)${out.exp}`;
+  if (out.lot)     pi+=`(10)${out.lot}`;
+  if (out.serialNo)pi+=`(21)${out.serialNo}`;
+  out.pi = pi;
+  return out;
+};
+
+// 공급형태가 필수인 공급구분(출고/임대)
+const needsSupplyType = (flag) => flag==="출고" || flag==="임대";
+// 거래처(bcncCode)가 필수인 공급구분(출고/반품)
+const needsBcnc = (flag) => flag==="출고" || flag==="반품";
 
 const initOrdersLedger = [
   { no:1, date:"2026-04-01", receiver:"김승현", client:"인터큐어/대한민국", orderNo:"IO2604001", product:"Tigertriever", spec:"0.0021", desc:"TIGERTRIEVER 제품 납품", qty:2, dueDate:"2026-04-01", paymentTerms:"N/A", requirements:"N/A", customerReq:"이상없음", feasible:"O", deliveryDate:"2026-04-02", note:"제품", taxInvoice:"발행" },
@@ -661,11 +779,9 @@ const PERMISSIONS = {
   manager: { canCreate:true,  canEdit:true,  canDelete:false, canAdmin:false, canViewPrice:false },
   viewer:  { canCreate:false, canEdit:false, canDelete:false, canAdmin:false, canViewPrice:false },
 };
-const initUsers = [
-  { id:"admin",   pw:"admin123",   name:"관리자",  role:"admin"   },
-  { id:"manager", pw:"manager123", name:"담당자",  role:"manager" },
-  { id:"viewer",  pw:"viewer123",  name:"조회자",  role:"viewer"  },
-];
+// 로그인/계정은 Supabase Auth가 관리한다(UserPage + user-admin Edge Function).
+// 과거 여기 있던 평문 비밀번호 기본계정은 보안상 제거됨.
+const initUsers = [];
 
 const DELETE_ORDER = [
   "① 작업지시서 (대기 상태만)",
@@ -758,11 +874,33 @@ function App() {
   const [transfers, setTransfers] = useState([]);
   const [stdCosts, setStdCosts] = useState([]);
   const [shipments, setShipments] = useState([]);
+  const [supplyMeta, setSupplyMeta] = useState({companyName:"",bizNo:""});
+  const [vendors, setVendors] = useState([]);          // 거래처(업체) 마스터
+  const [supplyRecords, setSupplyRecords] = useState([]); // 공급내역 직접 등록분
   const [mfgDocs, setMfgDocs] = useState({});
   const [dbLoaded, setDbLoaded] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false); // 세션 최초 확인 완료 여부
 
-  // ── Supabase: 앱 시작 시 전체 데이터 로드 ──
+  // ── Supabase Auth: 세션 복원 + 로그인/로그아웃 반영 ──
+  // 세션의 user_metadata에서 role/name을 읽어 currentUser를 구성한다.
   useEffect(()=>{
+    // 이름에 글자/숫자가 하나도 없으면(????, ？？,    , 공백 등 깨진 값) email로 대체
+    const cleanName=(n)=>{ n=(n||"").trim(); return /[\p{L}\p{N}]/u.test(n) ? n : null; };
+    const toUser=(u)=> u ? {
+      id:u.email, email:u.email,
+      name:cleanName(u.user_metadata?.name)||u.email,
+      role:u.user_metadata?.role||"viewer",
+    } : null;
+    sb.auth.getSession().then(({data})=>{ setCurrentUser(toUser(data?.session?.user)); setAuthReady(true); });
+    const { data:sub } = sb.auth.onAuthStateChange((_e,session)=> setCurrentUser(toUser(session?.user)));
+    return ()=> sub?.subscription?.unsubscribe();
+  },[]);
+
+  // ── Supabase: 로그인(세션) 후에만 전체 데이터 로드 ──
+  // RLS가 켜지면 익명 상태에서는 select가 막히므로, 반드시 로그인 후 로드한다.
+  useEffect(()=>{
+    if(!currentUser || dbLoaded) return;
     (async()=>{
       try{
         const {data,error}=await sb.from('erp_data').select('*');
@@ -781,10 +919,13 @@ function App() {
         if(store.factories) setFactories(store.factories);
         if(store.costMaster) setCostMaster(store.costMaster);
         if(store.ordersLedger) setOrdersLedger(store.ordersLedger);
-        if(store.users)    setUsers(store.users);
+        // users는 Supabase Auth로 이전됨 — DB의 옛 users(평문 비번)는 로드하지 않는다.
         if(store.transfers) setTransfers(store.transfers);
         if(store.stdCosts)  setStdCosts(store.stdCosts);
         if(store.shipments) setShipments(store.shipments);
+        if(store.supplyMeta) setSupplyMeta(store.supplyMeta);
+        if(store.vendors) setVendors(store.vendors);
+        if(store.supplyRecords) setSupplyRecords(store.supplyRecords);
         // 제조지시서: 레거시 통합 blob(mfg_docs) + 품목별 개별 행(mfg_docs:<code>) 병합
         {
           const _md=(store.mfg_docs&&typeof store.mfg_docs==="object")?{...store.mfg_docs}:{};
@@ -805,7 +946,7 @@ function App() {
       }catch(e){console.error('DB 연결 오류:',e);}
       finally{setDbLoaded(true);}
     })();
-  },[]);
+  },[currentUser]);
 
   // ── Supabase: 각 state 변경 시 자동 저장 ──
   const syncDB = async(key,value)=>{
@@ -836,29 +977,37 @@ function App() {
   useEffect(()=>{if(dbLoaded) syncDB('factories',factories);},[factories,dbLoaded]);
   useEffect(()=>{if(dbLoaded) syncDB('costMaster',costMaster);},[costMaster,dbLoaded]);
   useEffect(()=>{if(dbLoaded) syncDB('ordersLedger',ordersLedger);},[ordersLedger,dbLoaded]);
-  useEffect(()=>{if(dbLoaded) syncDB('users',users);},[users,dbLoaded]);
+  // users 테이블은 더 이상 쓰지 않는다(Auth로 이전). DB 저장도 하지 않음.
   useEffect(()=>{if(dbLoaded) syncDB('transfers',transfers);},[transfers,dbLoaded]);
   useEffect(()=>{if(dbLoaded) syncDB('stdCosts',stdCosts);},[stdCosts,dbLoaded]);
   useEffect(()=>{if(dbLoaded) syncDB('shipments',shipments);},[shipments,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('supplyMeta',supplyMeta);},[supplyMeta,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('vendors',vendors);},[vendors,dbLoaded]);
+  useEffect(()=>{if(dbLoaded) syncDB('supplyRecords',supplyRecords);},[supplyRecords,dbLoaded]);
   // 제조지시서는 saveMfgDoc()로 품목별 개별 행에 저장하므로 전체 blob 동기화 effect 제거
-  const [currentUser, setCurrentUser] = useState(null);
-  const [loginForm, setLoginForm] = useState({id:"",pw:""});
+  const [loginForm, setLoginForm] = useState({email:"",pw:""});
   const [loginError, setLoginError] = useState("");
+  const [loggingIn, setLoggingIn] = useState(false);
   const [toast, setToast] = useState("");
   const [alert, setAlert] = useState(null);
   const [detailItem, setDetailItem] = useState(null);
 
   const perm = currentUser ? PERMISSIONS[currentUser.role] : PERMISSIONS.viewer;
 
-  const handleLogin = () => {
-    const u = users.find(u=>u.id===loginForm.id && u.pw===loginForm.pw);
-    if(u) {
-      setCurrentUser(u);
-      setLoginError(""); setLoginForm({id:"",pw:""});
-    }
-    else { setLoginError("아이디 또는 비밀번호가 틀렸습니다."); }
+  // 로그인 = Supabase Auth. currentUser는 아래 onAuthStateChange가 세션에서 세팅한다.
+  const handleLogin = async () => {
+    const email=(loginForm.email||"").trim();
+    if(!email||!loginForm.pw){ setLoginError("이메일과 비밀번호를 입력하세요."); return; }
+    setLoggingIn(true);
+    try{
+      const { data, error } = await sb.auth.signInWithPassword({ email, password: loginForm.pw });
+      if(error||!data?.user){ setLoginError("이메일 또는 비밀번호가 틀렸습니다."); return; }
+      setLoginError(""); setLoginForm({email:"",pw:""});
+    }catch(e){ setLoginError("로그인 중 오류가 발생했습니다."); }
+    finally{ setLoggingIn(false); }
   };
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try{ await sb.auth.signOut(); }catch(e){}
     setCurrentUser(null);
     setPage("dashboard");
   };
@@ -1003,11 +1152,17 @@ function App() {
       { key:"incoming", icon:"truck", label:"입고 예정" },
       { key:"io", icon:"swap", label:"입출고관리" },
       { key:"transfer", icon:"transfer", label:"창고 간 이동" },
+      { key:"purchasePlan", icon:"truck", label:"구매 소요/발주" },
     ]},
     { group:"생산", icon:"wrench", items:[
       { key:"orders", icon:"wrench", label:"작업지시서" },
       { key:"ordersLedger", icon:"ledger", label:"주문관리대장" },
       { key:"analysis", icon:"chart", label:"생산 실적 분석" },
+    ]},
+    { group:"영업·신고", icon:"truck", items:[
+      { key:"vendors", icon:"users", label:"거래처 관리" },
+      { key:"shipment", icon:"truck", label:"출하 관리" },
+      { key:"supplyReport", icon:"ledger", label:"공급내역 보고" },
     ]},
     ...(perm.canViewPrice ? [{ group:"원가관리", icon:"calculator", items:[
       { key:"cost", icon:"calculator", label:"원가 계산" },
@@ -1031,23 +1186,23 @@ function App() {
     incoming: <IncomingPage incoming={incoming} setIncoming={setIncoming} items={items} setItems={setItems} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} perm={perm} showToast={showToast} tryDelete={tryDelete} currentUser={currentUser} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
     io: <IOPage io={io} setIo={setIo} items={items} setItems={setItems} lots={lots} setLots={setLots} perm={perm} showToast={showToast} downloadCSV={downloadCSV} onItemClick={setDetailItem} currentUser={currentUser} />,
     transfer: <TransferPage transfers={transfers} setTransfers={setTransfers} items={items} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} downloadCSV={downloadCSV} />,
+    purchasePlan: <PurchasePlanPage items={items} bom={bom} orders={orders} incoming={incoming} perm={perm} showToast={showToast} downloadCSV={downloadCSV} />,
     ordersLedger: <OrdersLedgerPage ordersLedger={ordersLedger} setOrdersLedger={setOrdersLedger} items={items} currentUser={currentUser} perm={perm} showToast={showToast} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
     orders: <OrdersPage orders={orders} setOrders={setOrders} items={items} setItems={setItems} bom={bom} processes={processes} factories={factories} lots={lots} setLots={setLots} io={io} setIo={setIo} warehouses={warehouses} defectWarehouse={defectWarehouse} goodWarehouse={goodWarehouse} inspectWarehouse={inspectWarehouse} retainWarehouse={retainWarehouse} currentUser={currentUser} perm={perm} showToast={showToast} tryDelete={tryDelete} checkOrderLinks={checkOrderLinks} mfgDocs={mfgDocs} navSearch={navQ} onNavConsumed={()=>setNavQ(null)} />,
     cost: perm.canViewPrice ? <CostPage costBom={costBom} setCostBom={setCostBom} factories={factories} bom={bom} items={items} processes={processes} costMaster={costMaster} setCostMaster={setCostMaster} orders={orders} io={io} stdCosts={stdCosts} setStdCosts={setStdCosts} currentUser={currentUser} perm={perm} showToast={showToast} downloadCSV={downloadCSV} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>접근 권한 없음</div><div style={{color:"#888",marginTop:8}}>원가 정보는 관리자만 열람할 수 있습니다</div></div>,
     factory: perm.canViewPrice ? <FactoryPage factories={factories} setFactories={setFactories} perm={perm} showToast={showToast} /> : <div className="empty" style={{padding:80,textAlign:"center"}}><div style={{fontSize:48,marginBottom:16}}>🔒</div><div style={{fontSize:18,fontWeight:700}}>접근 권한 없음</div></div>,
     users: <UserPage users={users} setUsers={setUsers} currentUser={currentUser} showToast={showToast} />,
     analysis: <AnalysisPage orders={orders} items={items} factories={factories} processes={processes} />,
-    shipment: <ShipmentPage shipments={shipments} setShipments={setShipments} items={items} setItems={setItems} lots={lots} setLots={setLots} io={io} setIo={setIo} currentUser={currentUser} perm={perm} showToast={showToast} downloadCSV={downloadCSV} />,
+    shipment: <ShipmentPage shipments={shipments} setShipments={setShipments} items={items} setItems={setItems} lots={lots} setLots={setLots} io={io} setIo={setIo} vendors={vendors} currentUser={currentUser} perm={perm} showToast={showToast} downloadCSV={downloadCSV} />,
+    vendors: <VendorPage vendors={vendors} setVendors={setVendors} perm={perm} showToast={showToast} tryDelete={tryDelete} downloadCSV={downloadCSV} />,
+    supplyReport: <SupplyReportPage shipments={shipments} items={items} lots={lots} vendors={vendors} setVendors={setVendors} supplyRecords={supplyRecords} setSupplyRecords={setSupplyRecords} supplyMeta={supplyMeta} setSupplyMeta={setSupplyMeta} currentUser={currentUser} downloadCSV={downloadCSV} showToast={showToast} perm={perm} />,
   };
 
-  if(!dbLoaded) return (
-    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",flexDirection:"column",gap:16,background:"#f0f2f5"}}>
-      <div style={{fontSize:36}}>⏳</div>
-      <div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>데이터 불러오는 중...</div>
-      <div style={{fontSize:13,color:"#888"}}>Supabase에서 데이터를 로드하고 있습니다</div>
-    </div>
+  // 렌더 게이트 순서: ①세션 확인 전 대기 → ②미로그인이면 로그인 화면 → ③로그인 후 데이터 로딩 대기
+  // (데이터 로드를 로그인 이후로 옮겼으므로, dbLoaded 체크는 반드시 로그인 체크보다 뒤여야 한다)
+  if(!authReady) return (
+    <div className="login-wrap"><div style={{color:"#94a3b8",fontSize:14}}>불러오는 중…</div></div>
   );
-
   if(!currentUser) return (
     <div className="login-wrap">
       <div className="login-card">
@@ -1058,18 +1213,27 @@ function App() {
         </div>
         {loginError && <div className="login-error">{loginError}</div>}
         <div className="field">
-          <label>아이디</label>
-          <input value={loginForm.id} onChange={e=>setLoginForm({...loginForm,id:e.target.value})}
-            onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="아이디 입력" autoFocus/>
+          <label>이메일</label>
+          <input type="email" value={loginForm.email} onChange={e=>setLoginForm({...loginForm,email:e.target.value})}
+            onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="이메일 입력" autoFocus/>
         </div>
         <div className="field">
           <label>비밀번호</label>
           <input type="password" value={loginForm.pw} onChange={e=>setLoginForm({...loginForm,pw:e.target.value})}
             onKeyDown={e=>e.key==="Enter"&&handleLogin()} placeholder="비밀번호 입력"/>
         </div>
-        <button className="btn btn-primary" style={{width:"100%",marginTop:8,padding:"10px"}} onClick={handleLogin}>로그인</button>
+        <button className="btn btn-primary" style={{width:"100%",marginTop:8,padding:"10px"}} onClick={handleLogin} disabled={loggingIn}>{loggingIn?"로그인 중…":"로그인"}</button>
         <VersionBadge />
       </div>
+    </div>
+  );
+
+  // 로그인은 됐으나 아직 데이터 로드 전
+  if(!dbLoaded) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",flexDirection:"column",gap:16,background:"#f0f2f5"}}>
+      <div style={{fontSize:36}}>⏳</div>
+      <div style={{fontSize:18,fontWeight:700,color:"#1a2236"}}>데이터 불러오는 중...</div>
+      <div style={{fontSize:13,color:"#888"}}>Supabase에서 데이터를 로드하고 있습니다</div>
     </div>
   );
 
@@ -2238,9 +2402,13 @@ function Dashboard({items,lots,orders,incoming,setPage,dataMB,onItemClick,io,per
           {key:"incoming",icon:"🚚",label:"입고 예정",c:"green"},
           {key:"io",icon:"↕️",label:"입출고관리",c:"green"},
           {key:"transfer",icon:"🔄",label:"창고 간 이동",c:"green"},
+          {key:"purchasePlan",icon:"🛒",label:"구매 소요/발주",c:"green"},
           {key:"orders",icon:"🔧",label:"작업지시서",c:"violet"},
           {key:"ordersLedger",icon:"📝",label:"주문관리대장",c:"violet"},
           {key:"analysis",icon:"📈",label:"생산 실적 분석",c:"violet"},
+          {key:"vendors",icon:"🏢",label:"거래처 관리",c:"violet"},
+          {key:"shipment",icon:"🚛",label:"출하 관리",c:"violet"},
+          {key:"supplyReport",icon:"🏥",label:"공급내역 보고",c:"violet"},
           ...(perm&&perm.canViewPrice?[{key:"cost",icon:"💵",label:"원가 계산",c:"amber"},{key:"factory",icon:"🏗️",label:"공장 관리",c:"amber"}]:[]),
           ...(perm&&perm.canAdmin?[{key:"users",icon:"👤",label:"사용자 관리",c:"red"}]:[]),
         ];
@@ -2496,7 +2664,7 @@ async function openMfgDocIn(win, doc){
 function ItemsPage({items,setItems,bom,setBom,warehouses,processes,perm,showToast,tryDelete,checkItemLinks,downloadCSV,onItemClick,mfgDocs,setMfgDocs,saveMfgDoc,navSearch,onNavConsumed}) {
   const [q,setQ]=useState(""); const [modal,setModal]=useState(null);
   const [bomModal,setBomModal]=useState(null);   // BOM 편집 대상 품목(완제품·반제품)
-  const [form,setForm]=useState({code:"",name:"",type:"완제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0,processes:[]});
+  const [form,setForm]=useState({code:"",name:"",type:"완제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0,processes:[],supplier:"",leadTime:0});
   const [selected,setSelected]=useState(new Set());
   const [view,setView]=useState(0);          // 0=테이블형, 1=마스터-상세형
   const [selItem,setSelItem]=useState(null);  // 마스터-상세형 선택 품목코드
@@ -2521,7 +2689,31 @@ function ItemsPage({items,setItems,bom,setBom,warehouses,processes,perm,showToas
   };
 
   const viewDoc=(doc)=>{ const win=window.open("","_blank"); openMfgDocIn(win,doc); };
-  const openAdd=()=>{setForm({code:"",name:"",type:"완제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0,processes:[]});setModal("add");};
+  const openAdd=()=>{setForm({code:"",name:"",type:"완제품",unit:"EA",spec:"",capacity:"",stock:0,minStock:0,warehouse:"",price:0,processes:[],stdCode:"",licenseNo:"",modelName:"",grade:"",meddevItemSeq:"",modelSeq:"",udiDiSeq:""});setModal("add");};
+  // 공급내역 보고 본문에는 식약처 내부 일련번호(meddevItemSeq/seq/udiDiSeq)가 필요한데 우리 데이터엔 없다.
+  // 표준코드(UDI-DI)로 식약처에 조회해서 채운다. 허가번호·등급·모델명도 같이 덮어써 "규제정보 누락"을 줄인다.
+  const [udiBusy,setUdiBusy]=useState(false);
+  const lookupUdi=async()=>{
+    const code=(form.stdCode||"").trim();
+    if(!code){showToast("표준코드(UDI-DI)를 먼저 입력하세요");return;}
+    setUdiBusy(true);
+    try{
+      const d=await udiCall('udidiProduct',{query:{udiDiCode:code}});
+      const p=(d?.items||[])[0];
+      if(!p){showToast("식약처에서 해당 표준코드를 찾지 못했습니다");return;}
+      setForm(f=>({...f,
+        meddevItemSeq:p.meddevItemSeq??"", modelSeq:p.seq??"", udiDiSeq:p.udiDiSeq??"",
+        licenseNo:p.permitNo||f.licenseNo, modelName:p.typeName||f.modelName,
+        grade:mfdsGrade(p.grade)||f.grade,
+        // 보고 본문 선택필드를 채울지 여부를 식약처가 알려준다(useLotNo/useManufYm/useTimeLimit/useItemSeq)
+        udiUseLotNo:!!p.useLotNo, udiUseItemSeq:!!p.useItemSeq,
+        udiUseManufYm:!!p.useManufYm, udiUseTimeLimit:!!p.useTimeLimit,
+        pkgQty:p.packQuantity??f.pkgQty, classNo:p.meaClassNo||f.classNo,
+      }));
+      showToast(`식약처 조회 완료 — ${p.itemName}`);
+    }catch(e){ showToast("조회 실패: "+e.message); }
+    finally{ setUdiBusy(false); }
+  };
   const save=()=>{
     const code=(form.code||"").trim();
     const name=(form.name||"").trim();
@@ -2620,7 +2812,7 @@ function ItemsPage({items,setItems,bom,setBom,warehouses,processes,perm,showToas
           </div>
         </div>
         <table>
-          <thead><tr><th style={{width:36,textAlign:"center"}}>선택</th><th>품목코드</th><th>품목명</th><th>분류</th><th>규격</th><th>용량</th><th>단위</th>{perm.canViewPrice&&<th>단가</th>}<th>안전재고</th><th>현재고</th><th>상태</th><th>창고</th><th>투입공정</th><th>제조지시서</th><th>관리</th></tr></thead>
+          <thead><tr><th style={{width:36,textAlign:"center"}}>선택</th><th>품목코드</th><th>품목명</th><th>분류</th><th>규격</th><th>용량</th><th>단위</th>{perm.canViewPrice&&<th>단가</th>}<th>안전재고</th><th>현재고</th><th>상태</th><th>창고</th><th>업체명</th><th>투입공정</th><th>제조지시서</th><th>관리</th></tr></thead>
           <tbody>
             {filtered.map(i=>(
               <tr key={i.code}>
@@ -2637,6 +2829,7 @@ function ItemsPage({items,setItems,bom,setBom,warehouses,processes,perm,showToas
                 <td><b style={{color:i.stock<i.minStock?"var(--warn)":"var(--ink)"}}>{fmt3(i.stock)}</b></td>
                 <td>{(()=>{const st=i.stock<i.minStock?{t:"부족",c:"badge-red"}:i.stock<i.minStock*1.1?{t:"경고",c:"badge-orange"}:{t:"정상",c:"badge-green"};return <span className={`badge ${st.c}`}>{st.t}</span>;})()}</td>
                 <td>{i.warehouse||"-"}</td>
+                <td style={{fontSize:12,color:"#555"}}>{i.supplier||"-"}{i.leadTime>0&&<span style={{color:"#aaa",fontSize:11}}> · {i.leadTime}일</span>}</td>
                 <td style={{fontSize:11,color:"#2f6df0"}}>{(i.processes||[]).length>0?(i.processes||[]).map(pc=>processes.find(p=>p.code===pc)?.name||pc).join(", "):"-"}</td>
                 <td>
                   {(i.type==="완제품"||i.type==="제품"||i.type==="반제품")
@@ -2653,7 +2846,7 @@ function ItemsPage({items,setItems,bom,setBom,warehouses,processes,perm,showToas
                 </td>
               </tr>
             ))}
-            {!filtered.length&&<tr><td colSpan={perm.canViewPrice?15:14} className="empty">검색 결과 없음</td></tr>}
+            {!filtered.length&&<tr><td colSpan={perm.canViewPrice?16:15} className="empty">검색 결과 없음</td></tr>}
           </tbody>
         </table>
       </div>
@@ -2750,6 +2943,36 @@ function ItemsPage({items,setItems,bom,setBom,warehouses,processes,perm,showToas
               <div className="field-row"><div className="field"><label>용량</label><input value={form.capacity} onChange={e=>setForm({...form,capacity:e.target.value})} placeholder="예) 500ml"/></div><div className="field"><label>창고</label><select value={form.warehouse} onChange={e=>setForm({...form,warehouse:e.target.value})}><option value="">선택</option>{warehouses.map(w=><option key={w.code} value={w.name}>{w.name}</option>)}</select></div></div>
               <div className="field-row"><div className="field"><label>현재 재고</label><input type="number" value={form.stock} onChange={e=>setForm({...form,stock:+e.target.value})}/></div><div className="field"><label>최소 재고</label><input type="number" value={form.minStock} onChange={e=>setForm({...form,minStock:+e.target.value})}/></div></div>
               {perm.canViewPrice&&<div className="field"><label>단가 (원)</label><input type="number" value={form.price||0} onChange={e=>setForm({...form,price:+e.target.value})} placeholder="0"/></div>}
+              <div className="field-row"><div className="field"><label>업체명 <span style={{color:"#aaa",fontWeight:400}}>(구매처)</span></label><input value={form.supplier||""} onChange={e=>setForm({...form,supplier:e.target.value})} placeholder="예) OO상사"/></div><div className="field"><label>리드타임 (일) <span style={{color:"#aaa",fontWeight:400}}>(발주~입고 소요일)</span></label><input type="number" min="0" value={form.leadTime||0} onChange={e=>setForm({...form,leadTime:+e.target.value})} placeholder="0"/></div></div>
+              {(form.type==="완제품"||form.type==="반제품")&&(
+                <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed #e5e7eb"}}>
+                  <label style={{fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:6}}>🏥 의료기기 정보 <span style={{color:"#aaa",fontWeight:400}}>(공급내역 보고용)</span></label>
+                  <div className="field">
+                    <label>표준코드 (UDI-DI)</label>
+                    <div style={{display:"flex",gap:6}}>
+                      <input value={form.stdCode||""} onChange={e=>setForm({...form,stdCode:e.target.value})} placeholder="예) 08806......"/>
+                      <button className="btn btn-outline btn-sm" style={{whiteSpace:"nowrap"}} onClick={lookupUdi} disabled={udiBusy}>
+                        {udiBusy?"조회 중…":"🔎 식약처 조회"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="field-row"><div className="field"><label>품목허가번호</label><input value={form.licenseNo||""} onChange={e=>setForm({...form,licenseNo:e.target.value})} placeholder="예) 제허 20-1234호"/></div><div className="field"><label>모델명</label><input value={form.modelName||""} onChange={e=>setForm({...form,modelName:e.target.value})} placeholder="예) MD-100"/></div></div>
+                  <div className="field"><label>등급</label><select value={form.grade||""} onChange={e=>setForm({...form,grade:e.target.value})}><option value="">선택</option><option>1등급</option><option>2등급</option><option>3등급</option><option>4등급</option></select></div>
+                  {form.udiDiSeq
+                    ? <div style={{marginTop:8,padding:"8px 10px",background:"var(--accent-soft)",borderRadius:8,fontSize:12,color:"var(--ink)"}}>
+                        <b>식약처 연동됨</b>
+                        <span style={{fontFamily:"monospace",marginLeft:8,color:"var(--muted)"}}>
+                          udiDiSeq {form.udiDiSeq} · meddevItemSeq {form.meddevItemSeq} · seq {form.modelSeq}
+                        </span>
+                        <div style={{marginTop:4,color:"var(--muted)"}}>
+                          보고 시 필요: {[form.udiUseLotNo&&"LOT번호",form.udiUseManufYm&&"제조연월",form.udiUseTimeLimit&&"사용기한",form.udiUseItemSeq&&"개별 일련번호"].filter(Boolean).join(" · ")||"없음"}
+                        </div>
+                      </div>
+                    : <div style={{marginTop:8,fontSize:12,color:"var(--muted)"}}>
+                        표준코드 입력 후 <b>식약처 조회</b>를 누르면 허가번호·등급·모델명과 보고용 내부 일련번호가 자동으로 채워집니다.
+                      </div>}
+                </div>
+              )}
               {form.type==="완제품"&&(
                 <div style={{marginTop:10}}>
                   <label style={{fontSize:12,fontWeight:600,color:"#555",display:"block",marginBottom:6}}>⚙️ 투입 공정 설정 <span style={{color:"#aaa",fontWeight:400}}>(작업지시서에 자동 반영)</span></label>
@@ -4167,7 +4390,7 @@ function IncomingPage({incoming,setIncoming,items,setItems,lots,setLots,io,setIo
   };
   const openAdd=()=>{
     const newCode="INC"+Date.now();
-    setForm({...emptyForm,code:newCode,incomingDate:new Date().toISOString().slice(0,10),lot:"LOT"+Date.now()});
+    setForm({...emptyForm,code:newCode,incomingDate:new Date().toISOString().slice(0,10),lot:""});
     setCodeInput("");setModal("add");
   };
   const openEdit=(i)=>{setForm({...emptyForm,...i,unitPrice:i.unitPrice||0,lot:i.lot||""});setCodeInput(i.item||"");setModal("edit");};
@@ -4677,7 +4900,7 @@ table{width:100%;border-collapse:collapse;table-layout:fixed;}
 function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV,onItemClick,currentUser}) {
   const [modal,setModal]=useState(false);
   const [editIdx,setEditIdx]=useState(null);
-  const emptyForm={date:"",type:"입고",item:"",itemName:"",qty:0,unit:"EA",unitPrice:0,lot:"",destination:"",manager:currentUser?.name||"",approver:"",note:""};
+  const emptyForm={date:"",type:"입고",item:"",itemName:"",qty:0,unit:"EA",unitPrice:0,lot:"",destination:"",supplier:"",manager:currentUser?.name||"",approver:"",note:""};
   const [form,setForm]=useState(emptyForm);
   const [codeInput,setCodeInput]=useState("");
   const [sel,setSel]=useState(new Set());
@@ -5524,6 +5747,7 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
               <th>출처/구분</th>
               <th>담당자</th>
               <th>확인자</th>
+              <th>업체명</th>
               <th>비고</th>
               <th style={{width:60}}>관리</th>
             </tr>
@@ -5548,12 +5772,13 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
                   <td>{(()=>{const d=r.destination;if(!d)return<span style={{color:"#ccc"}}>-</span>;const lbl={P:"P 생산",Q:"Q 품질",R:"R 연구",E:"E 기타",BUY:"구매입고",RTN:"반품",TRF:"이월",ETC:"기타"};const cls={P:"badge-blue",Q:"badge-orange",R:"badge-green",E:"badge-gray",BUY:"badge-blue",RTN:"badge-orange",TRF:"badge-green",ETC:"badge-gray"};return<span className={`badge ${cls[d]||"badge-gray"}`}>{lbl[d]||d}</span>;})()}</td>
                   <td style={{fontSize:12,color:"#555"}}>{r.manager||"-"}</td>
                   <td style={{fontSize:12,color:"#555"}}>{r.approver||"-"}</td>
+                  <td style={{fontSize:12,color:"#555"}}>{r.supplier||"-"}</td>
                   <td style={{fontSize:12,color:"#aaa",maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.note||"-"}</td>
                   <td>{perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>openEdit(r,r._idx)}>수정</button>}</td>
                 </tr>
               );
             })}
-            {!shownRows.length&&<tr><td colSpan={15} className="empty">{io.length?"해당 이력 없음":"이력 없음"}</td></tr>}
+            {!shownRows.length&&<tr><td colSpan={16} className="empty">{io.length?"해당 이력 없음":"이력 없음"}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -5635,7 +5860,13 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
             <div className="field"><label>담당자</label><input value={form.manager||""} onChange={e=>setForm({...form,manager:e.target.value})}/></div>
             <div className="field"><label>확인자</label><input value={form.approver||""} onChange={e=>setForm({...form,approver:e.target.value})}/></div>
           </div>
-          <div className="field"><label>비고</label><input value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/></div>
+          <div className="field-row">
+            <div className="field"><label>업체명 <span style={{color:"#aaa",fontWeight:400}}>(입고 시 공급업체)</span></label>
+              <input value={form.supplier||""} onChange={e=>setForm({...form,supplier:e.target.value})} placeholder="예) OO상사" list="io-supplier-list"/>
+              <datalist id="io-supplier-list">{[...new Set(items.map(i=>i.supplier).filter(Boolean))].map(s=><option key={s} value={s}/>)}</datalist>
+            </div>
+            <div className="field"><label>비고</label><input value={form.note} onChange={e=>setForm({...form,note:e.target.value})}/></div>
+          </div>
         </div>
         <div className="modal-foot">
           <button className="btn btn-outline" onClick={()=>{setModal(false);setEditIdx(null);}}>취소</button>
@@ -5643,6 +5874,182 @@ function IOPage({io,setIo,items,setItems,lots,setLots,perm,showToast,downloadCSV
         </div>
       </div></div>)}
 
+    </div>
+  );
+}
+
+// ── 구매 소요/발주 알림 ──
+// 생산계획(작업지시서 자동 집계 + 목표수량 직접 입력) × BOM 재귀 전개 → 자재 소요량을 구하고
+// 현재고·안전재고·입고예정과 비교해 부족분을 판정한다. 리드타임이 긴 자재는 안전재고에 닿기
+// 전이라도 미리 발주하도록 우선순위를 높인다.
+function PurchasePlanPage({items, bom, orders, incoming, perm, showToast, downloadCSV}){
+  const [useOrders, setUseOrders] = React.useState(true);   // 작업지시서(대기·진행중) 자동 집계 포함
+  const [simRows, setSimRows]     = React.useState([]);     // 목표수량 시뮬레이션 [{product, qty}]
+  const [onlyShort, setOnlyShort] = React.useState(false);  // 구매 필요만 보기
+  const [leadThresh]              = React.useState(7);       // 리드타임 '김' 기준(일)
+
+  // BOM을 가진(=생산하는) 완제품·반제품
+  const producible = items.filter(i=>bom.some(b=>b.product===i.code));
+
+  // BOM 재귀 전개 → 자재별 총소요량(중첩 반제품까지 원자재로 분해)
+  const bomOf = (code)=> bom.find(b=>b.product===code);
+  const explode = (planMap)=>{
+    const req = {};
+    const rec = (code, qty, depth)=>{
+      if(depth>10) return;                 // 순환 BOM 방지
+      const b = bomOf(code);
+      if(!b) return;                        // 더 이상 하위 BOM 없음(원자재)
+      (b.materials||[]).forEach(m=>{
+        const need = qty*(+m.qty||0);
+        req[m.code] = (req[m.code]||0)+need;
+        rec(m.code, need, depth+1);
+      });
+    };
+    Object.entries(planMap).forEach(([code,qty])=> rec(code, +qty||0, 0));
+    return req;
+  };
+
+  // 생산계획 = 작업지시서(대기·진행중) + 수동 시뮬레이션
+  const plan = {};
+  if(useOrders){
+    (orders||[]).filter(o=>["대기","진행중"].includes(o.status)).forEach(o=>{
+      if(!o.product) return; plan[o.product]=(plan[o.product]||0)+(+o.orderQty||0);
+    });
+  }
+  simRows.forEach(r=>{ if(r.product&&+r.qty>0) plan[r.product]=(plan[r.product]||0)+(+r.qty); });
+
+  const req = explode(plan);
+  // 입고예정(발주 진행분) 합계
+  const onOrderOf = (code)=> (incoming||[]).filter(x=>x.item===code&&x.status!=="완료").reduce((s,x)=>s+(+x.qty||0),0);
+
+  const rows = Object.entries(req).map(([code,reqQty])=>{
+    const it = items.find(i=>i.code===code)||{};
+    const stock=+it.stock||0, safety=+it.minStock||0, lead=+it.leadTime||0;
+    const onOrder=onOrderOf(code);
+    const after  = stock+onOrder-reqQty;                       // 계획 소진 후 예상 재고
+    const buyQty = Math.max(0, safety+reqQty-stock-onOrder);   // 안전재고까지 확보하려면 발주할 양
+    const status = after<0 ? "부족" : after<safety ? "안전미만" : "여유";
+    return {code, name:it.name||code, unit:it.unit||"", type:it.type||"", supplier:it.supplier||"", lead, stock, safety, onOrder, reqQty, after, buyQty, status};
+  })
+  .filter(r=>r.reqQty>0)
+  .sort((a,b)=>{
+    const rank={부족:0,안전미만:1,여유:2};
+    if(rank[a.status]!==rank[b.status]) return rank[a.status]-rank[b.status];
+    return b.lead-a.lead;                 // 같은 상태면 리드타임 긴 것 먼저
+  });
+
+  const shown    = onlyShort ? rows.filter(r=>r.status!=="여유") : rows;
+  const nShort   = rows.filter(r=>r.status!=="여유").length;
+  const nUrgent  = rows.filter(r=>r.status!=="여유"&&r.lead>=leadThresh).length;
+  const planList = Object.entries(plan).filter(([,q])=>q>0);
+
+  const addSim = ()=> setSimRows([...simRows,{product:producible[0]?.code||"",qty:0}]);
+  const setSim = (i,k,v)=> setSimRows(simRows.map((r,ri)=>ri===i?{...r,[k]:v}:r));
+  const delSim = (i)=> setSimRows(simRows.filter((_,ri)=>ri!==i));
+
+  const exportCSV = ()=>{
+    if(!shown.length){showToast("내보낼 항목이 없습니다");return;}
+    downloadCSV(
+      ["품목코드","품목명","유형","업체명","리드타임(일)","현재고","안전재고","입고예정","소요량","예상재고","권장발주량","상태"],
+      shown.map(r=>[r.code,r.name,r.type,r.supplier,r.lead,r.stock,r.safety,r.onOrder,r.reqQty,r.after,r.buyQty,r.status]),
+      `구매소요_${new Date().toISOString().slice(0,10)}.csv`
+    );
+  };
+  const badgeOf = (s)=> s==="부족"?"badge-red":s==="안전미만"?"badge-orange":"badge-green";
+  const stLabel = (s)=> s==="부족"?"부족 · 즉시구매":s==="안전미만"?"안전재고 미만 예상":"여유";
+  const card = (label,val,color)=>(
+    <div style={{background:"#fff",border:"1px solid var(--line)",borderRadius:12,padding:"14px 18px"}}>
+      <div style={{fontSize:12,color:"#888",marginBottom:6}}>{label}</div>
+      <div style={{fontSize:26,fontWeight:800,color}}>{val}</div>
+    </div>
+  );
+
+  return (
+    <div>
+      <div className="page-header">
+        <div>
+          <div className="crumb">MedERP <span>›</span> <b>구매 소요/발주</b></div>
+          <div className="page-title">🛒 구매 소요/발주 알림</div>
+          <div className="page-sub">생산계획(작업지시 + 목표수량) × BOM으로 자재 소요량을 계산해 부족분을 알려줍니다. 리드타임이 긴 자재는 안전재고에 닿기 전에 미리 발주하세요.</div>
+        </div>
+        <button className="btn btn-outline" onClick={exportCSV}>⬇ CSV</button>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
+        {card("소요 자재 품목", rows.length, "var(--ink)")}
+        {card("구매 필요", nShort, nShort>0?"#e74c3c":"#27ae60")}
+        {card(`발주 서둘러야(리드타임 ≥${leadThresh}일)`, nUrgent, nUrgent>0?"#e67e22":"#27ae60")}
+        {card("생산계획 품목 수", planList.length, "#2f6df0")}
+      </div>
+
+      {/* 생산계획 입력 */}
+      <div className="panel" style={{marginBottom:16}}>
+        <div className="panel-top" style={{display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+          <b>생산계획</b>
+          <label style={{fontSize:13,display:"flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+            <input type="checkbox" checked={useOrders} onChange={e=>setUseOrders(e.target.checked)}/>
+            작업지시서(대기·진행중) 자동 집계
+          </label>
+          <button className="btn btn-outline btn-sm" onClick={addSim} disabled={!producible.length}>+ 목표수량 추가</button>
+          <label style={{fontSize:13,display:"flex",alignItems:"center",gap:6,cursor:"pointer",marginLeft:"auto"}}>
+            <input type="checkbox" checked={onlyShort} onChange={e=>setOnlyShort(e.target.checked)}/>
+            구매 필요만 보기
+          </label>
+        </div>
+        <div style={{padding:"12px 16px"}}>
+          {!producible.length&&<div style={{fontSize:13,color:"#e67e22"}}>⚠️ BOM(자재명세서)이 등록된 완제품·반제품이 없습니다. 먼저 품목관리에서 BOM을 등록하세요.</div>}
+          {simRows.map((r,i)=>(
+            <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8}}>
+              <select value={r.product} onChange={e=>setSim(i,"product",e.target.value)} style={{border:"1px solid var(--line)",borderRadius:8,padding:"6px 10px",fontSize:13,minWidth:280}}>
+                {producible.map(p=><option key={p.code} value={p.code}>{p.code} · {p.name}</option>)}
+              </select>
+              <input type="number" min="0" value={r.qty} onChange={e=>setSim(i,"qty",+e.target.value)} placeholder="목표 생산수량" style={{border:"1px solid var(--line)",borderRadius:8,padding:"6px 10px",fontSize:13,width:140}}/>
+              <button className="btn btn-outline btn-sm" onClick={()=>delSim(i)}>삭제</button>
+            </div>
+          ))}
+          {planList.length>0
+            ? <div style={{fontSize:12,color:"#666",marginTop:6}}>반영된 생산계획: {planList.map(([c,q])=>`${items.find(x=>x.code===c)?.name||c} ${fmt3(q)}`).join(" · ")}</div>
+            : <div style={{fontSize:12,color:"#aaa",marginTop:6}}>반영된 생산계획이 없습니다. 위에서 작업지시서를 켜거나 목표수량을 추가하세요.</div>}
+        </div>
+      </div>
+
+      {/* 소요 테이블 */}
+      <div className="panel">
+        <div className="panel-top" style={{display:"flex",alignItems:"center"}}>
+          <b>자재 소요 현황</b>
+          <span style={{fontSize:12,color:"#aaa",marginLeft:"auto"}}>{shown.length}건</span>
+        </div>
+        <table>
+          <thead><tr>
+            <th>품목코드</th><th>품목명</th><th>유형</th><th>업체명</th>
+            <th style={{textAlign:"right"}}>리드타임</th><th style={{textAlign:"right"}}>현재고</th>
+            <th style={{textAlign:"right"}}>안전재고</th><th style={{textAlign:"right"}}>입고예정</th>
+            <th style={{textAlign:"right"}}>소요량</th><th style={{textAlign:"right"}}>예상재고</th>
+            <th style={{textAlign:"right"}}>권장발주</th><th>상태</th>
+          </tr></thead>
+          <tbody>
+            {shown.map(r=>{
+              const urgent = r.status!=="여유" && r.lead>=leadThresh;
+              return(
+              <tr key={r.code}>
+                <td style={{fontSize:12,color:"#888",fontFamily:"monospace"}}>{r.code}</td>
+                <td><b>{r.name}</b>{urgent&&<span style={{marginLeft:6,fontSize:11,color:"#e67e22",fontWeight:700}}>🚨 서둘러 발주</span>}</td>
+                <td style={{fontSize:12,color:"#555"}}>{r.type||"-"}</td>
+                <td style={{fontSize:12,color:"#555"}}>{r.supplier||"-"}</td>
+                <td style={{textAlign:"right",fontWeight:r.lead>=leadThresh?700:400,color:r.lead>=leadThresh?"#e67e22":"#555"}}>{r.lead?`${r.lead}일`:"-"}</td>
+                <td style={{textAlign:"right"}}>{fmt3(r.stock)} {r.unit}</td>
+                <td style={{textAlign:"right",color:"#888"}}>{fmt3(r.safety)}</td>
+                <td style={{textAlign:"right",color:r.onOrder>0?"#2f6df0":"#ccc"}}>{r.onOrder>0?fmt3(r.onOrder):"-"}</td>
+                <td style={{textAlign:"right",fontWeight:600}}>{fmt3(r.reqQty)}</td>
+                <td style={{textAlign:"right",fontWeight:600,color:r.after<0?"#e74c3c":r.after<r.safety?"#e67e22":"#27ae60"}}>{fmt3(r.after)}</td>
+                <td style={{textAlign:"right",fontWeight:700,color:r.buyQty>0?"#e74c3c":"#ccc"}}>{r.buyQty>0?fmt3(r.buyQty):"-"}</td>
+                <td><span className={`badge ${badgeOf(r.status)}`}>{stLabel(r.status)}</span></td>
+              </tr>
+            );})}
+            {!shown.length&&<tr><td colSpan={12} className="empty">{rows.length?"구매 필요 자재가 없습니다 (여유).":"생산계획을 입력하면 자재 소요량이 계산됩니다."}</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -6464,7 +6871,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
         <table>
           <thead><tr>
             <th style={{width:36,textAlign:"center"}}>선택</th>
-            <th>지시번호</th><th>완제품</th><th style={{textAlign:"right"}}>지시수량</th><th style={{textAlign:"right"}}>완료수량</th><th style={{textAlign:"right"}}>불량수량</th><th style={{textAlign:"right"}}>검사수량</th><th style={{textAlign:"right"}}>보관샘플</th>
+            <th>지시번호</th><th>완제품</th><th style={{textAlign:"right"}}>지시수량</th><th style={{textAlign:"right"}}>완료수량</th><th style={{textAlign:"right"}}>불량수량</th><th style={{textAlign:"right"}}>검사수량</th><th style={{textAlign:"right"}}>보관샘플</th><th style={{textAlign:"right"}}>수율</th>
             <th>공장</th><th>작업자</th><th>지시일</th><th>완료일</th><th>상태</th><th>LOT</th><th>관리</th>
           </tr></thead>
           <tbody>{filteredOrders.map(o=>(
@@ -6479,6 +6886,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
               <td style={{textAlign:"right",color:(o.defectQty||0)>0?"#e74c3c":"#aaa",fontWeight:(o.defectQty||0)>0?600:400}}>{o.status==="완료"?`${o.defectQty||0} EA`:"-"}</td>
               <td style={{textAlign:"right",color:(o.inspectQty||0)>0?"#7c3aed":"#aaa",fontWeight:(o.inspectQty||0)>0?600:400}}>{o.status==="완료"?`${o.inspectQty||0} EA`:"-"}</td>
               <td style={{textAlign:"right",color:(o.retainQty||0)>0?"#0369a1":"#aaa",fontWeight:(o.retainQty||0)>0?600:400}}>{o.status==="완료"?`${o.retainQty||0} EA`:"-"}</td>
+              <td style={{textAlign:"right"}}>{o.status==="완료"?(()=>{const y=yieldOf(o.orderQty,o.defectQty);return y==null?"-":<b style={{color:yieldColor(y)}}>{y}%</b>;})():"-"}</td>
               <td>{factories.find(f=>f.code===o.factoryCode)?.name||"-"}</td>
               <td style={{fontSize:12,color:o.worker?"#16a34a":"#aaa",fontWeight:o.worker?600:400}}>{o.worker||"-"}</td>
               <td>{o.date}</td>
@@ -6501,7 +6909,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
                 {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(o.code)}>삭제</button>}
               </td>
             </tr>
-          ))}{!filteredOrders.length&&<tr><td colSpan={13} className="empty">{orders.length?"해당 기간에 작업지시 없음":"작업지시 없음"}</td></tr>}</tbody>
+          ))}{!filteredOrders.length&&<tr><td colSpan={16} className="empty">{orders.length?"해당 기간에 작업지시 없음":"작업지시 없음"}</td></tr>}</tbody>
         </table>
       </div>}
 
@@ -6699,7 +7107,7 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
             <div className="modal-body">
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
                 <div style={{background:"#f8f9fb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#888",marginBottom:3}}>완제품</div><div style={{fontWeight:700}}>{viewWo.productName}</div></div>
-                <div style={{background:"#f8f9fb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#888",marginBottom:3}}>지시수량 / 불량</div><div style={{fontWeight:700}}>{viewWo.orderQty}EA {(viewWo.defectQty||0)>0&&<span style={{color:"#e74c3c"}}>/ {viewWo.defectQty}EA 불량</span>}</div></div>
+                <div style={{background:"#f8f9fb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#888",marginBottom:3}}>지시수량 / 불량{viewWo.status==="완료"&&" · 수율"}</div><div style={{fontWeight:700}}>{viewWo.orderQty}EA {(viewWo.defectQty||0)>0&&<span style={{color:"#e74c3c"}}>/ {viewWo.defectQty}EA 불량</span>}{viewWo.status==="완료"&&(()=>{const y=yieldOf(viewWo.orderQty,viewWo.defectQty);return y==null?null:<span style={{color:yieldColor(y),marginLeft:6}}>· {y}%</span>;})()}</div></div>
                 <div style={{background:"#f8f9fb",borderRadius:8,padding:"10px 14px"}}><div style={{fontSize:11,color:"#888",marginBottom:3}}>상태</div><div style={{fontWeight:700}}><SBadge s={viewWo.status}/>{viewWo.doneDate&&<span style={{fontSize:11,color:"#16a34a",marginLeft:6}}>완료일: {viewWo.doneDate}</span>}</div></div>
               </div>
               {(viewWo.processes||[]).length>0&&(
@@ -6752,8 +7160,14 @@ function OrdersPage({orders,setOrders,items,setItems,bom,processes,factories,lot
               <button className="modal-close" onClick={()=>setCompleteModal(null)}>✕</button>
             </div>
             <div className="modal-body">
-              <div style={{background:"#f0fdf4",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:13}}>
-                <b>{completeModal.productName}</b> · 지시수량 {completeModal.orderQty}EA · LOT: {completeModal.lot||"미지정"}
+              <div style={{background:"#f0fdf4",borderRadius:8,padding:"10px 14px",marginBottom:12,fontSize:13,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                <div><b>{completeModal.productName}</b> · 지시수량 {completeModal.orderQty}EA · LOT: {completeModal.lot||"미지정"}</div>
+                {(()=>{const y=yieldOf(completeModal.orderQty,compForm.defectQty);return y==null?null:(
+                  <div style={{textAlign:"right",whiteSpace:"nowrap"}}>
+                    <span style={{fontSize:11,color:"#888"}}>수율 </span>
+                    <b style={{fontSize:16,color:yieldColor(y)}}>{y}%</b>
+                  </div>
+                );})()}
               </div>
               <div className="field-row">
                 <div className="field"><label>완료일 *</label><input type="date" value={compForm.doneDate} onChange={e=>setCompForm(f=>({...f,doneDate:e.target.value}))}/></div>
@@ -7841,10 +8255,10 @@ function FactoryPage({factories, setFactories, perm, showToast}) {
   );
 }
 
-function ShipmentPage({shipments,setShipments,items,setItems,lots,setLots,io,setIo,currentUser,perm,showToast,downloadCSV}) {
+function ShipmentPage({shipments,setShipments,items,setItems,lots,setLots,io,setIo,vendors=[],currentUser,perm,showToast,downloadCSV}) {
   const todayStr=new Date().toISOString().slice(0,10);
   const [modal,setModal]=useState(null);
-  const [form,setForm]=useState({code:"",date:todayStr,customer:"",item:"",itemName:"",lot:"",qty:0,unitPrice:0,note:"",manager:""});
+  const [form,setForm]=useState({code:"",date:todayStr,customer:"",bizNo:"",item:"",itemName:"",lot:"",qty:0,unitPrice:0,note:"",manager:""});
   const [codeInput,setCodeInput]=useState("");
   const [sel,setSel]=useState(new Set());
   const [startDate,setStartDate]=useState("");
@@ -7868,7 +8282,7 @@ function ShipmentPage({shipments,setShipments,items,setItems,lots,setLots,io,set
   const openAdd=()=>{
     const _today=new Date();const _ymd=String(_today.getFullYear()).slice(2)+String(_today.getMonth()+1).padStart(2,"0")+String(_today.getDate()).padStart(2,"0");
     const _seq=String((shipments.filter(s=>s.code.startsWith("SH"+_ymd)).length)+1).padStart(3,"0");
-    setForm({code:"SH"+_ymd+_seq,date:todayStr,customer:"",item:"",itemName:"",lot:"",qty:0,unitPrice:0,note:"",manager:currentUser?.name||""});
+    setForm({code:"SH"+_ymd+_seq,date:todayStr,customer:"",bizNo:"",item:"",itemName:"",lot:"",qty:0,unitPrice:0,note:"",manager:currentUser?.name||""});
     setCodeInput("");setModal("add");
   };
 
@@ -7999,9 +8413,14 @@ function ShipmentPage({shipments,setShipments,items,setItems,lots,setLots,io,set
               <div className="field"><label>출하번호</label><input value={form.code} disabled/></div>
               <div className="field"><label>출하일 *</label><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/></div>
             </div>
-            <div className="field"><label>거래처 *</label>
-              <input value={form.customer} onChange={e=>setForm(f=>({...f,customer:e.target.value}))} placeholder="거래처명 입력" list="customer-list"/>
-              <datalist id="customer-list">{customers.map(c=><option key={c} value={c}/>)}</datalist>
+            <div className="field-row">
+              <div className="field"><label>거래처 (공급받는자) *</label>
+                <input value={form.customer} onChange={e=>{const val=e.target.value;const v=vendors.find(x=>x.name===val);setForm(f=>({...f,customer:val,bizNo:v?(v.bizNo||""):f.bizNo}));}} placeholder="거래처명 입력/선택" list="customer-list"/>
+                <datalist id="customer-list">{[...new Set([...vendors.map(v=>v.name),...customers])].filter(Boolean).map(c=><option key={c} value={c}/>)}</datalist>
+              </div>
+              <div className="field"><label>사업자등록번호 <span style={{color:"#aaa",fontWeight:400}}>(거래처 선택 시 자동)</span></label>
+                <input value={form.bizNo||""} onChange={e=>setForm(f=>({...f,bizNo:e.target.value}))} placeholder="예) 123-45-67890"/>
+              </div>
             </div>
             <div className="field" style={{position:"relative"}}>
               <label>완제품 *</label>
@@ -8038,6 +8457,804 @@ function ShipmentPage({shipments,setShipments,items,setItems,lots,setLots,io,set
             <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
             <button className="btn btn-primary" onClick={save}>저장</button>
           </div>
+        </div></div>
+      )}
+    </div>
+  );
+}
+
+function VendorPage({vendors,setVendors,perm,showToast,tryDelete,downloadCSV}) {
+  const [modal,setModal]=useState(null);
+  const [form,setForm]=useState({code:"",name:"",bizNo:"",note:"",bcncCode:""});
+  const [q,setQ]=useState("");
+  // 식약처(emedi)에 등록된 거래처 목록. null = 아직 조회 안 함.
+  const [mfdsList,setMfdsList]=useState(null);
+  const [syncing,setSyncing]=useState(false);
+  const openAdd=()=>{setForm({code:"C"+Date.now().toString().slice(-8),name:"",bizNo:"",note:"",bcncCode:""});setModal("add");};
+  const save=()=>{
+    const name=(form.name||"").trim();
+    if(!name){showToast("업체명은 필수입니다");return;}
+    if(modal==="add"){
+      if(vendors.find(v=>(v.name||"").trim()===name)){showToast("이미 등록된 업체명입니다");return;}
+      setVendors([...vendors,{...form,name}]);
+    } else { setVendors(vendors.map(v=>v.code===form.code?{...form,name}:v)); }
+    showToast("저장되었습니다."); setModal(null);
+  };
+  const del=(code,name)=>{ tryDelete([],()=>{setVendors(vendors.filter(v=>v.code!==code));showToast("삭제되었습니다.");},"거래처 삭제"); };
+
+  // 공급내역 보고 본문의 bcncCode는 식약처가 발급한다(우리가 정하는 값이 아님).
+  // 사업자번호로 먼저 맞추고, 없으면(식약처 taxNo가 비어있는 거래처가 실제로 있다) 상호로 폴백.
+  const matchOf=(v,list)=>{
+    const tax=normTax(v.bizNo);
+    if(tax){ const m=list.find(b=>normTax(b.taxNo)===tax); if(m) return m; }
+    const nm=normName(v.name);
+    return nm ? list.find(b=>normName(b.companyName)===nm) : null;
+  };
+  const loadMfds=async()=>{ const d=await udiCall('bcncList'); const list=d?.items||[]; setMfdsList(list); return list; };
+  const sync=async()=>{
+    setSyncing(true);
+    try{
+      const list=await loadMfds();
+      let linked=0;
+      const next=vendors.map(v=>{
+        if(v.bcncCode) return v;                 // 이미 연동된 건 건드리지 않는다
+        const m=matchOf(v,list);
+        if(!m) return v;
+        linked++;
+        return {...v,bcncCode:m.bcncCode,bcncType:m.bcncCobFlagCodeNm||""};
+      });
+      if(linked) setVendors(next);
+      const unlinked=next.filter(v=>!v.bcncCode).length;
+      showToast(`식약처 ${list.length}곳 조회 · 신규 연동 ${linked}곳 · 미연동 ${unlinked}곳`);
+    }catch(e){ showToast("동기화 실패: "+e.message); }
+    finally{ setSyncing(false); }
+  };
+  // 식약처에는 있는데 ERP엔 없는 거래처 (코드·상호 어느 쪽으로도 안 걸리는 것)
+  const mfdsOnly=(mfdsList||[]).filter(b=>
+    !vendors.some(v=>v.bcncCode===b.bcncCode || normName(v.name)===normName(b.companyName))
+  );
+  const importMissing=()=>{
+    if(!mfdsOnly.length) return;
+    const add=mfdsOnly.map((b,i)=>({
+      code:"C"+(Date.now()+i).toString().slice(-8),
+      name:b.companyName, bizNo:b.taxNo||"", note:"", bcncCode:b.bcncCode, bcncType:b.bcncCobFlagCodeNm||"",
+    }));
+    setVendors([...vendors,...add]);
+    showToast(`${add.length}곳을 가져왔습니다.`);
+  };
+
+  const filtered=vendors.filter(v=>{
+    const _q=q.trim().toLowerCase();
+    if(_q&&!(`${v.name||""} ${v.bizNo||""}`.toLowerCase().includes(_q)))return false;
+    return true;
+  });
+  const linkedCnt=vendors.filter(v=>v.bcncCode).length;
+  return (
+    <div>
+      <div className="page-header">
+        <div><div className="crumb">MedERP <span>›</span> <b>거래처 관리</b></div><div className="page-title">거래처 관리</div><div className="page-sub">공급받는자(거래처)를 등록하면 출하·공급내역 보고에서 바로 선택할 수 있습니다</div></div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {perm.canEdit&&<button className="btn btn-outline" onClick={sync} disabled={syncing}>{syncing?"동기화 중…":"🔄 식약처 거래처 동기화"}</button>}
+          <button className="btn btn-outline" onClick={()=>downloadCSV(["업체명","사업자등록번호","식약처거래처코드","비고"],filtered.map(v=>[v.name,v.bizNo||"",v.bcncCode||"",v.note||""]),"거래처목록.csv")}>📥 목록 다운로드</button>
+          {perm.canCreate&&<button className="btn btn-primary" onClick={openAdd}>+ 거래처 등록</button>}
+        </div>
+      </div>
+      <div className="kbar" style={{background:"#fff",border:"1px solid var(--line)",borderRadius:"12px 12px 0 0"}}>
+        <div className="kbar-search">🔍<input placeholder="업체명 · 사업자번호 검색" value={q} onChange={e=>setQ(e.target.value)}/></div>
+        <span style={{marginLeft:"auto",fontSize:12,color:"var(--muted)"}}>거래처 {filtered.length}곳 · 식약처 연동 {linkedCnt}곳</span>
+      </div>
+      <div className="panel" style={{borderRadius:"0 0 12px 12px",borderTop:"none"}}>
+        <table>
+          <thead><tr><th>업체명</th><th>사업자등록번호</th><th>식약처 거래처코드</th><th>비고</th><th style={{width:130}}>관리</th></tr></thead>
+          <tbody>
+            {filtered.map(v=>(
+              <tr key={v.code}>
+                <td><b>{v.name}</b></td>
+                <td style={{fontFamily:"monospace",fontSize:12}}>{v.bizNo||"-"}</td>
+                <td>
+                  {v.bcncCode
+                    ? <span style={{fontFamily:"monospace",fontSize:12}}>{v.bcncCode}</span>
+                    : <span className="badge badge-orange" title="공급내역 보고(출고·반품)에는 식약처 거래처코드가 필요합니다">미연동</span>}
+                </td>
+                <td style={{color:"#888"}}>{v.note||"-"}</td>
+                <td style={{display:"flex",gap:4}}>
+                  {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>{setForm({bcncCode:"",...v});setModal("edit");}}>수정</button>}
+                  {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>del(v.code,v.name)}>삭제</button>}
+                </td>
+              </tr>
+            ))}
+            {!filtered.length&&<tr><td colSpan={5} style={{textAlign:"center",color:"var(--faint)",padding:"28px"}}>등록된 거래처가 없습니다.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {!!mfdsOnly.length&&(
+        <div className="panel" style={{marginTop:12,borderLeft:"3px solid var(--accent)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+            <b style={{fontSize:13}}>식약처에만 등록된 거래처 {mfdsOnly.length}곳</b>
+            <span style={{fontSize:12,color:"var(--muted)"}}>ERP에 없는 거래처입니다. 가져오면 공급내역 보고에서 바로 선택할 수 있습니다.</span>
+            {perm.canCreate&&<button className="btn btn-primary btn-sm" style={{marginLeft:"auto"}} onClick={importMissing}>+ 전체 가져오기</button>}
+          </div>
+          <table>
+            <thead><tr><th>거래처명</th><th>업종</th><th>사업자등록번호</th><th>식약처 거래처코드</th></tr></thead>
+            <tbody>
+              {mfdsOnly.map(b=>(
+                <tr key={b.bcncCode}>
+                  <td><b>{b.companyName}</b></td>
+                  <td style={{fontSize:12,color:"var(--muted)"}}>{b.bcncCobFlagCodeNm||"-"}</td>
+                  <td style={{fontFamily:"monospace",fontSize:12}}>{b.taxNo||"-"}</td>
+                  <td style={{fontFamily:"monospace",fontSize:12}}>{b.bcncCode}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {modal&&(
+        <div className="overlay"><div className="modal" style={{width:440}} onClick={e=>e.stopPropagation()}>
+          <div className="modal-head"><span className="modal-title">거래처 {modal==="add"?"등록":"수정"}</span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
+          <div className="modal-body">
+            <div className="field"><label>업체명 *</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="예) OO병원 / OO메디칼"/></div>
+            <div className="field"><label>사업자등록번호</label><input value={form.bizNo} onChange={e=>setForm(f=>({...f,bizNo:e.target.value}))} placeholder="예) 123-45-67890"/></div>
+            <div className="field">
+              <label>식약처 거래처코드 <span style={{color:"#aaa",fontWeight:400}}>(공급내역 보고용 · 식약처 발급)</span></label>
+              {mfdsList
+                ? <select value={form.bcncCode||""} onChange={e=>setForm(f=>({...f,bcncCode:e.target.value}))}>
+                    <option value="">연동 안 함</option>
+                    {mfdsList.map(b=><option key={b.bcncCode} value={b.bcncCode}>{b.companyName} — {b.bcncCode}</option>)}
+                  </select>
+                : <div style={{display:"flex",gap:6}}>
+                    <input value={form.bcncCode||""} onChange={e=>setForm(f=>({...f,bcncCode:e.target.value}))} placeholder="비어 있으면 동기화로 자동 연동"/>
+                    <button className="btn btn-outline btn-sm" style={{whiteSpace:"nowrap"}}
+                      onClick={async()=>{try{await loadMfds();showToast("식약처 목록을 불러왔습니다.");}catch(e){showToast("조회 실패: "+e.message);}}}>목록 불러오기</button>
+                  </div>}
+            </div>
+            <div className="field"><label>비고</label><input value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))}/></div>
+          </div>
+          <div className="modal-foot"><button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button><button className="btn btn-primary" onClick={save}>저장</button></div>
+        </div></div>
+      )}
+    </div>
+  );
+}
+
+function SupplyReportPage({shipments,items,lots,vendors=[],setVendors,supplyRecords=[],setSupplyRecords,supplyMeta,setSupplyMeta,currentUser,downloadCSV,showToast,perm}) {
+  const todayStr=new Date().toISOString().slice(0,10);
+  const [startDate,setStartDate]=useState("");
+  const [endDate,setEndDate]=useState("");
+  const [filterCustomer,setFilterCustomer]=useState("");
+  const [onlyGaps,setOnlyGaps]=useState(false);
+  const dateStyle={border:"1px solid #ddd",borderRadius:5,padding:"5px 8px",fontSize:12};
+  const meta=supplyMeta||{companyName:"",bizNo:""};
+  const setMeta=(patch)=>setSupplyMeta({...meta,...patch});
+
+  // 직접 등록 모달
+  const [modal,setModal]=useState(null);
+  const [form,setForm]=useState(null);
+  const finishedItems=items.filter(i=>i.type==="완제품"||i.type==="반제품");
+  const openAdd=()=>{setForm({id:"SR"+Date.now(),date:todayStr,supplyType:"",supplyForm:"",udi:"",udiPi:"",customer:"",bizNo:"",item:"",itemName:"",mfgVendor:"",stdCode:"",licenseNo:"",grade:"",classNo:"",pkgQty:"",modelName:"",lot:"",serialNo:"",mfgDate:"",exp:"",trackTarget:"",insurance:"",implant:"",qty:0,price:0,unit:"EA",note:"",meddevItemSeq:"",modelSeq:"",udiDiSeq:"",udiUseLotNo:false,udiUseItemSeq:false,udiUseManufYm:false,udiUseTimeLimit:false});setModal("add");};
+  const openEdit=(rec)=>{setForm({...rec});setModal("edit");};
+  // 식약처(emedi)에 등록된 거래처 — 공급내역 추가 화면에서 바로 선택할 수 있게 미리 불러온다.
+  const [mfdsVendors,setMfdsVendors]=useState([]);
+  useEffect(()=>{ (async()=>{ try{ const d=await udiCall('bcncList'); setMfdsVendors(d?.items||[]); }catch(e){} })(); },[]);
+  // 거래처 선택 시: ERP 거래처 우선, 없으면 식약처 거래처에서 사업자번호를 채운다.
+  const pickVendor=(name)=>{
+    const v=vendors.find(x=>x.name===name);
+    const mv=!v && mfdsVendors.find(b=>b.companyName===name);
+    setForm(f=>({...f,customer:name,bizNo:v?(v.bizNo||""):(mv?(mv.taxNo||""):f.bizNo)}));
+  };
+  // 입력한 거래처가 아직 등록 안 됐으면 이 자리에서 바로 등록한다(식약처 거래처코드 자동 매칭 시도).
+  const [vendorBusy,setVendorBusy]=useState(false);
+  const registerVendor=async()=>{
+    const name=(form.customer||"").trim();
+    if(!name){showToast("거래처명을 입력하세요");return;}
+    if(vendors.find(v=>(v.name||"").trim()===name)){showToast("이미 등록된 거래처입니다");return;}
+    setVendorBusy(true);
+    let bcncCode="",bcncType="";
+    try{
+      const d=await udiCall('bcncList'); const bl=d?.items||[];
+      const tax=normTax(form.bizNo);
+      const m=(tax&&bl.find(b=>normTax(b.taxNo)===tax)) || bl.find(b=>normName(b.companyName)===normName(name));
+      if(m){ bcncCode=m.bcncCode; bcncType=m.bcncCobFlagCodeNm||""; }
+    }catch(e){ /* 식약처 조회 실패해도 로컬 등록은 진행 */ }
+    setVendors([...(vendors||[]),{code:"C"+Date.now().toString().slice(-8),name,bizNo:form.bizNo||"",note:"",bcncCode,bcncType}]);
+    setVendorBusy(false);
+    showToast(bcncCode?`거래처 등록 + 식약처 연동 완료`:`거래처 등록 완료 (식약처 미연동 — 거래처 관리에서 동기화 필요)`);
+  };
+  // UDI-DI만 입력하면 식약처에서 규제정보 + 전송용 내부 일련번호(seq)까지 자동으로 채운다.
+  // silent=true(자동 조회)일 때는 실패 메시지를 띄우지 않는다(입력 중 미완성 코드 대응).
+  const [srUdiBusy,setSrUdiBusy]=useState(false);
+  const lastLookupRef = React.useRef("");
+  const lookupSupplyUdi=async(silent=false)=>{
+    const code=(form?.stdCode||"").trim();
+    if(!code){ if(!silent)showToast("고유식별자(UDI-DI)를 먼저 입력하세요"); return; }
+    lastLookupRef.current=code;
+    setSrUdiBusy(true);
+    try{
+      const d=await udiCall('udidiProduct',{query:{udiDiCode:code}});
+      const p=(d?.items||[])[0];
+      if(!p){ if(!silent)showToast("식약처에서 해당 UDI-DI를 찾지 못했습니다"); return; }
+      setForm(f=>({...f,
+        stdCode:p.udiDiCode||code,
+        itemName:p.itemName||f.itemName||"",
+        modelName:p.typeName||f.modelName, licenseNo:p.permitNo||f.licenseNo,
+        grade:mfdsGrade(p.grade)||f.grade, classNo:p.meaClassNo||f.classNo, pkgQty:p.packQuantity??f.pkgQty,
+        meddevItemSeq:p.meddevItemSeq??"", modelSeq:p.seq??"", udiDiSeq:p.udiDiSeq??"",
+        udiUseLotNo:!!p.useLotNo, udiUseItemSeq:!!p.useItemSeq, udiUseManufYm:!!p.useManufYm, udiUseTimeLimit:!!p.useTimeLimit,
+      }));
+      showToast(`식약처 조회 완료 — ${p.itemName}`);
+    }catch(e){ if(!silent)showToast("조회 실패: "+e.message); }
+    finally{ setSrUdiBusy(false); }
+  };
+  // UDI-DI 입력을 멈추면(600ms) 자동으로 조회한다. 버튼을 누르지 않아도 제품이 채워진다.
+  // ※ 모달이 닫혀 있을 때 form이 없을 수 있으므로 옵셔널 체이닝 필수(빈 화면 크래시 방지).
+  useEffect(()=>{
+    const code=(form?.stdCode||"").trim();
+    if(code.length<12 || code===lastLookupRef.current) return; // 너무 짧거나 이미 조회한 코드는 건너뜀
+    const t=setTimeout(()=>lookupSupplyUdi(true), 600);
+    return ()=>clearTimeout(t);
+  },[form?.stdCode]);
+  const pickItem=(code)=>{const it=items.find(i=>i.code===code);if(it)setForm(f=>({...f,item:it.code,itemName:it.name,unit:it.unit||"EA",price:it.price||f.price,stdCode:it.stdCode||f.stdCode,licenseNo:it.licenseNo||f.licenseNo,grade:it.grade||f.grade,modelName:it.modelName||f.modelName,mfgVendor:it.mfgVendor||f.mfgVendor,classNo:it.classNo||f.classNo,pkgQty:it.pkgQty||f.pkgQty,trackTarget:it.trackTarget||f.trackTarget,insurance:it.insurance||f.insurance,implant:it.implant||f.implant}));};
+  // UDI-PI 자동 조합: (11)제조YYMMDD (17)사용기한YYMMDD (10)LOT (21)일련번호
+  const buildUdiPi=(f)=>{let s="";if(f.mfgDate)s+=`(11)${f.mfgDate}`;if(f.exp)s+=`(17)${f.exp}`;if(f.lot)s+=`(10)${f.lot}`;if(f.serialNo)s+=`(21)${f.serialNo}`;return s;};
+  const saveRec=()=>{
+    if(!form.date){showToast("공급일자를 입력하세요");return;}
+    if(!form.customer.trim()){showToast("거래처를 입력하세요");return;}
+    if(!form.itemName.trim()){showToast("품목을 선택/입력하세요");return;}
+    if(modal==="add") setSupplyRecords([form,...supplyRecords]);
+    else setSupplyRecords(supplyRecords.map(r=>r.id===form.id?form:r));
+    showToast("저장되었습니다."); setModal(null);
+  };
+  const delRec=(id)=>{ if(!window.confirm("이 공급내역을 삭제하시겠습니까?"))return; setSupplyRecords(supplyRecords.filter(r=>r.id!==id)); showToast("삭제되었습니다."); };
+
+  // 품목·LOT·거래처 마스터 조인 준비
+  const itemMap={}; items.forEach(i=>{itemMap[i.code]=i;});
+  const lotMap={}; lots.forEach(l=>{lotMap[l.code]=l;});
+  const vendorMap={}; vendors.forEach(v=>{vendorMap[(v.name||"").trim()]=v;});
+
+  // 식약처 전송에 필요한 연동정보(품목 3종 일련번호 + 거래처코드)를 행에 실어준다.
+  // 하나라도 없으면 26장 보고자료 본문을 만들 수 없다 → _sendable=false.
+  const udiFields=(it,customer,stdCode)=>{
+    const v=vendorMap[(customer||"").trim()]||{};
+    const f={
+      meddevItemSeq:it.meddevItemSeq||"", modelSeq:it.modelSeq||"", udiDiSeq:it.udiDiSeq||"",
+      udiUseLotNo:!!it.udiUseLotNo, udiUseItemSeq:!!it.udiUseItemSeq,
+      udiUseManufYm:!!it.udiUseManufYm, udiUseTimeLimit:!!it.udiUseTimeLimit,
+      bcncCode:v.bcncCode||"", bcncType:v.bcncType||"",
+    };
+    f._sendable=!!(f.meddevItemSeq&&f.modelSeq&&f.udiDiSeq&&f.bcncCode&&stdCode);
+    return f;
+  };
+
+  // 출하 → 공급내역 행 매핑
+  const shipRows=shipments.map(s=>{
+    const it=itemMap[s.item]||{};
+    const lot=lotMap[s.lot]||{};
+    const qty=+s.qty||0, price=+s.unitPrice||0;
+    const u=udiFields(it,s.customer,it.stdCode);
+    return {
+      key:"S:"+s.code, source:"출하", refId:null,
+      date:s.date||"",
+      supplyType:"출고", supplyForm:"", udi:"", udiPi:"",
+      customer:s.customer||"", bizNo:s.bizNo||"",
+      itemName:s.itemName||it.name||"", modelName:it.modelName||"",
+      mfgVendor:it.mfgVendor||"", classNo:it.classNo||"", pkgQty:it.pkgQty||"",
+      stdCode:it.stdCode||"", licenseNo:it.licenseNo||"", grade:it.grade||"",
+      // 제조연월(manufYm)은 보고 필수인데 기존엔 항상 빈 값이었다 → LOT 마스터의 제조일에서 가져온다.
+      unit:it.unit||"EA", lot:s.lot||"", serialNo:"", mfgDate:lot.mfg||"", exp:lot.exp||"",
+      trackTarget:it.trackTarget||"", insurance:it.insurance||"", implant:it.implant||"", note:"",
+      qty, price, amount:qty*price,
+      _gap: !(it.stdCode && it.licenseNo),
+      ...u,
+    };
+  });
+  // 직접 등록 → 공급내역 행 매핑 (품목 마스터가 있으면 규제정보 자동 보강)
+  const manualRows=supplyRecords.map(s=>{
+    const it=itemMap[s.item]||{};
+    const qty=+s.qty||0, price=+s.price||0;
+    const stdCode=it.stdCode||s.stdCode||"", licenseNo=it.licenseNo||s.licenseNo||"";
+    return {
+      key:"M:"+s.id, source:"직접", refId:s.id,
+      date:s.date||"",
+      supplyType:s.supplyType||"", supplyForm:s.supplyForm||"", udi:s.udi||"", udiPi:s.udiPi||"",
+      customer:s.customer||"", bizNo:s.bizNo||"",
+      itemName:s.itemName||it.name||"", modelName:it.modelName||s.modelName||"",
+      mfgVendor:it.mfgVendor||s.mfgVendor||"", classNo:it.classNo||s.classNo||"", pkgQty:it.pkgQty||s.pkgQty||"",
+      stdCode, licenseNo, grade:it.grade||s.grade||"",
+      unit:s.unit||it.unit||"EA", lot:s.lot||"", serialNo:s.serialNo||"", mfgDate:s.mfgDate||"", exp:s.exp||"",
+      trackTarget:it.trackTarget||s.trackTarget||"", insurance:it.insurance||s.insurance||"", implant:it.implant||s.implant||"", note:s.note||"",
+      qty, price, amount:qty*price,
+      _gap: !(stdCode && licenseNo),
+      // 직접등록 레코드가 '식약처 조회'로 채운 seq를 품목 마스터보다 우선 사용(품목 마스터 없이도 전송 가능)
+      ...udiFields({
+        meddevItemSeq:s.meddevItemSeq||it.meddevItemSeq, modelSeq:s.modelSeq||it.modelSeq, udiDiSeq:s.udiDiSeq||it.udiDiSeq,
+        udiUseLotNo:s.udiUseLotNo??it.udiUseLotNo, udiUseItemSeq:s.udiUseItemSeq??it.udiUseItemSeq,
+        udiUseManufYm:s.udiUseManufYm??it.udiUseManufYm, udiUseTimeLimit:s.udiUseTimeLimit??it.udiUseTimeLimit,
+      }, s.customer, stdCode),
+    };
+  });
+  const rows=[...shipRows,...manualRows];
+
+  const filtered=rows.filter(r=>{
+    if(startDate&&r.date<startDate) return false;
+    if(endDate&&r.date>endDate) return false;
+    if(filterCustomer&&!r.customer.includes(filterCustomer)) return false;
+    if(onlyGaps&&!r._gap) return false;
+    return true;
+  }).sort((a,b)=>(a.date<b.date?1:a.date>b.date?-1:0));
+
+  const customers=[...new Set([...vendors.map(v=>v.name),...shipments.map(s=>s.customer),...supplyRecords.map(s=>s.customer)].filter(Boolean))];
+  const totalQty=filtered.reduce((a,r)=>a+r.qty,0);
+  const totalAmt=filtered.reduce((a,r)=>a+r.amount,0);
+  const gapCount=filtered.filter(r=>r._gap).length;
+
+  // ── 식약처 보고자료 본문(규격서 26장) 생성 ─────────────────────────────
+  // stdCode는 우리 품목의 stdCode(=UDI-DI)와 의미가 다르다. 식약처 stdCode = "(01)DI + PI" 전체 표준코드.
+  // lotNo/manufYm/useTmlmt/itemSeq는 udiPiCode에 포함된 경우에만 넣어야 하며, 포함 여부는
+  // 품목 조회 시 식약처가 알려준 udiUse* 플래그로 판정한다.
+  const buildReportBody=(r)=>{
+    const di=(r.stdCode||"").trim();
+    const lotNo   = r.udiUseLotNo     ? (r.lot||"")        : "";
+    const manufYm = r.udiUseManufYm   ? ymd6(r.mfgDate)    : "";
+    const useTmlmt= r.udiUseTimeLimit ? ymd6(r.exp)        : "";
+    const itemSeq = r.udiUseItemSeq   ? (r.serialNo||"")   : "";
+    let pi="";
+    if(manufYm) pi+=`(11)${manufYm}`;
+    if(useTmlmt)pi+=`(17)${useTmlmt}`;
+    if(lotNo)   pi+=`(10)${lotNo}`;
+    if(itemSeq) pi+=`(21)${itemSeq}`;
+    const flag = SUPPLY_FLAG_CODE[r.supplyType] || "1";               // 화면에서 고른 공급구분(없으면 출고)
+    const type = SUPPLY_TYPE_CODE[r.supplyForm] || suplyTypeOf(r.bcncType); // 고른 공급형태(없으면 거래처 업종 유도)
+    const b={
+      suplyFlagCode:flag,
+      suplyTypeCode:type,
+      meddevItemSeq:Number(r.meddevItemSeq),
+      seq:Number(r.modelSeq),                  // 26장의 `seq`(모델명 일련번호). ERP는 modelSeq로 저장.
+      udiDiSeq:Number(r.udiDiSeq),
+      stdCode:`(01)${di}${pi}`,
+      udiDiCode:di,
+      udiPiCode:pi,
+      bcncCode:String(r.bcncCode),
+      suplyDate:ymd8(r.date),
+      suplyQty:String(r.qty),
+      isDiffDvyfg:false,                       // 납품장소 다름 여부. ERP에 납품장소 개념이 없어 항상 false.
+                                               // ※ 이 필드를 빠뜨리면 emedi가 500을 던진다(400 아님).
+    };
+    if(lotNo)   b.lotNo=lotNo;
+    if(manufYm) b.manufYm=manufYm;
+    if(useTmlmt)b.useTmlmt=useTmlmt;
+    if(itemSeq) b.itemSeq=itemSeq;
+    if(r.price) b.suplyUntpc=String(Math.round(r.price));
+    if(r.amount)b.suplyAmt=String(Math.round(r.amount));
+    if(r.note)  b.remark=String(r.note).slice(0,650);
+    return b;
+  };
+
+  // ── 식약처 사전검증 (/api/test/v1 — 실제로 등록되지 않음) ────────────────
+  const [verifying,setVerifying]=useState(false);
+  const [verifyResult,setVerifyResult]=useState(null);
+  // src를 넘기지 않으면 현재 필터된 행을 검증한다. (전송 패널은 기준월 행을 직접 넘긴다 —
+  // setState는 비동기라 필터를 바꾼 직후의 filtered를 신뢰할 수 없다.)
+  const verifyRows=async(src)=>{
+    const base=Array.isArray(src)?src:filtered;
+    const targets=base.filter(r=>r._sendable);
+    const skipped=base.filter(r=>!r._sendable);
+    if(!targets.length){ showToast("검증할 행이 없습니다 — 품목 '식약처 조회'와 거래처 동기화를 먼저 하세요"); return; }
+    setVerifying(true); setVerifyResult(null);
+    const ok=[], fail=[];
+    for(const r of targets){
+      const stdmt=ymd8(r.date).slice(0,6);
+      try{
+        await udiCall('manageAdd',{stdmt, test:true, body:buildReportBody(r)});
+        ok.push(r);
+      }catch(e){
+        fail.push({row:r, msg:e.message});
+      }
+    }
+    setVerifyResult({ok:ok.length, fail, skipped:skipped.length});
+    setVerifying(false);
+    showToast(fail.length ? `검증 완료 — 통과 ${ok.length}건 / 실패 ${fail.length}건` : `✅ ${ok.length}건 모두 검증 통과`);
+  };
+  const sendableCount=filtered.filter(r=>r._sendable).length;
+
+  // ── 식약처 전송 (Phase 4) ────────────────────────────────────────────────
+  // 흐름: 사전검증(test) → 보고자료 등록(live) → [사용자가] 보고 제출
+  // ★ 제출 엔드포인트는 토글이다(미보고→보고, 보고→취소). 그래서 reportStatus를 먼저 읽고 버튼을 가른다.
+  const thisYm=todayStr.slice(0,7).replace("-","");
+  const rowMonths=[...new Set(rows.map(r=>ymd8(r.date).slice(0,6)).filter(m=>m.length===6))].sort().reverse();
+  const [stdmt,setStdmt]=useState(thisYm);
+  const [mfds,setMfds]=useState(null);        // {reportStatus,lastReportDateLimit,suplyCnt} + regCount
+  const [mfdsBusy,setMfdsBusy]=useState(false);
+  const [txBusy,setTxBusy]=useState(null);    // 'register' | 'delete' | 'submit' | 'cancel'
+
+  const monthRows=rows.filter(r=>ymd8(r.date).slice(0,6)===stdmt);
+  const monthSendable=monthRows.filter(r=>r._sendable);
+
+  const loadMfdsStatus=async(ym)=>{
+    setMfdsBusy(true);
+    try{
+      const sum=await udiCall('summary');
+      const hit=(sum?.items||[]).find(x=>x.suplyContStdmt===ym)||null;
+      const lst=await udiCall('manageList',{query:{suplyContStdmt:ym}});
+      setMfds({...(hit||{reportStatus:"미보고"}), regCount:lst?.totalElements??0});
+    }catch(e){ setMfds({error:e.message}); }
+    finally{ setMfdsBusy(false); }
+  };
+  useEffect(()=>{ if(/^\d{6}$/.test(stdmt)) loadMfdsStatus(stdmt); },[stdmt]);
+
+  // 보고자료 실등록 (되돌리기 가능 — 일괄삭제 버튼 제공)
+  const registerMonth=async()=>{
+    if(!monthSendable.length){ showToast("등록할 행이 없습니다"); return; }
+    if(mfds?.reportStatus==="보고"){ showToast("이미 보고된 달입니다. 보고 취소 후 등록하세요."); return; }
+    if(!window.confirm(`${stdmt} 기준월로 보고자료 ${monthSendable.length}건을 식약처에 등록합니다.\n\n아직 '보고'는 아니며, 등록 후 일괄삭제로 되돌릴 수 있습니다.\n계속할까요?`)) return;
+    setTxBusy('register');
+    const ok=[],fail=[];
+    for(const r of monthSendable){
+      try{ await udiCall('manageAdd',{stdmt, live:true, body:buildReportBody(r)}); ok.push(r); }
+      catch(e){ fail.push({row:r,msg:e.message}); }
+    }
+    setTxBusy(null);
+    setVerifyResult({ok:ok.length, fail, skipped:monthRows.length-monthSendable.length, _registered:true});
+    await loadMfdsStatus(stdmt);
+    showToast(fail.length?`등록 완료 — 성공 ${ok.length}건 / 실패 ${fail.length}건`:`✅ ${ok.length}건 등록 완료. 이제 '보고 제출'을 누르세요.`);
+  };
+
+  const deleteMonth=async()=>{
+    if(!window.confirm(`${stdmt} 기준월에 등록된 보고자료를 모두 삭제합니다.\n\n식약처에 등록된 자료가 지워집니다. 계속할까요?`)) return;
+    setTxBusy('delete');
+    try{ await udiCall('manageDelete',{stdmt, confirm:"DELETE"}); showToast("등록 자료를 삭제했습니다."); }
+    catch(e){ showToast("삭제 실패: "+e.message); }
+    setTxBusy(null); await loadMfdsStatus(stdmt);
+  };
+
+  // ★ 최종 제출. 사용자가 직접 눌러야 하는 버튼. 되돌리려면 보고 취소.
+  const submitReport=async()=>{
+    if(!window.confirm(`${stdmt} 기준월 공급내역을 식약처에 정식 보고합니다.\n\n등록된 보고자료 ${mfds?.regCount??0}건이 제출됩니다.\n제출 후에는 '보고 취소'로만 되돌릴 수 있습니다.\n\n보고하시겠습니까?`)) return;
+    setTxBusy('submit');
+    try{
+      const r=await udiCall('reportSubmit',{stdmt, confirm:"SUBMIT"});
+      showToast(r?.msg||"공급내역 보고가 완료되었습니다.");
+    }catch(e){ showToast("보고 실패: "+e.message); }
+    setTxBusy(null); await loadMfdsStatus(stdmt);
+  };
+
+  const cancelReport=async()=>{
+    if(!window.confirm(`${stdmt} 기준월의 공급내역 보고를 취소합니다.\n\n보고 상태가 '보고취소'로 바뀝니다. 자료 수정 후 재보고할 수 있습니다.\n계속할까요?`)) return;
+    setTxBusy('cancel');
+    try{ const r=await udiCall('reportCancel',{stdmt, confirm:"CANCEL"}); showToast(r?.msg||"보고를 취소했습니다."); }
+    catch(e){ showToast("보고 취소 실패: "+e.message); }
+    setTxBusy(null); await loadMfdsStatus(stdmt);
+  };
+
+  const statusBadge=(s)=>({"보고":"badge-green","미보고":"badge-orange","보고취소":"badge-red"}[s]||"badge-gray");
+
+  const exportExcel=()=>{
+    if(!filtered.length){showToast("내보낼 공급내역이 없습니다");return;}
+    const headers=["공급자업체명","공급자사업자등록번호","공급구분","공급형태","공급일자","표준코드(UDI)","고유식별자(UDI-DI)","생산식별자(UDI-PI)","제조/수입업체명","품목명","모델명","품목허가번호","등급","분류번호","포장내수량","제조번호(LOT)","일련번호","제조연월일","사용기한","추적관리대상","요양급여치료재료","인체이식형","공급받는자","공급받는자사업자등록번호","수량","단위","단가","금액","비고"];
+    const data=filtered.map(r=>[meta.companyName||"",meta.bizNo||"",r.supplyType,r.supplyForm,r.date,r.udi,r.stdCode,r.udiPi,r.mfgVendor,r.itemName,r.modelName,r.licenseNo,r.grade,r.classNo,r.pkgQty,r.lot,r.serialNo,r.mfgDate,r.exp,r.trackTarget,r.insurance,r.implant,r.customer,r.bizNo,r.qty,r.unit,r.price,r.amount,r.note]);
+    const ym=(startDate||endDate||todayStr).slice(0,7).replace("-","");
+    downloadCSV(headers,data,`의료기기_공급내역보고_${ym}.csv`);
+    showToast("✅ 심평원 양식 엑셀 다운로드 완료");
+  };
+
+  return (
+    <div>
+      <div className="page-header">
+        <div><div className="crumb">MedERP <span>›</span> <b>공급내역 보고</b></div><div className="page-title">의료기기 공급내역 보고</div><div className="page-sub">출하 내역 자동 연동 + 직접 등록 → 식약처(의료기기 통합정보시스템) 공급내역 보고 자료 생성</div></div>
+        <div style={{display:"flex",gap:8}}>
+          {perm.canCreate&&<button className="btn btn-outline" onClick={openAdd}>+ 공급내역 추가</button>}
+          {perm.canEdit&&<button className="btn btn-outline" onClick={verifyRows} disabled={verifying||!sendableCount}
+            title="식약처 검증 서버(/api/test)로 보내 형식·값을 점검합니다. 실제로 보고되지 않습니다.">
+            {verifying?"검증 중…":`🧪 식약처 사전검증${sendableCount?` (${sendableCount}건)`:""}`}
+          </button>}
+          <button className="btn btn-primary" onClick={exportExcel}>📥 식약처 양식 엑셀 다운로드</button>
+        </div>
+      </div>
+
+      {/* 공급자 정보 */}
+      <div style={{background:"#fff",borderRadius:10,padding:"12px 16px",boxShadow:"0 1px 3px rgba(0,0,0,0.07)",marginBottom:12,display:"flex",alignItems:"center",gap:14,flexWrap:"wrap"}}>
+        <span style={{fontSize:13,fontWeight:700,color:"#374151"}}>🏢 공급자 정보</span>
+        <label style={{fontSize:12,color:"#666"}}>업체명</label>
+        <input value={meta.companyName||""} onChange={e=>setMeta({companyName:e.target.value})} placeholder="당사 업체명" style={{...dateStyle,width:200}} disabled={!perm.canEdit}/>
+        <label style={{fontSize:12,color:"#666"}}>사업자등록번호</label>
+        <input value={meta.bizNo||""} onChange={e=>setMeta({bizNo:e.target.value})} placeholder="예) 123-45-67890" style={{...dateStyle,width:160}} disabled={!perm.canEdit}/>
+        <span style={{fontSize:11,color:"#aaa"}}>* 보고서 상단·엑셀에 자동 반영됩니다</span>
+      </div>
+
+      {/* 필터 바 */}
+      <div style={{background:"#fff",borderRadius:10,padding:"10px 16px",boxShadow:"0 1px 3px rgba(0,0,0,0.07)",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+        <span style={{fontSize:13,fontWeight:600,color:"#555"}}>공급일자</span>
+        <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} style={dateStyle}/>
+        <span style={{fontSize:12,color:"#aaa"}}>~</span>
+        <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} style={dateStyle}/>
+        <button className="btn btn-outline btn-sm" onClick={()=>{const d=new Date();const first=new Date(d.getFullYear(),d.getMonth(),1).toISOString().slice(0,10);const last=new Date(d.getFullYear(),d.getMonth()+1,0).toISOString().slice(0,10);setStartDate(first);setEndDate(last);}}>이번 달</button>
+        <button className="btn btn-outline btn-sm" onClick={()=>{setStartDate("");setEndDate("");}}>전체</button>
+        <input placeholder="거래처 검색" value={filterCustomer} onChange={e=>setFilterCustomer(e.target.value)} style={{...dateStyle,width:140}} list="supply-customer-list"/>
+        <datalist id="supply-customer-list">{customers.map(c=><option key={c} value={c}/>)}</datalist>
+        <label style={{fontSize:12,color:"#666",display:"flex",alignItems:"center",gap:5,cursor:"pointer"}}>
+          <input type="checkbox" checked={onlyGaps} onChange={e=>setOnlyGaps(e.target.checked)} style={{cursor:"pointer"}}/>규제정보 누락만
+        </label>
+        <span style={{marginLeft:"auto",fontSize:12,color:"var(--muted)"}}>
+          전송 가능 <b style={{color:sendableCount?"var(--accent)":"var(--muted)"}}>{sendableCount}</b> / {filtered.length}건
+        </span>
+      </div>
+
+      {/* 식약처 전송 (Phase 4) — 검증 → 등록 → [사용자가] 보고 제출 */}
+      {perm.canEdit&&(
+        <div className="panel" style={{marginBottom:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <b style={{fontSize:13}}>🚀 식약처 전송</b>
+            <label style={{fontSize:12,color:"var(--muted)"}}>기준월</label>
+            <select value={stdmt} onChange={e=>setStdmt(e.target.value)} style={{...dateStyle,width:120}}>
+              {[...new Set([thisYm,...rowMonths])].map(m=><option key={m} value={m}>{m.slice(0,4)}-{m.slice(4)}</option>)}
+            </select>
+
+            {mfdsBusy ? <span style={{fontSize:12,color:"var(--muted)"}}>상태 조회 중…</span>
+             : mfds?.error ? <span style={{fontSize:12,color:"var(--warn)"}}>상태 조회 실패: {mfds.error}</span>
+             : mfds && (
+              <>
+                <span className={`badge ${statusBadge(mfds.reportStatus)}`}>{mfds.reportStatus}</span>
+                <span style={{fontSize:12,color:"var(--muted)"}}>
+                  식약처 등록자료 <b>{mfds.regCount}</b>건
+                  {mfds.lastReportDateLimit&&<> · 보고기한 <b>{mfds.lastReportDateLimit}</b></>}
+                </span>
+              </>
+             )}
+            <span style={{fontSize:12,color:"var(--muted)",marginLeft:"auto"}}>
+              이 달 ERP 내역 {monthRows.length}건 중 전송 가능 <b style={{color:monthSendable.length?"var(--accent)":"var(--muted)"}}>{monthSendable.length}</b>건
+            </span>
+          </div>
+
+          <div style={{display:"flex",gap:8,marginTop:12,flexWrap:"wrap",alignItems:"center"}}>
+            <button className="btn btn-outline" onClick={()=>verifyRows(monthRows)} disabled={verifying||!monthSendable.length}>
+              {verifying?"검증 중…":"① 사전검증"}
+            </button>
+            <button className="btn btn-outline" onClick={registerMonth}
+              disabled={!!txBusy||!monthSendable.length||mfds?.reportStatus==="보고"}>
+              {txBusy==='register'?"등록 중…":`② 보고자료 등록 (${monthSendable.length}건)`}
+            </button>
+
+            {mfds?.reportStatus==="보고"
+              ? <button className="btn btn-danger" onClick={cancelReport} disabled={!!txBusy}>
+                  {txBusy==='cancel'?"취소 중…":"보고 취소"}
+                </button>
+              : <button className="btn btn-primary" onClick={submitReport}
+                  disabled={!!txBusy||!mfds||!mfds.regCount}
+                  title={!mfds?.regCount?"먼저 보고자료를 등록하세요":"식약처에 정식 보고합니다"}>
+                  {txBusy==='submit'?"보고 중…":"③ 보고 제출"}
+                </button>}
+
+            {!!mfds?.regCount&&mfds?.reportStatus!=="보고"&&
+              <button className="btn btn-outline btn-sm" onClick={deleteMonth} disabled={!!txBusy}>
+                {txBusy==='delete'?"삭제 중…":"등록자료 일괄삭제"}
+              </button>}
+          </div>
+
+          <div style={{marginTop:10,fontSize:12,color:"var(--muted)",lineHeight:1.6}}>
+            ①은 식약처 검증 서버로만 보내며 아무것도 저장되지 않습니다. ②는 식약처에 자료를 <b>등록</b>하지만 아직 보고는 아니며 일괄삭제로 되돌릴 수 있습니다.
+            <b style={{color:"var(--ink)"}}> ③ 보고 제출은 정식 보고이며, 되돌리려면 보고 취소를 해야 합니다.</b>
+            {mfds?.reportStatus==="보고"&&<><br/><span style={{color:"var(--warn)"}}>⚠️ 이미 보고된 달입니다. 자료를 고치려면 보고 취소 → 수정 → 재보고 순으로 진행하세요.</span></>}
+            {!monthSendable.length&&!!monthRows.length&&<><br/>전송 가능 건이 0입니다 — 품목의 <b>식약처 조회</b>와 거래처 <b>동기화</b>를 먼저 실행하세요.</>}
+          </div>
+        </div>
+      )}
+
+      {/* 식약처 사전검증 결과 (/api/test — 실제 보고 아님) */}
+      {verifyResult&&(
+        <div className="panel" style={{marginBottom:12,borderLeft:`3px solid ${verifyResult.fail.length?"var(--warn)":"var(--ok)"}`}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:verifyResult.fail.length?8:0}}>
+            <b style={{fontSize:13}}>
+              {verifyResult._registered
+                ? (verifyResult.fail.length?"⚠️ 보고자료 등록 결과":"✅ 보고자료 등록 완료")
+                : (verifyResult.fail.length?"⚠️ 사전검증 결과":"✅ 사전검증 통과")}
+              {" "}— {verifyResult._registered?"등록":"통과"} {verifyResult.ok}건
+              {!!verifyResult.fail.length&&` · 실패 ${verifyResult.fail.length}건`}
+              {!!verifyResult.skipped&&` · 건너뜀 ${verifyResult.skipped}건`}
+            </b>
+            <span style={{fontSize:12,color:"var(--muted)"}}>
+              {verifyResult._registered
+                ? <>식약처에 <b>등록</b>되었습니다. 아직 정식 보고는 아닙니다 — 위 <b>③ 보고 제출</b>을 눌러야 보고됩니다.</>
+                : <>식약처 검증 서버로만 보냈습니다. <b>실제 보고는 되지 않았습니다.</b></>}
+              {!!verifyResult.skipped&&" 건너뛴 행은 품목·거래처 식약처 연동정보가 없습니다."}
+            </span>
+            <button className="btn btn-outline btn-sm" style={{marginLeft:"auto"}} onClick={()=>setVerifyResult(null)}>닫기</button>
+          </div>
+          {!!verifyResult.fail.length&&(
+            <table>
+              <thead><tr><th>공급일자</th><th>품목</th><th>거래처</th><th>LOT</th><th>식약처 응답</th></tr></thead>
+              <tbody>
+                {verifyResult.fail.map(f=>(
+                  <tr key={f.row.key}>
+                    <td>{f.row.date}</td><td><b>{f.row.itemName}</b></td><td>{f.row.customer}</td>
+                    <td style={{fontFamily:"monospace",fontSize:12}}>{f.row.lot||"-"}</td>
+                    <td style={{color:"var(--warn)"}}>{f.msg}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* 규제필드 누락 경고 */}
+      {gapCount>0&&(
+        <div style={{background:"#fff7ed",border:"1px solid #fed7aa",color:"#9a3412",borderRadius:10,padding:"10px 14px",marginBottom:12,fontSize:12.5,display:"flex",alignItems:"center",gap:8}}>
+          ⚠️ 표준코드(UDI-DI) 또는 품목허가번호가 없는 공급내역이 <b>{gapCount}건</b> 있습니다. 품목 관리 &gt; 해당 품목 수정에서 <b>의료기기 정보</b>를 입력하면 보고 자료에 자동 반영됩니다.
+        </div>
+      )}
+
+      {/* 요약 카드 */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
+        {[["총 공급 건수",`${filtered.length} 건`],["총 공급 수량",`${fmt3(totalQty)} EA`],["총 공급 금액",`${totalAmt.toLocaleString()} 원`],["규제정보 누락",`${gapCount} 건`]].map(([k,v])=>(
+          <div key={k} className="card"><div className="card-label">{k}</div><div className="card-val" style={{fontSize:18}}>{v}</div></div>
+        ))}
+      </div>
+
+      <div className="panel">
+        <div className="panel-top">
+          <b>🏥 공급내역 목록</b>
+          <span style={{fontSize:12,color:"#aaa"}}>{filtered.length}건</span>
+        </div>
+        <div style={{overflowX:"auto"}}>
+        <table>
+          <thead><tr>
+            <th>구분</th><th>공급일자</th><th>표준코드(UDI-DI)</th><th>품목명</th><th>모델명</th><th>허가번호</th><th>등급</th>
+            <th>제조번호(LOT)</th><th>사용기한</th><th>공급받는자</th><th>사업자번호</th>
+            <th style={{textAlign:"right"}}>수량</th><th>단위</th><th style={{textAlign:"right"}}>금액</th><th style={{width:110}}>관리</th>
+          </tr></thead>
+          <tbody>
+            {filtered.map((r)=>(
+              <tr key={r.key} style={r._gap?{background:"#fffbeb"}:null}>
+                <td><span className="badge" style={{background:r.source==="직접"?"#ede9fe":"#e0f2fe",color:r.source==="직접"?"#6d28d9":"#0369a1",fontSize:11}}>{r.source}</span></td>
+                <td style={{fontSize:12}}>{r.date}</td>
+                <td style={{fontSize:11,fontFamily:"monospace"}}>{r.stdCode||<span style={{color:"#e07a00"}}>미입력</span>}</td>
+                <td style={{fontWeight:600}}>{r.itemName}</td>
+                <td style={{fontSize:12}}>{r.modelName||"-"}</td>
+                <td style={{fontSize:12}}>{r.licenseNo||<span style={{color:"#e07a00"}}>미입력</span>}</td>
+                <td style={{fontSize:12}}>{r.grade||"-"}</td>
+                <td style={{fontSize:11,color:"#7c3aed",fontFamily:"monospace"}}>{r.lot||"-"}</td>
+                <td style={{fontSize:12}}>{r.exp||"-"}</td>
+                <td style={{fontWeight:600}}>{r.customer}</td>
+                <td style={{fontSize:12,color:"#888"}}>{r.bizNo||"-"}</td>
+                <td style={{textAlign:"right",fontWeight:700}}>{fmt3(r.qty)}</td>
+                <td style={{fontSize:12,color:"#888"}}>{r.unit}</td>
+                <td style={{textAlign:"right",fontWeight:600,color:"#2f6df0"}}>{r.amount.toLocaleString()}</td>
+                <td style={{display:"flex",gap:4}}>
+                  {r.source==="직접"?(<>
+                    {perm.canEdit&&<button className="btn btn-outline btn-sm" onClick={()=>openEdit(supplyRecords.find(x=>x.id===r.refId))}>수정</button>}
+                    {perm.canDelete&&<button className="btn btn-danger btn-sm" onClick={()=>delRec(r.refId)}>삭제</button>}
+                  </>):<span style={{fontSize:11,color:"#bbb"}}>출하관리</span>}
+                </td>
+              </tr>
+            ))}
+            {!filtered.length&&<tr><td colSpan={15} className="empty">{(shipments.length||supplyRecords.length)?"해당 조건의 공급내역 없음":"공급내역이 없습니다. '+ 공급내역 추가'로 직접 등록하거나 출하 관리에서 출하를 등록하세요."}</td></tr>}
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      {modal&&form&&(
+        <div className="overlay"><div className="modal" style={{width:820}} onClick={e=>e.stopPropagation()}>
+          <div className="modal-head"><span className="modal-title">🏥 공급내역 {modal==="add"?"직접 등록":"수정"} <span style={{fontSize:12,fontWeight:400,color:"#9ca3af"}}>(심평원 UDI 공급내역 보고 양식)</span></span><button className="modal-close" onClick={()=>setModal(null)}>✕</button></div>
+          <div className="modal-body">
+            {/* 공급 구분 */}
+            <div className="field-row">
+              <div className="field"><label>공급구분 <span style={{color:"#e11d48"}}>*</span></label>
+                <select value={form.supplyType} onChange={e=>setForm(f=>({...f,supplyType:e.target.value}))}>
+                  <option value="">공급구분 선택</option>
+                  {SUPPLY_FLAGS.map(o=><option key={o}>{o}</option>)}
+                </select>
+              </div>
+              <div className="field"><label>공급형태 {needsSupplyType(form.supplyType)&&<span style={{color:"#e11d48"}}>*</span>}</label>
+                <select value={form.supplyForm} onChange={e=>setForm(f=>({...f,supplyForm:e.target.value}))} disabled={!needsSupplyType(form.supplyType)}>
+                  <option value="">{needsSupplyType(form.supplyType)?"공급형태 선택":"출고·임대만 해당"}</option>
+                  {SUPPLY_TYPES.map(o=><option key={o}>{o}</option>)}
+                </select>
+              </div>
+            </div>
+            {needsBcnc(form.supplyType)&&<div style={{fontSize:11,color:"#e07a00",marginTop:-6,marginBottom:6}}>ℹ️ 공급구분이 {form.supplyType}이면 거래처(공급받는자) 선택이 필수입니다.</div>}
+            <div className="field"><label>품목 선택 <span style={{color:"#aaa",fontWeight:400}}>(품목 마스터 선택 시 허가정보 자동 반영)</span></label>
+              <select value={form.item} onChange={e=>pickItem(e.target.value)}>
+                <option value="">— 품목 마스터에서 선택 —</option>
+                {finishedItems.map(i=><option key={i.code} value={i.code}>{i.code} · {i.name}</option>)}
+              </select>
+            </div>
+
+            {/* UDI 코드 */}
+            <div style={{marginTop:4,paddingTop:8,borderTop:"1px dashed #e5e7eb"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:8}}>🔖 UDI 코드</div>
+              <div className="field"><label>표준코드(UDI) <span style={{color:"#e11d48"}}>*</span> <span style={{color:"#aaa",fontWeight:400}}>(전체 UDI 입력 시 DI·PI 자동 분리)</span></label>
+                <input value={form.udi} onChange={e=>{
+                  const raw=e.target.value; const p=parseUdiBarcode(raw);
+                  setForm(f=>({...f, udi:raw,
+                    ...(p.di?{stdCode:p.di}:{}), ...(p.pi?{udiPi:p.pi}:{}),
+                    ...(p.mfgDate?{mfgDate:p.mfgDate}:{}), ...(p.exp?{exp:p.exp}:{}),
+                    ...(p.lot?{lot:p.lot}:{}), ...(p.serialNo?{serialNo:p.serialNo}:{}),
+                  }));
+                }} placeholder="예) (01)08800317830046(11)251209(17)280430(10)LOT123"/></div>
+              <div className="field-row">
+                <div className="field"><label>고유식별자(UDI-DI) <span style={{color:"#e11d48"}}>*</span></label>
+                  <div style={{display:"flex",gap:6}}>
+                    <input value={form.stdCode} onChange={e=>setForm(f=>({...f,stdCode:e.target.value}))} placeholder="UDI-DI 입력 시 자동 조회"/>
+                    <button type="button" className="btn btn-outline btn-sm" style={{whiteSpace:"nowrap"}} onClick={()=>lookupSupplyUdi(false)} disabled={srUdiBusy}>{srUdiBusy?"조회 중…":"다시 조회"}</button>
+                  </div>
+                  {srUdiBusy
+                    ? <div style={{fontSize:11,color:"#2f6df0",marginTop:3}}>식약처 조회 중…</div>
+                    : form.udiDiSeq
+                      ? <div style={{fontSize:11,color:"#2f9e63",marginTop:3}}>✓ 식약처 연동됨 · 전송 준비완료</div>
+                      : <div style={{fontSize:11,color:"#aaa",marginTop:3}}>UDI-DI를 입력하면 제품 정보가 자동으로 채워집니다.</div>}
+                </div>
+                <div className="field"><label>생산식별자(UDI-PI) <span style={{color:"#e11d48"}}>*</span></label>
+                  <input value={form.udiPi} onChange={e=>setForm(f=>({...f,udiPi:e.target.value}))} placeholder="표준코드(UDI) 입력 시 자동"/>
+                </div>
+              </div>
+            </div>
+
+            {/* 품목허가정보 (자동/수정가능) */}
+            <div style={{marginTop:4,paddingTop:8,borderTop:"1px dashed #e5e7eb"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:8}}>📋 품목허가정보 <span style={{color:"#9ca3af",fontWeight:400}}>(품목 선택 시 자동 · 수정 가능)</span></div>
+              <div className="field-row">
+                <div className="field"><label>제조/수입 업체명</label><input value={form.mfgVendor} onChange={e=>setForm(f=>({...f,mfgVendor:e.target.value}))} style={{background:"#f3f4f6"}}/></div>
+                <div className="field"><label>품목명 <span style={{color:"#e11d48"}}>*</span></label><input value={form.itemName} onChange={e=>setForm(f=>({...f,itemName:e.target.value}))} placeholder="제품명"/></div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"0.7fr 1fr 1.2fr 0.9fr",gap:12}}>
+                <div className="field"><label>등급</label><input value={form.grade} onChange={e=>setForm(f=>({...f,grade:e.target.value}))} style={{background:"#f3f4f6"}}/></div>
+                <div className="field"><label>분류번호</label><input value={form.classNo} onChange={e=>setForm(f=>({...f,classNo:e.target.value}))} style={{background:"#f3f4f6"}}/></div>
+                <div className="field"><label>품목허가번호</label><input value={form.licenseNo} onChange={e=>setForm(f=>({...f,licenseNo:e.target.value}))} style={{background:"#f3f4f6"}}/></div>
+                <div className="field"><label>포장 내 수량(개)</label><input value={form.pkgQty} onChange={e=>setForm(f=>({...f,pkgQty:e.target.value}))} style={{background:"#f3f4f6"}}/></div>
+              </div>
+              <div className="field"><label>모델명</label><input value={form.modelName} onChange={e=>setForm(f=>({...f,modelName:e.target.value}))} style={{background:"#f3f4f6"}}/></div>
+            </div>
+
+            {/* 생산정보 */}
+            <div style={{marginTop:4,paddingTop:8,borderTop:"1px dashed #e5e7eb"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:8}}>🏭 생산정보</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12}}>
+                <div className="field"><label>로트번호</label><input value={form.lot} onChange={e=>setForm(f=>({...f,lot:e.target.value}))}/></div>
+                <div className="field"><label>일련번호</label><input value={form.serialNo} onChange={e=>setForm(f=>({...f,serialNo:e.target.value}))}/></div>
+                <div className="field"><label>제조연월일(YYMMDD)</label><input value={form.mfgDate} onChange={e=>setForm(f=>({...f,mfgDate:e.target.value}))} placeholder="260701" maxLength={6}/></div>
+                <div className="field"><label>사용기한(YYMMDD)</label><input value={form.exp} onChange={e=>setForm(f=>({...f,exp:e.target.value}))} placeholder="280701" maxLength={6}/></div>
+              </div>
+            </div>
+
+            {/* 규제 속성 */}
+            <div style={{marginTop:4,paddingTop:8,borderTop:"1px dashed #e5e7eb"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:8}}>⚕️ 규제 속성 <span style={{color:"#9ca3af",fontWeight:400}}>(허가정보 기준)</span></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+                <div className="field"><label>추적관리대상</label><select value={form.trackTarget} onChange={e=>setForm(f=>({...f,trackTarget:e.target.value}))} style={{background:"#f3f4f6"}}><option value="">해당없음</option><option>대상</option></select></div>
+                <div className="field"><label>요양급여 치료재료</label><select value={form.insurance} onChange={e=>setForm(f=>({...f,insurance:e.target.value}))} style={{background:"#f3f4f6"}}><option value="">비대상</option><option>대상</option></select></div>
+                <div className="field"><label>인체이식형 의료기기</label><select value={form.implant} onChange={e=>setForm(f=>({...f,implant:e.target.value}))} style={{background:"#f3f4f6"}}><option value="">해당없음</option><option>해당</option></select></div>
+              </div>
+            </div>
+
+            {/* 공급 정보 */}
+            <div style={{marginTop:4,paddingTop:8,borderTop:"1px dashed #e5e7eb"}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#374151",marginBottom:8}}>📦 공급 정보</div>
+              <div className="field-row">
+                <div className="field"><label>거래처 (공급받는자) <span style={{color:"#e11d48"}}>*</span></label>
+                  <input value={form.customer} onChange={e=>pickVendor(e.target.value)} placeholder="거래처명 입력/선택 (식약처 거래처 포함)" list="supply-vendor-list"/>
+                  <datalist id="supply-vendor-list">
+                    {vendors.map(v=><option key={v.code} value={v.name}/>)}
+                    {mfdsVendors.filter(b=>!vendors.find(v=>(v.name||"").trim()===(b.companyName||"").trim())).map(b=><option key={b.bcncCode} value={b.companyName}>식약처 등록</option>)}
+                  </datalist>
+                </div>
+                <div className="field"><label>사업자등록번호 <span style={{color:"#aaa",fontWeight:400}}>(거래처 선택 시 자동)</span></label><input value={form.bizNo} onChange={e=>setForm(f=>({...f,bizNo:e.target.value}))} placeholder="예) 123-45-67890"/></div>
+              </div>
+              {(form.customer||"").trim() && setVendors && perm.canCreate && !vendors.find(v=>(v.name||"").trim()===(form.customer||"").trim()) &&
+                <div style={{fontSize:12,color:"#e07a00",marginTop:-6,marginBottom:6,display:"flex",alignItems:"center",gap:8}}>
+                  <span>ℹ️ 등록되지 않은 거래처입니다.</span>
+                  <button type="button" className="btn btn-primary btn-sm" onClick={registerVendor} disabled={vendorBusy}>{vendorBusy?"등록 중…":"+ 거래처로 등록"}</button>
+                </div>}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:12}}>
+                <div className="field"><label>공급일자 <span style={{color:"#e11d48"}}>*</span></label><input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/></div>
+                <div className="field"><label>수량 <span style={{color:"#e11d48"}}>*</span></label><input type="number" value={form.qty} onChange={e=>setForm(f=>({...f,qty:+e.target.value}))}/></div>
+                <div className="field"><label>단위</label><input value={form.unit} onChange={e=>setForm(f=>({...f,unit:e.target.value}))}/></div>
+                <div className="field"><label>단가(원) {form.supplyForm==="의료기관에 공급"&&<span style={{color:"#e11d48"}}>*</span>}</label><input type="number" value={form.price} onChange={e=>setForm(f=>({...f,price:+e.target.value}))}/></div>
+              </div>
+              {form.supplyForm==="의료기관에 공급"&&!form.price&&<div style={{fontSize:11,color:"#e07a00",marginBottom:6}}>ℹ️ 요양급여 치료재료를 의료기관에 공급할 때는 공급단가가 필수입니다.</div>}
+              <div className="field"><label>비고</label><input value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))} placeholder="비고 (선택)"/></div>
+            </div>
+          </div>
+          <div className="modal-foot"><button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button><button className="btn btn-primary" onClick={saveRec}>저장</button></div>
         </div></div>
       )}
     </div>
@@ -8723,40 +9940,65 @@ function OrdersLedgerPage({ordersLedger,setOrdersLedger,items,currentUser,perm,s
   );
 }
 
-function UserPage({users, setUsers, currentUser, showToast}) {
+function UserPage({currentUser, showToast}) {
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({id:"",pw:"",name:"",role:"viewer"});
+  const [form, setForm] = useState({id:"",email:"",pw:"",name:"",role:"viewer"});
   const [q, setQ] = useState("");
   const [roleF, setRoleF] = useState("전체");
+  const [authUsers, setAuthUsers] = useState(null); // Supabase Auth 계정 목록. null=로딩 전
+  const [busy, setBusy] = useState(false);
   const roleLabel = {admin:"관리자",manager:"담당자",viewer:"조회자"};
   const roleBadge = {admin:"badge-blue",manager:"badge-green",viewer:"badge-gray"};
-  const filtered = users.filter(u=>{
-    const mq=!q||(u.id||"").toLowerCase().includes(q.toLowerCase())||(u.name||"").includes(q);
+
+  // 계정은 이제 Supabase Auth가 관리한다. user-admin Edge Function으로 목록을 읽는다.
+  const load = async()=>{ try{ const d=await userAdminCall('list'); setAuthUsers(d.users||[]); }catch(e){ showToast('계정 목록 조회 실패: '+e.message); setAuthUsers([]); } };
+  useEffect(()=>{ load(); },[]);
+
+  const list = authUsers||[];
+  const filtered = list.filter(u=>{
+    const mq=!q||(u.email||"").toLowerCase().includes(q.toLowerCase())||(u.name||"").includes(q);
     const mr=roleF==="전체"||u.role===roleF;
     return mq&&mr;
   });
 
-  const openAdd = () => { setForm({id:"",pw:"",name:"",role:"viewer"}); setModal("add"); };
-  const save = () => {
-    if(!form.id||!form.pw||!form.name){showToast("아이디, 비밀번호, 이름은 필수입니다.");return;}
+  const openAdd = () => { setForm({id:"",email:"",pw:"",name:"",role:"viewer"}); setModal("add"); };
+  const openEdit = (u) => { setForm({id:u.id,email:u.email,pw:"",name:u.name,role:u.role}); setModal("edit"); };
+  const save = async() => {
     if(modal==="add"){
-      if(users.find(u=>u.id===form.id)){showToast("이미 존재하는 아이디입니다.");return;}
-      setUsers([...users,form]);
+      if(!form.email||!form.pw||!form.name){showToast("이메일·비밀번호·이름은 필수입니다.");return;}
+      if(form.pw.length<6){showToast("비밀번호는 6자 이상이어야 합니다.");return;}
+      setBusy(true);
+      try{
+        await userAdminCall('create',{email:form.email.trim(),password:form.pw,name:form.name.trim(),role:form.role});
+        showToast("계정이 생성되었습니다."); setModal(null); await load();
+      }catch(e){ showToast("생성 실패: "+e.message); } finally{ setBusy(false); }
     } else {
-      setUsers(users.map(u=>u.id===form.id?form:u));
+      if(!form.name.trim()){showToast("이름은 필수입니다.");return;}
+      if(form.pw&&form.pw.length<6){showToast("비밀번호는 6자 이상이어야 합니다.");return;}
+      setBusy(true);
+      try{
+        const newName=form.name.trim();
+        await userAdminCall('updateRole',{id:form.id,role:form.role});
+        // 이름 변경: 본인 계정은 세션으로 직접 반영(Edge Function 재배포 불필요),
+        // 다른 사람 계정은 updateName 액션 경유(함수 재배포 필요)
+        if(form.email===currentUser.email){ const {error}=await sb.auth.updateUser({data:{name:newName}}); if(error) throw error; }
+        else { await userAdminCall('updateName',{id:form.id,name:newName}); }
+        if(form.pw) await userAdminCall('resetPassword',{id:form.id,password:form.pw});
+        showToast("저장되었습니다."); setModal(null); await load();
+      }catch(e){ showToast("저장 실패: "+e.message); } finally{ setBusy(false); }
     }
-    showToast("저장되었습니다."); setModal(null);
   };
-  const del = (id) => {
-    if(id===currentUser.id){showToast("현재 로그인된 계정은 삭제할 수 없습니다.");return;}
-    setUsers(users.filter(u=>u.id!==id));
-    showToast("삭제되었습니다.");
+  const del = async(u) => {
+    if(u.email===currentUser.email){showToast("현재 로그인된 계정은 삭제할 수 없습니다.");return;}
+    if(!window.confirm(`${u.email} 계정을 삭제하시겠습니까?`))return;
+    try{ await userAdminCall('delete',{id:u.id}); showToast("삭제되었습니다."); await load(); }
+    catch(e){ showToast("삭제 실패: "+e.message); }
   };
 
   return (
     <div>
       <div className="page-header">
-        <div><div className="crumb">MedERP <span>›</span> <b>사용자 관리</b></div><div className="page-title">사용자 관리</div><div className="page-sub">로그인 계정 및 권한 관리</div></div>
+        <div><div className="crumb">MedERP <span>›</span> <b>사용자 관리</b></div><div className="page-title">사용자 관리</div><div className="page-sub">직원 로그인 계정(이메일) 발급 및 권한 관리 · Supabase Auth 연동</div></div>
         <button className="btn btn-primary" onClick={openAdd}>+ 사용자 추가</button>
       </div>
 
@@ -8774,7 +10016,7 @@ function UserPage({users, setUsers, currentUser, showToast}) {
 
       <div className="panel">
         <div className="panel-top" style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-          <input placeholder="🔍 아이디·이름 검색" value={q} onChange={e=>setQ(e.target.value)}
+          <input placeholder="🔍 이메일·이름 검색" value={q} onChange={e=>setQ(e.target.value)}
             style={{width:220,border:"1px solid var(--line)",borderRadius:8,padding:"6px 11px",fontSize:13,outline:"none"}}/>
           <select value={roleF} onChange={e=>setRoleF(e.target.value)} style={{border:"1px solid var(--line)",borderRadius:8,padding:"6px 10px",fontSize:13}}>
             <option value="전체">역할: 전체</option>
@@ -8782,27 +10024,31 @@ function UserPage({users, setUsers, currentUser, showToast}) {
             <option value="manager">담당자</option>
             <option value="viewer">조회자</option>
           </select>
+          <button className="btn btn-outline btn-sm" onClick={load}>새로고침</button>
           <span style={{fontSize:12,color:"#aaa",marginLeft:"auto"}}>{filtered.length}명</span>
         </div>
         <table>
-          <thead><tr><th>아이디</th><th>이름</th><th>역할</th><th>관리</th></tr></thead>
+          <thead><tr><th>이메일</th><th>이름</th><th>역할</th><th>최근 로그인</th><th>관리</th></tr></thead>
           <tbody>
-            {filtered.map(u=>{
-              const ini=(u.name||u.id||"?").trim().slice(0,1).toUpperCase();
+            {authUsers===null&&<tr><td colSpan={5} className="empty">계정 목록 불러오는 중…</td></tr>}
+            {authUsers!==null&&filtered.map(u=>{
+              const ini=(u.name||u.email||"?").trim().slice(0,1).toUpperCase();
               const avBg={admin:"#eaf1fe",manager:"#e7f4ec",viewer:"#eef1f5"}[u.role]||"#eef1f5";
               const avFg={admin:"#2560d8",manager:"#2f9e63",viewer:"#667085"}[u.role]||"#667085";
+              const me=u.email===currentUser.email;
               return(
               <tr key={u.id}>
-                <td><b>{u.id}</b>{u.id===currentUser.id&&<span style={{fontSize:11,color:"#2f6df0",marginLeft:6}}>(현재 계정)</span>}</td>
-                <td><span style={{display:"inline-flex",alignItems:"center",gap:8}}><span style={{width:26,height:26,borderRadius:"50%",background:avBg,color:avFg,display:"grid",placeItems:"center",fontSize:12,fontWeight:700,flex:"none"}}>{ini}</span>{u.name}</span></td>
+                <td><b>{u.email}</b>{me&&<span style={{fontSize:11,color:"#2f6df0",marginLeft:6}}>(현재 계정)</span>}</td>
+                <td><span style={{display:"inline-flex",alignItems:"center",gap:8}}><span style={{width:26,height:26,borderRadius:"50%",background:avBg,color:avFg,display:"grid",placeItems:"center",fontSize:12,fontWeight:700,flex:"none"}}>{ini}</span>{u.name||"-"}</span></td>
                 <td><span className={`badge ${roleBadge[u.role]}`}>{roleLabel[u.role]}</span></td>
+                <td style={{fontSize:12,color:"#888"}}>{u.lastSignIn?new Date(u.lastSignIn).toLocaleString("ko-KR"):"—"}</td>
                 <td style={{display:"flex",gap:4}}>
-                  <button className="btn btn-outline btn-sm" onClick={()=>{setForm({...u,pw:u.pw});setModal("edit");}}>수정</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>del(u.id)} disabled={u.id===currentUser.id}>삭제</button>
+                  <button className="btn btn-outline btn-sm" onClick={()=>openEdit(u)}>수정</button>
+                  <button className="btn btn-danger btn-sm" onClick={()=>del(u)} disabled={me}>삭제</button>
                 </td>
               </tr>
             );})}
-            {!filtered.length&&<tr><td colSpan={4} className="empty">{users.length?"검색 결과 없음":"등록된 사용자 없음"}</td></tr>}
+            {authUsers!==null&&!filtered.length&&<tr><td colSpan={5} className="empty">{list.length?"검색 결과 없음":"등록된 계정 없음"}</td></tr>}
           </tbody>
         </table>
       </div>
@@ -8816,11 +10062,14 @@ function UserPage({users, setUsers, currentUser, showToast}) {
             </div>
             <div className="modal-body">
               <div className="field-row">
-                <div className="field"><label>아이디 *</label><input value={form.id} onChange={e=>setForm({...form,id:e.target.value})} disabled={modal==="edit"} placeholder="로그인 ID"/></div>
+                <div className="field"><label>이메일 *</label><input type="email" value={form.email} onChange={e=>setForm({...form,email:e.target.value})} disabled={modal==="edit"} placeholder="예) hong@imeditech.kr"/></div>
                 <div className="field"><label>이름 *</label><input value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="표시 이름"/></div>
               </div>
               <div className="field-row">
-                <div className="field"><label>비밀번호 *</label><input type="password" value={form.pw} onChange={e=>setForm({...form,pw:e.target.value})} placeholder="비밀번호"/></div>
+                <div className="field">
+                  <label>{modal==="add"?"비밀번호 *":"새 비밀번호"}</label>
+                  <input type="password" value={form.pw} onChange={e=>setForm({...form,pw:e.target.value})} placeholder={modal==="add"?"6자 이상":"변경 시에만 입력"}/>
+                </div>
                 <div className="field">
                   <label>역할 (권한)</label>
                   <select value={form.role} onChange={e=>setForm({...form,role:e.target.value})}>
@@ -8830,10 +10079,11 @@ function UserPage({users, setUsers, currentUser, showToast}) {
                   </select>
                 </div>
               </div>
+              {modal==="edit"&&<div style={{fontSize:12,color:"#888",marginTop:2}}>이메일·이름은 변경할 수 없습니다. 역할 변경과 비밀번호 재설정만 가능합니다.</div>}
             </div>
             <div className="modal-foot">
               <button className="btn btn-outline" onClick={()=>setModal(null)}>취소</button>
-              <button className="btn btn-primary" onClick={save}>저장</button>
+              <button className="btn btn-primary" onClick={save} disabled={busy}>{busy?"처리 중…":"저장"}</button>
             </div>
           </div>
         </div>
