@@ -869,25 +869,21 @@ for(i=0;i<trs.length;i++){
     if(rc.length!==width) break;             // 칸 수가 달라지면 표가 끝난 것(쪽 바닥글 등)
     if(norm(rc[nameIdx].textContent)) rows.push(trs[k]); // 이름 있는 행만(빈 줄 제외)
   }
-  var used={}, assign=[];
-  // pass1: 코드 → 이름 별칭
-  for(r=0;r<rows.length;r++){
-    var cells=rows[r].children, nm=norm(cells[nameIdx].textContent), cc=codeIdx>=0?norm(cells[codeIdx].textContent):"", ei=-1;
-    if(cc){ for(a=0;a<ENTRIES.length;a++){ if(!used[a]&&ENTRIES[a].code===cc){ ei=a; break; } } }
-    if(ei<0){ for(a=0;a<ENTRIES.length;a++){ if(!used[a]&&ENTRIES[a].aliases.indexOf(nm)>=0){ ei=a; break; } } }
-    assign[r]=ei; if(ei>=0) used[ei]=1;
-  }
-  // pass2: 위치 폴백 — 남은 엔트리를 남은 자재 행에 순서대로
+  var used={}, assign=[], rn=[], rcc=[], b;
+  for(r=0;r<rows.length;r++){ assign[r]=-1; rn[r]=norm(rows[r].children[nameIdx].textContent); rcc[r]=codeIdx>=0?norm(rows[r].children[codeIdx].textContent):""; }
+  // A) 자재코드 정확 매칭
+  for(r=0;r<rows.length;r++){ if(!rcc[r])continue; for(a=0;a<ENTRIES.length;a++){ if(!used[a]&&ENTRIES[a].code===rcc[r]){ assign[r]=a; used[a]=1; break; } } }
+  // B) 이름 정확 매칭 (표기명/품목명/불출명 별칭)
+  for(r=0;r<rows.length;r++){ if(assign[r]>=0)continue; for(a=0;a<ENTRIES.length;a++){ if(used[a])continue; if(ENTRIES[a].aliases.indexOf(rn[r])>=0){ assign[r]=a; used[a]=1; break; } } }
+  // C) 이름 부분(포함) 매칭 — "글리세린(원액)"↔"글리세린"처럼 한쪽이 다른 쪽을 포함하면 매칭(2글자 이상)
+  for(r=0;r<rows.length;r++){ if(assign[r]>=0)continue; for(a=0;a<ENTRIES.length;a++){ if(used[a])continue; var al=ENTRIES[a].aliases, hit=false;
+      for(b=0;b<al.length;b++){ var x=al[b]; if(x.length>=2&&rn[r].length>=2&&(rn[r].indexOf(x)>=0||x.indexOf(rn[r])>=0)){ hit=true; break; } }
+      if(hit){ assign[r]=a; used[a]=1; break; } } }
+  // D) 위치 폴백 — 그래도 못 맞춘 자재 행을 남은 엔트리로 순서대로
   var ci=0;
-  for(r=0;r<rows.length;r++){
-    if(assign[r]>=0) continue;
-    while(ci<ENTRIES.length&&used[ci]) ci++;
-    if(ci<ENTRIES.length){ assign[r]=ci; used[ci]=1; }
-  }
+  for(r=0;r<rows.length;r++){ if(assign[r]>=0)continue; while(ci<ENTRIES.length&&used[ci])ci++; if(ci<ENTRIES.length){ assign[r]=ci; used[ci]=1; } }
   // 채우기
-  for(r=0;r<rows.length;r++){
-    if(assign[r]>=0){ var cell=rows[r].children[lotIdx]; cell.textContent=ENTRIES[assign[r]].lot; cell.style.fontWeight="bold"; }
-  }
+  for(r=0;r<rows.length;r++){ if(assign[r]>=0){ var cell=rows[r].children[lotIdx]; cell.textContent=ENTRIES[assign[r]].lot; cell.style.fontWeight="bold"; } }
 }
 })();<\/script>`:""},gt=t=>{const i=typeof t=="string"?t:t&&t.product,C=it&&it[i];if(!C){alert(`등록된 제조지시서가 없습니다.
 품목 관리에서 먼저 첨부해주세요.`);return}const G=typeof t=="string"?null:t,U=window.open("","_blank");openMfgDocIn(U,C,i,Ot(G)+Ft(G))},Kt=t=>{const i="작업지시서 "+t+" 투입";return(ut||[]).map((C,G)=>d(n({},C),{_idx:G})).filter(C=>C.type==="출고"&&String(C.note||"").startsWith(i)).sort((C,G)=>String(C.item).localeCompare(String(G.item))||String(C.date).localeCompare(String(G.date))||C._idx-G._idx)},Xt=t=>String(t.note||"").includes("(완료자동)"),re=(t,i)=>{const C=(i||[]).filter(G=>G.item===t.code&&(G.qty||0)>0).sort((G,U)=>String(G.mfg||"").localeCompare(String(U.mfg||"")));return t.lot?[...C.filter(G=>G.code===t.lot),...C.filter(G=>G.code!==t.lot)]:C},pe=t=>{var fe;const i=ce=>String(ce==null?"":ce).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"),C=ce=>{var ge;return((ge=v.find($t=>$t.code===ce))==null?void 0:ge.unit)||""},G=Kt(t.code),U=N.find(ce=>ce.product===t.product),W=t.status==="완료",R=Math.max(0,(t.orderQty||0)-(t.defectQty||0)-(t.inspectQty||0)-(t.retainQty||0)),Lt=yieldOf(t.orderQty,t.defectQty),rt=[["지시번호",t.code,"완제품",`${t.productName||"-"} (${t.product||"-"})`],["지시수량",`${fmt5(t.orderQty||0)} ${t.unit||"EA"}`,"생산 LOT",t.lot||"-"],["생산라인",((fe=$.find(ce=>ce.code===t.factoryCode))==null?void 0:fe.name)||"-","작업자",t.worker||"-"],["지시일",t.date||"-","완료일",t.doneDate||"-"]].map(([ce,ge,$t,ve])=>`<tr><th>${i(ce)}</th><td>${i(ge)}</td><th>${i($t)}</th><td>${i(ve)}</td></tr>`).join(""),Dt=W?`<div class="sec">2. 생산 실적</div>
