@@ -361,8 +361,16 @@ tr:hover td { background: #fafbfc; }
 
 <script>
 // ── 버전 관리 ──
-const APP_VERSION = "2.18.28";
+const APP_VERSION = "2.18.29";
 const CHANGELOG = [
+  {
+    version: "2.18.29",
+    date: "2026-10-08",
+    label: "입고 예정 삭제가 기초재고를 건드리지 않게",
+    changes: [
+      "🛡️ 입고 예정을 지울 때 품목·LOT·수량이 같은 기초재고를 입고 기록으로 잘못 보고 같이 지우지 않도록 막았습니다",
+    ],
+  },
   {
     version: "2.18.28",
     date: "2026-10-08",
@@ -1173,7 +1181,7 @@ ${b}
 
 `)+`
 
-그래도 저장할까요?`))return;const Zt=applyOpeningStock({io:E,lots:N,item:bt.item,itemName:bt.itemName,unit:bt.unit,unitPrice:bt.unitPrice,lot:r,qty:k,date:mt,warehouse:bt.warehouse,manager:tt==null?void 0:tt.name});j(Zt.io),U(Zt.lots),bt.unitPrice>0&&C(St=>St.map($t=>$t.code===bt.item?d(o({},$t),{price:bt.unitPrice}):$t)),T(`${bt.itemName} 기초재고 ${fmt5(k)} 등록 — ${mt} 기준 (입출고 대장에 이월재고로 반영)`),Q(null)},le=()=>{if(!bt.item){T("품목을 선택해주세요");return}if(!(bt.lot||"").trim()){window.alert("⛔ LOT번호를 입력해주세요");return}if(!bt.warehouse){window.alert("⛔ 입고 창고를 선택해주세요");return}const r=o(d(o({},bt),{lot:(bt.lot||"").trim()}),W==="add"?{status:"대기"}:{});m(W==="add"?[...n,r]:n.map(lt=>lt.code===r.code?r:lt)),r.unitPrice>0&&C(p.map(lt=>lt.code===r.item?d(o({},lt),{price:r.unitPrice}):lt));const k=r.incomingDate||"";let mt=!1;qt&&k&&k<qt&&(ie(k),mt=!0),g&&k&&k>g&&(ut(""),mt=!0),at&&at!==(r.status==="완료"?"완료":"대기")&&(At(""),mt=!0),A&&(pt(""),mt=!0),T(mt?"저장되었습니다 — 방금 저장한 건이 보이도록 조회 조건을 넓혔습니다.":"저장되었습니다."),Q(null)},re=r=>r.type==="입고"&&(!r.destination||r.destination==="BUY")&&!/창고이동/.test(String(r.note||""))&&!isQuarantineIo(r),v=r=>{const k=new Set,mt=[],lt=[],Zt=[];return r.forEach(St=>{if(St.status!=="완료")return;const $t=(St.lot||"").trim();let Bt=E.findIndex((ee,me)=>!k.has(me)&&ee._incCode===St.code);if(Bt<0){const ee=E.map((Et,se)=>[Et,se]).filter(([Et,se])=>!k.has(se)&&!Et._incCode&&re(Et)&&Et.item===St.item&&(Et.lot||"")===$t&&Math.abs((+Et.qty||0)-(+St.qty||0))<1e-9&&(Et.warehouse||"")===(St.warehouse||"")&&String(Et.note||"")===String(St.supplier||"")),me=ee.find(([Et])=>Et.date===St.incomingDate)||ee[0];Bt=me?me[1]:-1}if(Bt<0){Zt.push(`• ${St.itemName||St.item}${$t?" · LOT "+$t:""}`);return}if($t){const ee=E.filter((Et,se)=>se!==Bt&&!k.has(se)&&Et.item===St.item&&(Et.lot||"")===$t),me=ee.filter(Et=>!re(Et));if(me.length){lt.push(`• ${St.itemName||St.item} · LOT ${$t} — ${me.slice(0,3).map(Et=>`${Et.date} ${Et.type}${Et.destination?"("+Et.destination+")":""}${Et.note?" "+String(Et.note).slice(0,20):""}`).join(", ")}${me.length>3?` 외 ${me.length-3}건`:""}`);return}mt.push({lot:$t,item:St.item,qty:+St.qty||0,whole:ee.length===0})}k.add(Bt)}),{ioDel:k,lotOps:mt,blocks:lt,missing:Zt}},s=r=>{const k=n.filter(se=>r.has(se.code)),{ioDel:mt,lotOps:lt,blocks:Zt,missing:St}=v(k),$t=[...mt].map(se=>E[se]),Bt=new Set($t.map(se=>se&&se._id).filter(Boolean)),ee=new Set($t);if(Zt.length){window.alert(`🚫 입고 예정 삭제 불가
+그래도 저장할까요?`))return;const Zt=applyOpeningStock({io:E,lots:N,item:bt.item,itemName:bt.itemName,unit:bt.unit,unitPrice:bt.unitPrice,lot:r,qty:k,date:mt,warehouse:bt.warehouse,manager:tt==null?void 0:tt.name});j(Zt.io),U(Zt.lots),bt.unitPrice>0&&C(St=>St.map($t=>$t.code===bt.item?d(o({},$t),{price:bt.unitPrice}):$t)),T(`${bt.itemName} 기초재고 ${fmt5(k)} 등록 — ${mt} 기준 (입출고 대장에 이월재고로 반영)`),Q(null)},le=()=>{if(!bt.item){T("품목을 선택해주세요");return}if(!(bt.lot||"").trim()){window.alert("⛔ LOT번호를 입력해주세요");return}if(!bt.warehouse){window.alert("⛔ 입고 창고를 선택해주세요");return}const r=o(d(o({},bt),{lot:(bt.lot||"").trim()}),W==="add"?{status:"대기"}:{});m(W==="add"?[...n,r]:n.map(lt=>lt.code===r.code?r:lt)),r.unitPrice>0&&C(p.map(lt=>lt.code===r.item?d(o({},lt),{price:r.unitPrice}):lt));const k=r.incomingDate||"";let mt=!1;qt&&k&&k<qt&&(ie(k),mt=!0),g&&k&&k>g&&(ut(""),mt=!0),at&&at!==(r.status==="완료"?"완료":"대기")&&(At(""),mt=!0),A&&(pt(""),mt=!0),T(mt?"저장되었습니다 — 방금 저장한 건이 보이도록 조회 조건을 넓혔습니다.":"저장되었습니다."),Q(null)},re=r=>r.type==="입고"&&(!r.destination||r.destination==="BUY")&&!/창고이동/.test(String(r.note||""))&&!isQuarantineIo(r),v=r=>{const k=new Set,mt=[],lt=[],Zt=[];return r.forEach(St=>{if(St.status!=="완료")return;const $t=(St.lot||"").trim();let Bt=E.findIndex((ee,me)=>!k.has(me)&&ee._incCode===St.code);if(Bt<0){const ee=E.map((Et,se)=>[Et,se]).filter(([Et,se])=>!k.has(se)&&!Et._incCode&&re(Et)&&!isOpeningIo(Et)&&Et.item===St.item&&(Et.lot||"")===$t&&Math.abs((+Et.qty||0)-(+St.qty||0))<1e-9&&(Et.warehouse||"")===(St.warehouse||"")&&String(Et.note||"")===String(St.supplier||"")),me=ee.find(([Et])=>Et.date===St.incomingDate)||ee[0];Bt=me?me[1]:-1}if(Bt<0){Zt.push(`• ${St.itemName||St.item}${$t?" · LOT "+$t:""}`);return}if($t){const ee=E.filter((Et,se)=>se!==Bt&&!k.has(se)&&Et.item===St.item&&(Et.lot||"")===$t),me=ee.filter(Et=>!re(Et));if(me.length){lt.push(`• ${St.itemName||St.item} · LOT ${$t} — ${me.slice(0,3).map(Et=>`${Et.date} ${Et.type}${Et.destination?"("+Et.destination+")":""}${Et.note?" "+String(Et.note).slice(0,20):""}`).join(", ")}${me.length>3?` 외 ${me.length-3}건`:""}`);return}mt.push({lot:$t,item:St.item,qty:+St.qty||0,whole:ee.length===0})}k.add(Bt)}),{ioDel:k,lotOps:mt,blocks:lt,missing:Zt}},s=r=>{const k=n.filter(se=>r.has(se.code)),{ioDel:mt,lotOps:lt,blocks:Zt,missing:St}=v(k),$t=[...mt].map(se=>E[se]),Bt=new Set($t.map(se=>se&&se._id).filter(Boolean)),ee=new Set($t);if(Zt.length){window.alert(`🚫 입고 예정 삭제 불가
 
 이미 입고 처리된 LOT 이 출고·생산투입·창고이동 등으로 쓰였습니다.
 그 기록을 먼저 지워야 입고 예정을 지울 수 있습니다:
